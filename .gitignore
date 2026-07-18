@@ -1,0 +1,6 @@
+venv/
+database/
+frontend/node_modules/
+__pycache__/
+*.pycs
+pretrained/
