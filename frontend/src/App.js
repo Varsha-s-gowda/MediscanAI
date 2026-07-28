@@ -143,7 +143,8 @@ function App() {
     runLoadingSteps();
  
     try {
-      const res = await fetch("http://127.0.0.1:5000/predict", {
+      const backendUrl = process.env.REACT_APP_BACKEND_URL || "https://mediscanai-uhtt.onrender.com";
+      const res = await fetch(`${backendUrl}/predict`, {
         method: "POST",
         body: formData,
       });
