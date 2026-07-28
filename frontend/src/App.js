@@ -108,7 +108,7 @@ function App() {
       type: file.type.split("/")[1].toUpperCase(),
     });
     showToast("Image loaded successfully!", <ImageIcon size={16} />);
-  }, [history]);
+  }, []);
  
   const handleImageChange = (e) => handleFile(e.target.files[0]);
  
