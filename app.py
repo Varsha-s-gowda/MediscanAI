@@ -1,9 +1,11 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import torch
+torch.set_num_threads(1) # Minimize RAM usage on Render free tier
 from torchvision import models, transforms
 from PIL import Image
 import numpy as np
+import gc
 
 app = Flask(__name__)
 CORS(app)
@@ -66,6 +68,14 @@ def predict():
         print("Output:", output)
         print("Probabilities:", probs)
         print("Prediction:", predicted.item())
+
+        prediction_val = predicted.item()
+
+        # Free memory immediately
+        del img_tensor
+        del output
+        del probs
+        gc.collect()
 
         classes = ['NORMAL', 'PNEUMONIA']
 
