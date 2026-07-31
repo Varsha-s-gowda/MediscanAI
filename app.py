@@ -1,38 +1,53 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import torch
-torch.set_num_threads(1) # Minimize RAM usage on Render free tier
 from torchvision import models, transforms
 from PIL import Image
 import numpy as np
 import gc
 
+torch.set_num_threads(1)
+
 app = Flask(__name__)
 CORS(app)
 
-# Load trained model
-model = models.resnet50()
+# ----------------------------
+# Load Model (Loads only once)
+# ----------------------------
+model = models.resnet50(weights=None)
 model.fc = torch.nn.Linear(model.fc.in_features, 2)
-model.load_state_dict(torch.load("pneumonia_model.pth", map_location="cpu"))
+
+model.load_state_dict(
+    torch.load("pneumonia_model.pth", map_location=torch.device("cpu"))
+)
+
 model.eval()
 
-# Image transform
+print("✅ Pneumonia model loaded successfully")
+
+# ----------------------------
+# Image Transform
+# ----------------------------
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
     transforms.Normalize(
-        [0.485, 0.456, 0.406],
-        [0.229, 0.224, 0.225]
+        mean=[0.485, 0.456, 0.406],
+        std=[0.229, 0.224, 0.225]
     )
 ])
 
-# Function to check if image looks like X-ray
+# ----------------------------
+# Check if uploaded image looks like an X-ray
+# ----------------------------
 def is_xray(img):
     img_np = np.array(img)
 
-    # Check if mostly grayscale
     if len(img_np.shape) == 3:
-        r, g, b = img_np[:,:,0], img_np[:,:,1], img_np[:,:,2]
+        r = img_np[:, :, 0]
+        g = img_np[:, :, 1]
+        b = img_np[:, :, 2]
+
         diff_rg = np.mean(np.abs(r - g))
         diff_rb = np.mean(np.abs(r - b))
         diff_gb = np.mean(np.abs(g - b))
@@ -42,89 +57,125 @@ def is_xray(img):
 
     return True
 
-@app.route('/predict', methods=['POST'])
+
+# ----------------------------
+# Home Route
+# ----------------------------
+@app.route("/")
+def home():
+    return "Mediscan AI Backend Running"
+
+
+# ----------------------------
+# Prediction Route
+# ----------------------------
+@app.route("/predict", methods=["POST"])
 def predict():
     try:
-        file = request.files['image']
-        img = Image.open(file)
 
-        # Check invalid image
+        if "image" not in request.files:
+            return jsonify({"error": "No image uploaded"}), 400
+
+        file = request.files["image"]
+
+        img = Image.open(file).convert("RGB")
+
+        print("Image Mode :", img.mode)
+        print("Image Size :", img.size)
+
         if not is_xray(img):
             return jsonify({
                 "prediction": "Invalid image / Not an X-ray",
                 "confidence": 0
             })
 
-        # Convert to grayscale then RGB
-        img = img.convert("L").convert("RGB")
         img_tensor = transform(img).unsqueeze(0)
+
+        print("Tensor Shape :", img_tensor.shape)
 
         with torch.no_grad():
             output = model(img_tensor)
-            probs = torch.softmax(output, dim=1)
-            confidence = probs.max().item()
-            _, predicted = torch.max(output, 1)
+            probabilities = torch.softmax(output, dim=1)
 
-        print("Output:", output)
-        print("Probabilities:", probs)
-        print("Prediction:", predicted.item())
+            confidence = probabilities.max().item()
+            predicted = torch.argmax(probabilities, dim=1).item()
 
-        prediction_val = predicted.item()
+        print("Raw Output :", output)
+        print("Probabilities :", probabilities)
+        print("Predicted Class :", predicted)
+        print("Confidence :", confidence)
 
-        # Free memory immediately
-        del img_tensor
-        del output
-        del probs
-        gc.collect()
-
-        classes = ['NORMAL', 'PNEUMONIA']
+        classes = [
+            "NORMAL",
+            "PNEUMONIA"
+        ]
 
         if confidence < 0.65:
-            result = "Uncertain / Please upload clearer X-ray"
+            prediction = "Uncertain / Please upload a clearer chest X-ray"
         else:
-            result = classes[predicted.item()]
+            prediction = classes[predicted]
 
-        if result == "PNEUMONIA":
+        if prediction == "PNEUMONIA":
+
             health_advice = [
-                "Take adequate rest and stay hydrated.",
-                "Eat nutritious food.",
-                "Maintain hygiene."
+                "Take adequate rest.",
+                "Drink plenty of fluids.",
+                "Eat nutritious food."
             ]
+
             precautions = [
                 "Wear a mask.",
-                "Avoid close contact.",
-                "Take medicines on time."
-            ]
-            consult_doctor_if = [
-                "Breathing difficulty increases.",
-                "High fever persists.",
-                "Chest pain worsens."
+                "Avoid close contact with others.",
+                "Take medicines as prescribed."
             ]
 
-        elif result == "NORMAL":
+            consult_doctor_if = [
+                "High fever continues.",
+                "Breathing becomes difficult.",
+                "Chest pain increases."
+            ]
+
+        elif prediction == "NORMAL":
+
             health_advice = [
                 "Maintain a healthy lifestyle.",
                 "Exercise regularly.",
-                "Eat balanced meals."
+                "Eat a balanced diet."
             ]
+
             precautions = [
                 "Avoid smoking.",
-                "Regular health checkups.",
-                "Maintain respiratory hygiene."
+                "Maintain respiratory hygiene.",
+                "Get regular health checkups."
             ]
+
             consult_doctor_if = [
-                "Persistent cough occurs.",
-                "Breathing becomes difficult.",
-                "Chest pain occurs."
+                "Persistent cough develops.",
+                "Breathing difficulty occurs.",
+                "Chest pain develops."
             ]
 
         else:
-            health_advice = ["Upload a clearer chest X-ray."]
-            precautions = ["Ensure proper image quality."]
-            consult_doctor_if = ["Consult doctor for diagnosis."]
+
+            health_advice = [
+                "Please upload a clear chest X-ray."
+            ]
+
+            precautions = [
+                "Ensure the image is a chest X-ray."
+            ]
+
+            consult_doctor_if = [
+                "Consult a medical professional."
+            ]
+
+        del img_tensor
+        del output
+        del probabilities
+        gc.collect()
 
         return jsonify({
-            "prediction": result,
+            "prediction": prediction,
             "confidence": round(confidence * 100, 2),
             "health_advice": health_advice,
             "precautions": precautions,
@@ -132,9 +183,11 @@ def predict():
         })
 
     except Exception as e:
+
         return jsonify({
             "error": str(e)
-        })
+        }), 500
 
-if __name__ == '__main__':
-    app.run(debug=True)
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
