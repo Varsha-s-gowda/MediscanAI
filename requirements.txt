@@ -1,8 +1,19 @@
-flask
-flask-cors
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch
 torchvision
 Pillow
 numpy
+fastapi
+uvicorn
+python-multipart
+python-dotenv
+easyocr
+opencv-python-headless
+scikit-learn
+pandas
+matplotlib
+seaborn
+pydantic
 gunicorn
+flask
+flask-cors
