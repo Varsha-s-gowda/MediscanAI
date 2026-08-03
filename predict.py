@@ -136,16 +136,19 @@ class InferenceEngine:
                 }
                 
                 prompt = (
-                    "Analyze this chest X-ray as a board-certified radiologist. "
-                    "Estimate the probability percentages (0.0 to 100.0) for exactly these conditions based on the scan: "
+                    "You are an expert board-certified thoracic radiologist. "
+                    "Analyze this chest radiograph and differentiate between Normal, standard Pneumonia, COVID-19 Pneumonia, and Tuberculosis (TB). "
+                    "To do this accurately, follow these specific radiological guidelines:\n"
+                    "- COVID-19 Pneumonia features bilateral, peripheral ground-glass opacities (GGOs) or consolidations, predominantly in the lower zones.\n"
+                    "- Tuberculosis (TB) typically shows upper lobe consolidations, cavitary lesions, apical scarring, hilar/mediastinal lymphadenopathy, or pleural effusion.\n"
+                    "- Standard Pneumonia features lobar consolidation, air bronchograms, or focal opacity.\n"
+                    "- Normal shows clear lung fields, normal cardiomediastinal silhouette, and sharp costophrenic angles.\n\n"
+                    "Estimate the probability percentages (0.0 to 100.0) for exactly these 4 conditions:\n"
                     "1. Pneumonia\n"
                     "2. COVID-19 Pneumonia\n"
                     "3. Tuberculosis (TB)\n"
-                    "4. Bronchitis (limited visibility on X-ray)\n"
-                    "5. Lung Abscess\n"
-                    "6. Fungal Lung Infection\n"
-                    "7. Normal\n\n"
-                    "Your response must be ONLY a single valid JSON object mapping these disease names (matching spelling exactly) to their probability percentage value (as floats between 0.0 and 100.0). Do not include markdown code block syntax (like ```json)."
+                    "4. Normal\n\n"
+                    "Your response must be ONLY a single valid JSON object mapping these exactly 4 condition names to their probability percentage value (as floats between 0.0 and 100.0). Ensure the probabilities reflect the visual evidence carefully. Do not include markdown code block syntax (like ```json)."
                 )
 
                 payload = {
@@ -198,7 +201,7 @@ class InferenceEngine:
                                 severity = self.get_severity(conf_val)
                                 info = DISEASE_INFO.get(finding_name, {
                                     "description": f"Radiological finding of {finding_name} detected.",
-                                    "symptoms": ["Shortness of breath", "Cough"],
+                                    "symptoms": ["Shortness of breath", "Cough", "Fever"],
                                     "precautions": ["Consult a medical professional", "Clinical correlation"],
                                     "follow_up": "Seek physician advice for detailed assessment."
                                 })
@@ -242,7 +245,8 @@ class InferenceEngine:
                             "processing_time": f"{processing_time:.2f} sec (OpenRouter Gemini 2.5 Flash)",
                             "health_advice": primary.get("precautions", ["Maintain healthy habits"]),
                             "precautions": primary.get("precautions", ["Standard checkup"]),
-                            "consult_doctor_if": primary.get("symptoms", ["Symptoms persist"])
+                            "consult_doctor_if": primary.get("symptoms", ["Symptoms persist"]),
+                            "symptoms": primary.get("symptoms", ["Cough", "Fever"])
                         }
             except Exception as open_err:
                 logger.error(f"OpenRouter Vision API prediction failed: {open_err}. Falling back...")
@@ -454,5 +458,6 @@ class InferenceEngine:
             "processing_time": f"{processing_time:.2f} sec",
             "health_advice": health_advice,  # Legacy compatibility
             "precautions": precautions,  # Legacy compatibility
-            "consult_doctor_if": consult_doctor_if  # Legacy compatibility
+            "consult_doctor_if": consult_doctor_if,  # Legacy compatibility
+            "symptoms": primary.get("symptoms", ["Cough", "Fever"])
         }

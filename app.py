@@ -77,16 +77,9 @@ def validate_image_file(file: UploadFile):
         )
 
 def is_xray(img: Image.Image) -> bool:
-    """Helper to detect if the image resembles an X-ray (dominantly grayscale)."""
-    img_np = np.array(img)
-    if len(img_np.shape) == 3:
-        # Check if R, G, B channels are highly similar (grayscale image)
-        r, g, b = img_np[:, :, 0], img_np[:, :, 1], img_np[:, :, 2]
-        diff_rg = np.mean(np.abs(r - g))
-        diff_rb = np.mean(np.abs(r - b))
-        diff_gb = np.mean(np.abs(g - b))
-        if diff_rg > 50 or diff_rb > 50 or diff_gb > 50:
-            return False
+    """Accept all uploaded images and let the AI model determine the content.
+    Previous channel-diff heuristic was rejecting real X-rays (TB, COVID-19)
+    that were JPEG-encoded or had slight color channel variation."""
     return True
 
 # --------------------------------------------
