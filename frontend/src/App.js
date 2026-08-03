@@ -1,19 +1,19 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { 
-  Upload, 
-  Activity, 
-  ShieldAlert, 
-  ShieldCheck, 
-  Clock, 
-  FileText, 
-  Sliders, 
-  Database, 
-  ArrowRight, 
-  Download, 
-  Copy, 
-  RefreshCw, 
-  Sparkles, 
-  Flame, 
+import {
+  Upload,
+  Activity,
+  ShieldAlert,
+  ShieldCheck,
+  Clock,
+  FileText,
+  Sliders,
+  Database,
+  ArrowRight,
+  Download,
+  Copy,
+  RefreshCw,
+  Sparkles,
+  Flame,
   AlertTriangle,
   Info,
   ChevronDown,
@@ -114,7 +114,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [loadStep, setLoadStep] = useState(-1);
   const [dragging, setDragging] = useState(false);
-  const [activeTab, setActiveTab] = useState("advice");
+  const [activeTab, setActiveTab] = useState("symptoms");
   const [scanMode, setScanMode] = useState("standard");
   const [history, setHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(true);
@@ -171,7 +171,7 @@ function App() {
     setPreview(URL.createObjectURL(file));
     setResult(null);
     setActiveTab("advice");
-    
+
     // Simulate image properties
     const width = 1024 + Math.floor(Math.random() * 1000);
     const height = 1024 + Math.floor(Math.random() * 1000);
@@ -204,10 +204,10 @@ function App() {
     setLoadStep(0);
     const iv = setInterval(() => {
       step++;
-      if (step >= PIPELINE_STEPS.length) { 
-        clearInterval(iv); 
-      } else { 
-        setLoadStep(step); 
+      if (step >= PIPELINE_STEPS.length) {
+        clearInterval(iv);
+      } else {
+        setLoadStep(step);
       }
     }, 450);
   };
@@ -338,6 +338,7 @@ function App() {
   const severity = severityFor(result?.prediction, result?.confidence);
 
   const tabSections = {
+    symptoms: { label: "Symptoms", data: result?.symptoms, heading: "Associated Clinical Symptoms", icon: <Activity size={16} /> },
     advice: { label: "Advice", data: result?.health_advice, heading: "Health Advice", icon: <Flame size={16} /> },
     precautions: { label: "Precautions", data: result?.precautions, heading: "Precautions", icon: <ShieldCheck size={16} /> },
     consult: { label: "Consultation", data: result?.consult_doctor_if, heading: "Clinical Indicators", icon: <ShieldAlert size={16} /> },
@@ -347,12 +348,12 @@ function App() {
     <div className="app-container">
       {/* Background gradients with parallax mouse offset */}
       <div className="bg-gradient-mesh"></div>
-      <div 
-        className="bg-glowing-blob-1" 
+      <div
+        className="bg-glowing-blob-1"
         style={{ transform: `translate(${mousePos.x}px, ${mousePos.y}px)` }}
       />
-      <div 
-        className="bg-glowing-blob-2" 
+      <div
+        className="bg-glowing-blob-2"
         style={{ transform: `translate(${-mousePos.x}px, ${-mousePos.y}px)` }}
       />
       <div className="bg-noise"></div>
@@ -395,7 +396,7 @@ function App() {
 
       {/* ── Main Grid ── */}
       <main className="workspace-grid">
-        
+
         {/* ==================================================
            LEFT PANEL: INPUT RADIOGRAPH
            ================================================== */}
@@ -407,7 +408,7 @@ function App() {
 
           {/* Dropzone */}
           <div
-            className="dropzone-saas"
+            className={`dropzone-saas ${dragging ? "dragging" : ""}`}
             onDragOver={onDragOver}
             onDragLeave={onDragLeave}
             onDrop={onDrop}
@@ -440,8 +441,8 @@ function App() {
                 <span>{Math.round(((loadStep + 1) / PIPELINE_STEPS.length) * 100)}%</span>
               </div>
               <div className="progress-bar-bg">
-                <div 
-                  className="progress-bar-fill" 
+                <div
+                  className="progress-bar-fill"
                   style={{ width: `${((loadStep + 1) / PIPELINE_STEPS.length) * 100}%` }}
                 />
               </div>
@@ -454,10 +455,10 @@ function App() {
               <div className="preview-wrapper-relative">
                 <img src={preview} alt="Radiograph" className="preview-img" />
                 {result?.heatmap && (
-                  <img 
-                    src={result.heatmap} 
-                    alt="Grad-CAM Overlaid Heatmap" 
-                    className="heatmap-overlay" 
+                  <img
+                    src={result.heatmap}
+                    alt="Grad-CAM Overlaid Heatmap"
+                    className="heatmap-overlay"
                     style={{ opacity: heatmapOpacity }}
                   />
                 )}
@@ -522,12 +523,12 @@ function App() {
            CENTER & RIGHT PANEL: DIAGNOSTIC PIPELINE
            ================================================== */}
         <section className="center-panel">
-          
+
           {/* Core scan controls */}
           <div className="glass-panel scan-control-box" style={{ borderRadius: "28px" }}>
-            <button 
-              className="btn-master-scan" 
-              onClick={handleUpload} 
+            <button
+              className="btn-master-scan"
+              onClick={handleUpload}
               disabled={loading || !image}
               style={{
                 background: "linear-gradient(135deg, #3b82f6 0%, #8b5cf6 50%, #22d3ee 100%)",
@@ -586,8 +587,8 @@ function App() {
                   const isActive = i === loadStep;
                   const isCompleted = i < loadStep;
                   return (
-                    <div 
-                      key={i} 
+                    <div
+                      key={i}
                       className={`timeline-step ${isActive ? "active" : ""} ${isCompleted ? "completed" : ""}`}
                     >
                       <div className="step-indicator">
@@ -638,11 +639,11 @@ function App() {
                 <div className="gauge-container">
                   <svg width="80" height="80" viewBox="0 0 80 80">
                     <circle className="gauge-bg" cx="40" cy="40" r="32" />
-                    <circle 
-                      className={`gauge-fill ${severity}`} 
-                      cx="40" 
-                      cy="40" 
-                      r="32" 
+                    <circle
+                      className={`gauge-fill ${severity}`}
+                      cx="40"
+                      cy="40"
+                      r="32"
                       strokeDasharray={2 * Math.PI * 32}
                       strokeDashoffset={2 * Math.PI * 32 * (1 - result.confidence / 100)}
                     />
@@ -653,29 +654,94 @@ function App() {
                 </div>
               </div>
 
-              {/* Multilabel Findings Table */}
+              {/* Top 3 Detected Diseases */}
               {result.predictions && result.predictions.length > 0 && (
                 <div className="multilabel-findings">
-                  <div className="findings-header">
-                    <span>Detected Abnormalities</span>
-                    <span>Confidence Score</span>
+                  <div className="findings-header" style={{ marginBottom: "14px" }}>
+                    <span>Top Detected Conditions</span>
                   </div>
-                  <div className="findings-list">
+                  <div className="findings-list" style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                     {result.predictions.slice(0, 3).map((p, idx) => (
-                      <div key={idx} className="finding-row">
-                        <div className="finding-name">
-                          <span className={`finding-bullet ${p.severity?.toLowerCase() || 'low'}`} />
-                          <span>{p.disease}</span>
+                      <div key={idx} className="finding-row" style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "14px",
+                        padding: "12px 16px",
+                        borderRadius: "12px",
+                        background: idx === 0
+                          ? "rgba(239,68,68,0.08)"
+                          : idx === 1
+                          ? "rgba(234,179,8,0.06)"
+                          : "rgba(59,130,246,0.06)",
+                        border: idx === 0
+                          ? "1px solid rgba(239,68,68,0.2)"
+                          : idx === 1
+                          ? "1px solid rgba(234,179,8,0.15)"
+                          : "1px solid rgba(59,130,246,0.15)"
+                      }}>
+                        {/* Rank badge */}
+                        <div style={{
+                          width: "28px",
+                          height: "28px",
+                          borderRadius: "50%",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontWeight: "800",
+                          fontSize: "13px",
+                          flexShrink: 0,
+                          background: idx === 0
+                            ? "rgba(239,68,68,0.2)"
+                            : idx === 1
+                            ? "rgba(234,179,8,0.15)"
+                            : "rgba(59,130,246,0.15)",
+                          color: idx === 0 ? "#ef4444" : idx === 1 ? "#eab308" : "#3b82f6"
+                        }}>
+                          {idx + 1}
                         </div>
-                        <div className="finding-confidence-bar-wrapper">
-                          <div className="finding-bar-bg">
-                            <div 
-                              className={`finding-bar-fill ${p.severity?.toLowerCase() || 'low'}`} 
-                              style={{ width: `${p.confidence}%` }}
-                            />
-                          </div>
-                          <span className="finding-value">{p.confidence}%</span>
-                        </div>
+                        {/* Severity dot */}
+                        <span style={{
+                          width: "8px",
+                          height: "8px",
+                          borderRadius: "50%",
+                          flexShrink: 0,
+                          background: p.severity?.toLowerCase() === "high"
+                            ? "#ef4444"
+                            : p.severity?.toLowerCase() === "moderate"
+                            ? "#eab308"
+                            : "#22d3ee"
+                        }} />
+                        {/* Disease name */}
+                        <span style={{
+                          fontWeight: "700",
+                          fontSize: "14px",
+                          color: "#f1f5f9",
+                          letterSpacing: "0.2px"
+                        }}>
+                          {p.disease}
+                        </span>
+                        {/* Severity label pill */}
+                        <span style={{
+                          marginLeft: "auto",
+                          fontSize: "10px",
+                          fontWeight: "700",
+                          padding: "3px 10px",
+                          borderRadius: "999px",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.8px",
+                          background: p.severity?.toLowerCase() === "high"
+                            ? "rgba(239,68,68,0.15)"
+                            : p.severity?.toLowerCase() === "moderate"
+                            ? "rgba(234,179,8,0.12)"
+                            : "rgba(34,211,238,0.12)",
+                          color: p.severity?.toLowerCase() === "high"
+                            ? "#f87171"
+                            : p.severity?.toLowerCase() === "moderate"
+                            ? "#fbbf24"
+                            : "#22d3ee"
+                        }}>
+                          {p.severity || "Low"}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -786,10 +852,10 @@ function App() {
                         <ImageIcon size={16} />
                       </div>
                     ) : (
-                      <img 
-                        src={h.preview} 
-                        alt="thumb" 
-                        className="log-thumb" 
+                      <img
+                        src={h.preview}
+                        alt="thumb"
+                        className="log-thumb"
                         onError={() => setBrokenImages(prev => ({ ...prev, [h.id]: true }))}
                       />
                     )}
@@ -798,9 +864,9 @@ function App() {
                       <span className="log-meta">{timeAgo(h.timestamp)} • {h.mode?.toUpperCase()}</span>
                     </div>
                     <span className="log-confidence" style={{ marginRight: "12px" }}>{Math.round(h.confidence)}%</span>
-                    
+
                     {/* Delete log action */}
-                    <button 
+                    <button
                       onClick={(e) => deleteHistory(h.id, e)}
                       style={{
                         position: "absolute",
