@@ -1,193 +1,231 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-import torch
-from torchvision import models, transforms
+import time
+import os
+import io
+import json
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Request, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from PIL import Image
 import numpy as np
-import gc
+from typing import List, Dict, Any
 
-torch.set_num_threads(1)
+# Modular imports
+from config import API_VERSION, CONFIDENCE_THRESHOLD, MODEL_PATH
+from constants import DISEASE_CLASSES
+from device import get_device
+from logger import get_logger, get_memory_usage
+from predict import InferenceEngine
+from ocr.extract_text import MedicalReportOCR
 
-app = Flask(__name__)
-CORS(app)
+logger = get_logger("app")
 
-# ----------------------------
-# Load Model (Loads only once)
-# ----------------------------
-model = models.resnet50(weights=None)
-model.fc = torch.nn.Linear(model.fc.in_features, 2)
-
-model.load_state_dict(
-    torch.load("pneumonia_model.pth", map_location=torch.device("cpu"))
+# Initialize FastAPI App
+app = FastAPI(
+    title="MediScan AI Engine",
+    description="Production-grade Chest X-Ray disease classifier and medical OCR parsing system.",
+    version=API_VERSION,
 )
 
-model.eval()
+# Robust CORS Setup
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-print("✅ Pneumonia model loaded successfully")
+# Thread-safe Single Instance Inference Engine & OCR
+inference_engine = InferenceEngine()
+ocr_processor = MedicalReportOCR()
 
-# ----------------------------
-# Image Transform
-# ----------------------------
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize(
-        mean=[0.485, 0.456, 0.406],
-        std=[0.229, 0.224, 0.225]
-    )
-])
+# --------------------------------------------
+# Middleware for Request Timing & Performance Tracking
+# --------------------------------------------
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    logger.info(f"Incoming request: {request.method} {request.url.path} | RAM: {get_memory_usage()}")
+    
+    try:
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        response.headers["X-Process-Time"] = f"{process_time:.4f} sec"
+        logger.info(f"Completed request: {request.method} {request.url.path} in {process_time:.4f}s")
+        return response
+    except Exception as e:
+        process_time = time.time() - start_time
+        logger.error(f"Failed request: {request.method} {request.url.path} - Error: {e} - Time: {process_time:.4f}s")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"error": f"Internal Server Error: {str(e)}"}
+        )
 
-# ----------------------------
-# Check if uploaded image looks like an X-ray
-# ----------------------------
-def is_xray(img):
-    img_np = np.array(img)
+# --------------------------------------------
+# Helper: Image Validation
+# --------------------------------------------
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/jpg"]
 
-    if len(img_np.shape) == 3:
-        r = img_np[:, :, 0]
-        g = img_np[:, :, 1]
-        b = img_np[:, :, 2]
+def validate_image_file(file: UploadFile):
+    """Validates the uploaded file size and extension type."""
+    if file.content_type not in ALLOWED_MIME_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid file type. Only JPEG and PNG are allowed."
+        )
 
-        diff_rg = np.mean(np.abs(r - g))
-        diff_rb = np.mean(np.abs(r - b))
-        diff_gb = np.mean(np.abs(g - b))
-
-        if diff_rg > 15 or diff_rb > 15 or diff_gb > 15:
-            return False
-
+def is_xray(img: Image.Image) -> bool:
+    """Accept all uploaded images and let the AI model determine the content.
+    Previous channel-diff heuristic was rejecting real X-rays (TB, COVID-19)
+    that were JPEG-encoded or had slight color channel variation."""
     return True
 
+# --------------------------------------------
+# API Endpoints
+# --------------------------------------------
+@app.get("/", tags=["General"])
+async def root():
+    return {"message": "MediScan AI Backend running with FastAPI"}
 
-# ----------------------------
-# Home Route
-# ----------------------------
-@app.route("/")
-def home():
-    return "Mediscan AI Backend Running"
+@app.get("/health", tags=["General"])
+async def health():
+    return {
+        "status": "healthy",
+        "timestamp": time.time(),
+        "memory": get_memory_usage(),
+        "device": str(get_device())
+    }
 
+@app.get("/version", tags=["General"])
+async def get_version():
+    return {"version": API_VERSION}
 
-# ----------------------------
-# Prediction Route
-# ----------------------------
-@app.route("/predict", methods=["POST"])
-def predict():
+@app.get("/classes", tags=["Model"])
+async def get_classes():
+    return {"classes": inference_engine.classes}
+
+@app.get("/model-info", tags=["Model"])
+async def model_info():
+    return {
+        "model_name": "DenseNet121 / ResNet50 (Auto-Loaded)",
+        "weights_path": MODEL_PATH,
+        "input_shape": [3, 224, 224],
+        "device": str(inference_engine.device)
+    }
+
+@app.get("/metrics", tags=["Model"])
+async def get_metrics():
+    metrics_path = "metrics.json"
+    if os.path.exists(metrics_path):
+        with open(metrics_path, "r") as f:
+            return json.load(f)
+    return {"message": "No historical evaluation metrics found. Please run evaluate.py first."}
+
+@app.post("/predict", tags=["Inference"])
+async def predict(image: UploadFile = File(...)):
+    validate_image_file(image)
+    
+    # Read file
+    contents = await image.read()
+    if len(contents) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="File size too large. Limit is 10MB."
+        )
+        
     try:
+        image = Image.open(io.BytesIO(contents)).convert("RGB")
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Corrupted or invalid image file."
+        )
 
-        if "image" not in request.files:
-            return jsonify({"error": "No image uploaded"}), 400
+    # Chest X-Ray Check
+    if not is_xray(image):
+        return {
+            "prediction": "Invalid image / Not an X-ray",
+            "confidence": 0.0,
+            "severity": "Low",
+            "top_predictions": [],
+            "heatmap": "",
+            "processing_time": "0.00 sec"
+        }
 
-        file = request.files["image"]
-
-        img = Image.open(file).convert("RGB")
-
-        print("Image Mode :", img.mode)
-        print("Image Size :", img.size)
-
-        if not is_xray(img):
-            return jsonify({
-                "prediction": "Invalid image / Not an X-ray",
-                "confidence": 0
-            })
-
-        img_tensor = transform(img).unsqueeze(0)
-
-        print("Tensor Shape :", img_tensor.shape)
-
-        with torch.no_grad():
-            output = model(img_tensor)
-            probabilities = torch.softmax(output, dim=1)
-
-            confidence = probabilities.max().item()
-            predicted = torch.argmax(probabilities, dim=1).item()
-
-        print("Raw Output :", output)
-        print("Probabilities :", probabilities)
-        print("Predicted Class :", predicted)
-        print("Confidence :", confidence)
-
-        classes = [
-            "NORMAL",
-            "PNEUMONIA"
-        ]
-
-        if confidence < 0.65:
-            prediction = "Uncertain / Please upload a clearer chest X-ray"
-        else:
-            prediction = classes[predicted]
-
-        if prediction == "PNEUMONIA":
-
-            health_advice = [
-                "Take adequate rest.",
-                "Drink plenty of fluids.",
-                "Eat nutritious food."
-            ]
-
-            precautions = [
-                "Wear a mask.",
-                "Avoid close contact with others.",
-                "Take medicines as prescribed."
-            ]
-
-            consult_doctor_if = [
-                "High fever continues.",
-                "Breathing becomes difficult.",
-                "Chest pain increases."
-            ]
-
-        elif prediction == "NORMAL":
-
-            health_advice = [
-                "Maintain a healthy lifestyle.",
-                "Exercise regularly.",
-                "Eat a balanced diet."
-            ]
-
-            precautions = [
-                "Avoid smoking.",
-                "Maintain respiratory hygiene.",
-                "Get regular health checkups."
-            ]
-
-            consult_doctor_if = [
-                "Persistent cough develops.",
-                "Breathing difficulty occurs.",
-                "Chest pain develops."
-            ]
-
-        else:
-
-            health_advice = [
-                "Please upload a clear chest X-ray."
-            ]
-
-            precautions = [
-                "Ensure the image is a chest X-ray."
-            ]
-
-            consult_doctor_if = [
-                "Consult a medical professional."
-            ]
-
-        del img_tensor
-        del output
-        del probabilities
-        gc.collect()
-
-        return jsonify({
-            "prediction": prediction,
-            "confidence": round(confidence * 100, 2),
-            "health_advice": health_advice,
-            "precautions": precautions,
-            "consult_doctor_if": consult_doctor_if
-        })
-
+    # Run Prediction
+    try:
+        prediction_result = inference_engine.predict(image)
+        return prediction_result
     except Exception as e:
+        logger.error(f"Inference error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Inference computation failed: {str(e)}"
+        )
 
-        return jsonify({
-            "error": str(e)
-        }), 500
+@app.post("/predict/batch", tags=["Inference"])
+async def predict_batch(files: List[UploadFile] = File(...)):
+    results = []
+    for file in files:
+        validate_image_file(file)
+        contents = await file.read()
+        try:
+            image = Image.open(io.BytesIO(contents)).convert("RGB")
+            if not is_xray(image):
+                results.append({
+                    "filename": file.filename,
+                    "error": "Not an X-ray image"
+                })
+            else:
+                pred = inference_engine.predict(image)
+                results.append({
+                    "filename": file.filename,
+                    "prediction": pred["prediction"],
+                    "confidence": pred["confidence"],
+                    "severity": pred["severity"]
+                })
+        except Exception as e:
+            results.append({
+                "filename": file.filename,
+                "error": str(e)
+            })
+    return {"batch_results": results}
 
+@app.post("/heatmap", tags=["Inference"])
+async def generate_heatmap_endpoint(image: UploadFile = File(...)):
+    validate_image_file(image)
+    contents = await image.read()
+    try:
+        image = Image.open(io.BytesIO(contents)).convert("RGB")
+        pred = inference_engine.predict(image)
+        return {
+            "heatmap": pred["heatmap"],
+            "heatmap_only": pred["heatmap_only"]
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@app.post("/ocr", tags=["OCR"])
+async def perform_ocr(image: UploadFile = File(...)):
+    validate_image_file(image)
+    contents = await image.read()
+    try:
+        image = Image.open(io.BytesIO(contents)).convert("RGB")
+        ocr_result = ocr_processor.extract_text(image)
+        return ocr_result
+    except Exception as e:
+        logger.error(f"OCR failure: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"OCR execution failed: {str(e)}"
+        )
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    import uvicorn
+    from config import HOST, PORT
+    uvicorn.run("app:app", host=HOST, port=PORT, reload=False)

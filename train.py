@@ -1,80 +1,170 @@
+import os
+import json
 import torch
-import torchvision.transforms as transforms
-from torchvision.datasets import ImageFolder
-from torch.utils.data import DataLoader
-from torchvision.models import resnet50, ResNet50_Weights
 import torch.nn as nn
 import torch.optim as optim
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.utils.tensorboard import SummaryWriter
+from typing import Optional, List
 
-# Device
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print("Using device:", device)
+# Modular imports
+from model import MediScanModel
+from dataset import get_dataloaders
+from device import get_device
+from logger import get_logger, log_timing
+from constants import DISEASE_CLASSES
 
-# Data Augmentation + Normalize
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.RandomHorizontalFlip(),
-    transforms.RandomRotation(10),
-    transforms.ToTensor(),
-    transforms.Normalize([0.485, 0.456, 0.406],
-                         [0.229, 0.224, 0.225])
-])
+logger = get_logger("train")
 
-# Load Data
-train_data = ImageFolder(
-    "database/pnemonia database/chest_xray/chest_xray/train",
-    transform=transform
-)
+class EarlyStopping:
+    def __init__(self, patience: int = 5, min_delta: float = 0.0):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.counter = 0
+        self.best_loss = None
+        self.early_stop = False
 
-test_data = ImageFolder(
-    "database/pnemonia database/chest_xray/chest_xray/test",
-    transform=transform
-)
+    def __call__(self, val_loss: float) -> bool:
+        if self.best_loss is None:
+            self.best_loss = val_loss
+        elif val_loss > self.best_loss - self.min_delta:
+            self.counter += 1
+            logger.info(f"EarlyStopping counter: {self.counter} out of {self.patience}")
+            if self.counter >= self.patience:
+                self.early_stop = True
+        else:
+            self.best_loss = val_loss
+            self.counter = 0
+        return self.early_stop
 
-print("Class mapping:", train_data.class_to_idx)
+@log_timing
+def train_model(
+    data_dir: str,
+    csv_file: Optional[str] = None,
+    epochs: int = 10,
+    batch_size: int = 16,
+    lr: float = 1e-4,
+    resume_checkpoint: Optional[str] = None
+):
+    device = get_device()
+    writer = SummaryWriter(log_dir="runs/mediscan_experiment_multilabel")
+    
+    # Load loaders and classes
+    try:
+        train_loader, val_loader, _, classes = get_dataloaders(
+            data_dir=data_dir, 
+            csv_file=csv_file, 
+            batch_size=batch_size
+        )
+    except Exception as e:
+        logger.error(f"Error loading datasets from {data_dir}: {e}")
+        return
+        
+    num_classes = len(classes)
+    
+    # Save classes.json
+    with open("classes.json", "w") as f:
+        json.dump(classes, f, indent=4)
+        
+    model = MediScanModel(num_classes=num_classes, freeze_features=True)
+    model = model.to(device)
+    
+    # Multi-label classification loss: BCEWithLogitsLoss
+    criterion = nn.BCEWithLogitsLoss()
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', patience=2, factor=0.5)
+    early_stopping = EarlyStopping(patience=5)
+    scaler = torch.amp.GradScaler(enabled=(device.type == "cuda"))
 
-train_loader = DataLoader(train_data, batch_size=8, shuffle=True)
-test_loader = DataLoader(test_data, batch_size=8, shuffle=False)
+    start_epoch = 0
+    history = {"train_loss": [], "val_loss": []}
 
-# Load pretrained model
-model = resnet50(weights=ResNet50_Weights.DEFAULT)
-model.fc = nn.Linear(model.fc.in_features, 2)
-model = model.to(device)
+    # Resume capability
+    if resume_checkpoint and os.path.exists(resume_checkpoint):
+        checkpoint = torch.load(resume_checkpoint, map_location=device)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        start_epoch = checkpoint["epoch"] + 1
+        history = checkpoint.get("history", history)
+        logger.info(f"Resuming training from epoch {start_epoch}")
 
-# Loss and optimizer
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=0.0001)
+    best_val_loss = float("inf")
 
-# Training
-epochs = 10
+    for epoch in range(start_epoch, epochs):
+        model.train()
+        train_loss = 0.0
+        
+        for batch_idx, (images, labels) in enumerate(train_loader):
+            images, labels = images.to(device), labels.to(device)
+            optimizer.zero_grad()
+            
+            # Mixed precision training
+            with torch.amp.autocast(device_type=device.type, enabled=(device.type == "cuda")):
+                outputs = model(images)
+                loss = criterion(outputs, labels)
+                
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
 
-for epoch in range(epochs):
-    model.train()
-    running_loss = 0.0
-    correct = 0
-    total = 0
+            train_loss += loss.item() * images.size(0)
 
-    for images, labels in train_loader:
-        images, labels = images.to(device), labels.to(device)
+        train_loss /= len(train_loader.dataset)
 
-        optimizer.zero_grad()
+        # Validation phase
+        model.eval()
+        val_loss = 0.0
+        
+        with torch.no_grad():
+            for images, labels in val_loader:
+                images, labels = images.to(device), labels.to(device)
+                with torch.amp.autocast(device_type=device.type, enabled=(device.type == "cuda")):
+                    outputs = model(images)
+                    loss = criterion(outputs, labels)
+                
+                val_loss += loss.item() * images.size(0)
 
-        outputs = model(images)
-        loss = criterion(outputs, labels)
+        val_loss /= len(val_loader.dataset)
+        
+        scheduler.step(val_loss)
+        
+        # Log to TensorBoard
+        writer.add_scalar("Loss/Train", train_loss, epoch)
+        writer.add_scalar("Loss/Validation", val_loss, epoch)
+        
+        # Save metrics to history dictionary
+        history["train_loss"].append(train_loss)
+        history["val_loss"].append(val_loss)
+        
+        logger.info(f"Epoch {epoch+1}/{epochs} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
 
-        loss.backward()
-        optimizer.step()
+        # Save last checkpoint
+        checkpoint_data = {
+            "epoch": epoch,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "history": history
+        }
+        torch.save(checkpoint_data, "last_model.pth")
+        
+        # Save best model
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            torch.save(model.state_dict(), "best_model.pth")
+            logger.info("Saved new best model checkpoint to best_model.pth")
 
-        running_loss += loss.item()
+        # Early stopping check
+        if early_stopping(val_loss):
+            logger.info("Early stopping triggered. Training stopped.")
+            break
 
-        _, predicted = torch.max(outputs, 1)
-        total += labels.size(0)
-        correct += (predicted == labels).sum().item()
+    # Save final metrics and history JSON files
+    with open("history.json", "w") as h_file:
+        json.dump(history, h_file, indent=4)
+        
+    writer.close()
+    logger.info("Multi-label training process completed.")
 
-    accuracy = 100 * correct / total
-
-    print(f"Epoch {epoch+1}/{epochs}, Loss: {running_loss:.4f}, Accuracy: {accuracy:.2f}%")
-
-# Save model
-torch.save(model.state_dict(), "pneumonia_model.pth")
-print("Training complete and model saved.")
+if __name__ == "__main__":
+    # Example execution (expects path to a dataset)
+    train_model(data_dir="database/pnemonia database/chest_xray/chest_xray/train", epochs=5)
