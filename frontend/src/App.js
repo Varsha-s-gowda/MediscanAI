@@ -7,7 +7,6 @@ import {
   Clock,
   FileText,
   Sliders,
-  Database,
   ArrowRight,
   Download,
   Copy,
@@ -20,10 +19,7 @@ import {
   ChevronUp,
   Image as ImageIcon,
   CheckCircle,
-  Eye,
   Trash2,
-  Cpu,
-  Binary,
   Settings
 } from "lucide-react";
 import "./App.css";
@@ -671,13 +667,13 @@ function App() {
                         background: idx === 0
                           ? "rgba(239,68,68,0.08)"
                           : idx === 1
-                          ? "rgba(234,179,8,0.06)"
-                          : "rgba(59,130,246,0.06)",
+                            ? "rgba(234,179,8,0.06)"
+                            : "rgba(59,130,246,0.06)",
                         border: idx === 0
                           ? "1px solid rgba(239,68,68,0.2)"
                           : idx === 1
-                          ? "1px solid rgba(234,179,8,0.15)"
-                          : "1px solid rgba(59,130,246,0.15)"
+                            ? "1px solid rgba(234,179,8,0.15)"
+                            : "1px solid rgba(59,130,246,0.15)"
                       }}>
                         {/* Rank badge */}
                         <div style={{
@@ -693,8 +689,8 @@ function App() {
                           background: idx === 0
                             ? "rgba(239,68,68,0.2)"
                             : idx === 1
-                            ? "rgba(234,179,8,0.15)"
-                            : "rgba(59,130,246,0.15)",
+                              ? "rgba(234,179,8,0.15)"
+                              : "rgba(59,130,246,0.15)",
                           color: idx === 0 ? "#ef4444" : idx === 1 ? "#eab308" : "#3b82f6"
                         }}>
                           {idx + 1}
@@ -708,8 +704,8 @@ function App() {
                           background: p.severity?.toLowerCase() === "high"
                             ? "#ef4444"
                             : p.severity?.toLowerCase() === "moderate"
-                            ? "#eab308"
-                            : "#22d3ee"
+                              ? "#eab308"
+                              : "#22d3ee"
                         }} />
                         {/* Disease name */}
                         <span style={{
@@ -732,13 +728,13 @@ function App() {
                           background: p.severity?.toLowerCase() === "high"
                             ? "rgba(239,68,68,0.15)"
                             : p.severity?.toLowerCase() === "moderate"
-                            ? "rgba(234,179,8,0.12)"
-                            : "rgba(34,211,238,0.12)",
+                              ? "rgba(234,179,8,0.12)"
+                              : "rgba(34,211,238,0.12)",
                           color: p.severity?.toLowerCase() === "high"
                             ? "#f87171"
                             : p.severity?.toLowerCase() === "moderate"
-                            ? "#fbbf24"
-                            : "#22d3ee"
+                              ? "#fbbf24"
+                              : "#22d3ee"
                         }}>
                           {p.severity || "Low"}
                         </span>
