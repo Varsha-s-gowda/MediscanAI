@@ -119,11 +119,23 @@ DISEASE_INFO = {
         "precautions": ["Isolate from others", "Monitor oxygen levels with a pulse oximeter", "Wear a highly protective mask"],
         "follow_up": "Consult primary care physician; monitor for long-term respiratory effects (Long COVID)."
     },
+    "COVID-19 Pneumonia": {
+        "description": "SARS-CoV-2 pneumonia showing bilateral peripheral ground-glass opacities predominantly in lower lung zones.",
+        "symptoms": ["Dry cough", "High fever (38.5°C+)", "Severe shortness of breath", "Loss of smell and taste", "Extreme fatigue"],
+        "precautions": ["Strict isolation from others", "Monitor SpO2 continuously — go to ER if below 94%", "Stay well hydrated", "Avoid strenuous activity"],
+        "follow_up": "Pulmonology review; CT chest recommended; monitor for Long-COVID complications."
+    },
     "Tuberculosis": {
         "description": "Contagious bacterial infection primarily attacking lung tissues, often showing cavitary lesions.",
         "symptoms": ["Cough lasting over 3 weeks", "Coughing up blood", "Night sweats", "Fever", "Severe fatigue"],
         "precautions": ["Adhere strictly to anti-TB drug regimen", "Ventilate living spaces well", "Isolate during infectious stage"],
         "follow_up": "Directly Observed Therapy (DOT) monitoring; sputum smear testing periodically."
+    },
+    "Tuberculosis (TB)": {
+        "description": "Active pulmonary tuberculosis detected — a contagious Mycobacterium tuberculosis infection showing upper lobe consolidation and possible cavitation.",
+        "symptoms": ["Chronic cough for 3+ weeks", "Haemoptysis (coughing blood)", "Drenching night sweats", "Unexplained weight loss", "Low-grade persistent fever", "Extreme fatigue"],
+        "precautions": ["Immediately begin DOTS (Directly Observed Treatment Short-course)", "Wear N95 mask indoors", "Ensure excellent room ventilation", "Isolate from immunocompromised people", "Complete the FULL 6-month drug course"],
+        "follow_up": "Sputum culture and sensitivity testing; monthly chest X-rays during treatment; notify public health authorities."
     },
     "Lung Opacity": {
         "description": "Nonspecific decrease in lung density visibility on X-ray, requiring clinical correlation.",

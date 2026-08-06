@@ -123,10 +123,13 @@ class InferenceEngine:
         # Check if OpenRouter API Key is configured
         if OPENROUTER_API_KEY:
             try:
-                # Convert PIL Image to base64 JPEG
+                # Resize image to max 512x512 before encoding — full-res X-rays cause silent API failures
+                api_image = image.convert("RGB")
+                api_image.thumbnail((512, 512), Image.LANCZOS)
                 buffered = io.BytesIO()
-                image.convert("RGB").save(buffered, format="JPEG")
+                api_image.save(buffered, format="JPEG", quality=85)
                 img_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                logger.info(f"Image resized for API: {api_image.size}, base64 size: {len(img_b64)} chars")
 
                 # Setup OpenRouter payload using Gemini 2.5 Flash
                 url = "https://openrouter.ai/api/v1/chat/completions"
@@ -153,7 +156,7 @@ class InferenceEngine:
 
                 payload = {
                     "model": "google/gemini-2.5-flash",
-                    "max_tokens": 1000,
+                    "max_tokens": 150,
                     "messages": [
                         {
                             "role": "user",
@@ -173,10 +176,20 @@ class InferenceEngine:
                     }
                 }
 
-                res = requests.post(url, headers=headers, json=payload, timeout=20)
-                if res.status_code == 200:
+                res = requests.post(url, headers=headers, json=payload, timeout=45)
+                if res.status_code == 402:
+                    # Out of credits — retry with a free model
+                    logger.warning("Primary model out of credits, retrying with free model...")
+                    payload["model"] = "google/gemini-flash-1.5-8b"
+                    payload["max_tokens"] = 150
+                    res = requests.post(url, headers=headers, json=payload, timeout=45)
+                if res.status_code != 200:
+                    logger.error(f"OpenRouter API error {res.status_code}: {res.text[:500]}")
+                else:
                     res_json = res.json()
                     choices = res_json.get("choices", [])
+                    if not choices:
+                        logger.error(f"OpenRouter returned empty choices. Full response: {res_json}")
                     if choices:
                         content_text = choices[0]["message"]["content"].strip()
                         if content_text.startswith("```"):
@@ -196,7 +209,7 @@ class InferenceEngine:
                             if finding_name.lower() == "normal":
                                 normal_conf = conf_val
                                 
-                            threshold_percentage = CONFIDENCE_THRESHOLD * 100.0
+                            threshold_percentage = 30.0  # Lower threshold so TB/COVID-19 surface properly
                             if conf_val >= threshold_percentage:
                                 severity = self.get_severity(conf_val)
                                 info = DISEASE_INFO.get(finding_name, {
