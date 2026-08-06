@@ -17,3 +17,4 @@ pydantic
 gunicorn
 flask
 flask-cors
+psutil
