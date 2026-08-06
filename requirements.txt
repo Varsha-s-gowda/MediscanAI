@@ -18,3 +18,4 @@ gunicorn
 flask
 flask-cors
 psutil
+requests
