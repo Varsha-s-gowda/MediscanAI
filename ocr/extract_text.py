@@ -1,4 +1,3 @@
-import easyocr
 import re
 from typing import Dict, Any, Union
 from PIL import Image
@@ -6,8 +5,8 @@ import numpy as np
 
 class MedicalReportOCR:
     def __init__(self):
-        # Initialize easyocr reader
-        self.reader = easyocr.Reader(['en'], gpu=False)
+        # Reader is initialized lazily on first request
+        self.reader = None
 
     def parse_fields(self, text: str) -> Dict[str, Any]:
         """Uses regex and heuristics to parse key medical report parameters."""
@@ -59,6 +58,12 @@ class MedicalReportOCR:
 
     def extract_text(self, image_input: Union[str, Image.Image, np.ndarray]) -> Dict[str, Any]:
         """Extracts text from report image and returns parsed fields."""
+        if self.reader is None:
+            import easyocr
+            import gc
+            self.reader = easyocr.Reader(['en'], gpu=False)
+            gc.collect()
+
         if isinstance(image_input, Image.Image):
             image_input = np.array(image_input)
             
