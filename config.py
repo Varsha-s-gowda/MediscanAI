@@ -13,3 +13,4 @@ PORT = int(os.getenv("PORT", "5000"))
 HOST = os.getenv("HOST", "0.0.0.0")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+DISABLE_GRADCAM = os.getenv("DISABLE_GRADCAM", "false").lower() == "true"
