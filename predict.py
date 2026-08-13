@@ -18,6 +18,10 @@ from logger import get_logger
 
 logger = get_logger("predict")
 
+# Configure PyTorch threading limits immediately to save memory and CPU
+torch.set_num_threads(1)
+torch.set_num_interop_threads(1)
+
 class InferenceEngine:
     _instance = None
     _lock = threading.Lock()
@@ -37,6 +41,12 @@ class InferenceEngine:
         self.preprocessor = MedicalImagePreprocessor()
         self.classes = DISEASE_CLASSES
         self.num_classes = len(self.classes)
+        self.model_weight_path = model_weight_path
+        
+        # Local model components initialized lazily
+        self.model = None
+        self.target_layer = None
+        self.grad_cam = None
         
         # Load custom classes if classes.json exists
         if os.path.exists("classes.json"):
@@ -48,8 +58,14 @@ class InferenceEngine:
             except Exception as e:
                 logger.warn(f"Could not load classes.json: {e}")
 
+        self._initialized = True
+
+    def _load_local_model(self):
+        """Lazily builds model architecture and loads weights into memory."""
+        logger.info("Initializing local PyTorch model (lazy loading)...")
+        
         # Check weights path
-        final_path = model_weight_path
+        final_path = self.model_weight_path
         if not os.path.exists(final_path):
             if os.path.exists("pneumonia_model.pth"):
                 final_path = "pneumonia_model.pth"
@@ -105,7 +121,10 @@ class InferenceEngine:
 
         # Initialize Grad-CAM
         self.grad_cam = GradCAM(self.model, self.target_layer)
-        self._initialized = True
+        
+        # Run garbage collection to clean up any temporary buffers
+        import gc
+        gc.collect()
 
     def get_severity(self, confidence: float) -> str:
         """Estimates severity from prediction confidence percentage."""
@@ -378,6 +397,9 @@ class InferenceEngine:
                 logger.error(f"Gemini Vision API prediction failed: {gem_err}. Falling back to local PyTorch model...")
 
         # --- Fallback to local PyTorch model ---
+        if self.model is None:
+            self._load_local_model()
+
         # Preprocess using the default (no CLAHE, matches training)
         tensor = self.preprocessor(image).unsqueeze(0).to(self.device)
 

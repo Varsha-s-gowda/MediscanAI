@@ -2,7 +2,7 @@ services:
   - type: web
     name: mediscan-ai-backend
     runtime: python
-    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    buildCommand: pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
     startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHONIOENCODING
@@ -17,3 +17,5 @@ services:
         value: "0.50"
       - key: API_VERSION
         value: 1.0.0
+      - key: WEB_CONCURRENCY
+        value: "1"
