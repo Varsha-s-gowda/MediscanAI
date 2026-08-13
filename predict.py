@@ -12,7 +12,7 @@ from model import MediScanModel
 from preprocessing import MedicalImagePreprocessor
 from device import get_device
 from constants import DISEASE_CLASSES, SEVERITY_MAPPING, DISEASE_INFO
-from config import MODEL_PATH, CONFIDENCE_THRESHOLD, GEMINI_API_KEY, OPENROUTER_API_KEY
+from config import MODEL_PATH, CONFIDENCE_THRESHOLD, GEMINI_API_KEY, OPENROUTER_API_KEY, DISABLE_GRADCAM
 from gradcam import GradCAM, overlay_heatmap
 from logger import get_logger
 
@@ -120,7 +120,10 @@ class InferenceEngine:
         self.model.eval()
 
         # Initialize Grad-CAM
-        self.grad_cam = GradCAM(self.model, self.target_layer)
+        if not DISABLE_GRADCAM:
+            self.grad_cam = GradCAM(self.model, self.target_layer)
+        else:
+            logger.info("Skipping Grad-CAM initialization to save memory.")
         
         # Run garbage collection to clean up any temporary buffers
         import gc
@@ -448,7 +451,7 @@ class InferenceEngine:
         heatmap_b64 = ""
         overlay_b64 = ""
         
-        if len(predictions_list) > 0:
+        if len(predictions_list) > 0 and not DISABLE_GRADCAM:
             top_class = predictions_list[0]["disease"]
             try:
                 top_class_idx = self.classes.index(top_class)
@@ -458,6 +461,8 @@ class InferenceEngine:
                 heatmap_b64, overlay_b64 = overlay_heatmap(heatmap, image)
             except Exception as e:
                 logger.error(f"Grad-CAM error: {e}")
+        elif DISABLE_GRADCAM:
+            logger.info("Grad-CAM generation is disabled to optimize memory footprint.")
 
         # If no diseases detected, return Normal
         if len(predictions_list) == 0:

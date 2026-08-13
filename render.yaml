@@ -19,3 +19,5 @@ services:
         value: 1.0.0
       - key: WEB_CONCURRENCY
         value: "1"
+      - key: DISABLE_GRADCAM
+        value: "true"
