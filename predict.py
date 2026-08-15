@@ -164,7 +164,11 @@ class InferenceEngine:
                     
                     prompt = (
                         "You are an expert board-certified thoracic radiologist. "
-                        "Analyze this chest radiograph and differentiate between Normal, standard Pneumonia, COVID-19 Pneumonia, and Tuberculosis (TB). "
+                        "First, check if the input image is a valid chest radiograph (X-ray). "
+                        "If the image is NOT a chest radiograph (for example, if it is a cartoon, illustration, portrait of a person, pet, everyday object, or any non-chest-X-ray image), "
+                        "you must return a JSON object with a single key 'error' set to 'Invalid image: Not a chest radiograph'. "
+                        "Do not include any other keys in this case.\n\n"
+                        "If the image IS a chest radiograph, differentiate between Normal, standard Pneumonia, COVID-19 Pneumonia, and Tuberculosis (TB). "
                         "To do this accurately, follow these specific radiological guidelines:\n"
                         "- COVID-19 Pneumonia features bilateral, peripheral ground-glass opacities (GGOs) or consolidations, predominantly in the lower zones.\n"
                         "- Tuberculosis (TB) typically shows upper lobe consolidations, cavitary lesions, apical scarring, hilar/mediastinal lymphadenopathy, or pleural effusion.\n"
@@ -175,7 +179,7 @@ class InferenceEngine:
                         "2. COVID-19 Pneumonia\n"
                         "3. Tuberculosis (TB)\n"
                         "4. Normal\n\n"
-                        "Your response must be ONLY a single valid JSON object mapping these exactly 4 condition names to their probability percentage value (as floats between 0.0 and 100.0). Ensure the probabilities reflect the visual evidence carefully. Do not include markdown code block syntax (like ```json)."
+                        "Your response must be ONLY a single valid JSON object. Do not include markdown code block syntax (like ```json)."
                     )
 
                     payload = {
@@ -240,7 +244,11 @@ class InferenceEngine:
 
                 prompt = (
                     "You are an expert board-certified thoracic radiologist. "
-                    "Analyze this chest radiograph and differentiate between Normal, standard Pneumonia, COVID-19 Pneumonia, and Tuberculosis (TB). "
+                    "First, check if the input image is a valid chest radiograph (X-ray). "
+                    "If the image is NOT a chest radiograph (for example, if it is a cartoon, illustration, portrait of a person, pet, everyday object, or any non-chest-X-ray image), "
+                    "you must return a JSON object with a single key 'error' set to 'Invalid image: Not a chest radiograph'. "
+                    "Do not include any other keys in this case.\n\n"
+                    "If the image IS a chest radiograph, differentiate between Normal, standard Pneumonia, COVID-19 Pneumonia, and Tuberculosis (TB). "
                     "To do this accurately, follow these specific radiological guidelines:\n"
                     "- COVID-19 Pneumonia features bilateral, peripheral ground-glass opacities (GGOs) or consolidations, predominantly in the lower zones.\n"
                     "- Tuberculosis (TB) typically shows upper lobe consolidations, cavitary lesions, apical scarring, hilar/mediastinal lymphadenopathy, or pleural effusion.\n"
@@ -251,7 +259,7 @@ class InferenceEngine:
                     "2. COVID-19 Pneumonia\n"
                     "3. Tuberculosis (TB)\n"
                     "4. Normal\n\n"
-                    "Your response must be ONLY a single valid JSON object mapping these exactly 4 condition names to their probability percentage value (as floats between 0.0 and 100.0). Ensure the probabilities reflect the visual evidence carefully. Do not include markdown code block syntax (like ```json)."
+                    "Your response must be ONLY a single valid JSON object. Do not include markdown code block syntax (like ```json)."
                 )
 
                 payload = {
@@ -292,6 +300,26 @@ class InferenceEngine:
         # Process the predictions if Direct Gemini API or Hugging Face succeeded
         if gemini_probs:
             try:
+                # Handle invalid image error returned by LLM
+                if "error" in gemini_probs:
+                    processing_time = time.time() - start_time
+                    return {
+                        "success": False,
+                        "predictions": [],
+                        "prediction": "Invalid image / Not an X-ray",
+                        "confidence": 0.0,
+                        "severity": "Low",
+                        "normal_probability": 0.0,
+                        "heatmap": "",
+                        "heatmap_only": "",
+                        "scan_quality": "Invalid",
+                        "processing_time": f"{processing_time:.2f} sec ({used_api})",
+                        "health_advice": ["Please upload a valid chest X-ray image for diagnosis."],
+                        "precautions": ["Ensure image is a frontal/lateral chest radiograph"],
+                        "consult_doctor_if": ["N/A"],
+                        "symptoms": ["N/A"]
+                    }
+
                 predictions_list = []
                 normal_conf = gemini_probs.get("Normal", 0.0)
                 
