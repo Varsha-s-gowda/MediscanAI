@@ -164,18 +164,19 @@ class InferenceEngine:
                     
                     prompt = (
                         "You are an expert board-certified thoracic radiologist. "
-                        "Analyze this chest radiograph and differentiate between Normal, standard Pneumonia, COVID-19 Pneumonia, and Tuberculosis (TB). "
-                        "To do this accurately, follow these specific radiological guidelines:\n"
+                        "You must analyze the input image and return a JSON object with exactly 5 keys:\n"
+                        "1. 'is_chest_xray': boolean (true if the image is a frontal/lateral chest radiograph/X-ray, false if it is a cartoon, illustration, portrait of a person, pet, everyday object, or any non-chest-X-ray image).\n"
+                        "2. 'Normal': float (percentage 0.0 to 100.0 representing probability of normal lung fields).\n"
+                        "3. 'Pneumonia': float (percentage 0.0 to 100.0 representing probability of standard pneumonia).\n"
+                        "4. 'COVID-19 Pneumonia': float (percentage 0.0 to 100.0 representing probability of COVID-19 pneumonia).\n"
+                        "5. 'Tuberculosis (TB)': float (percentage 0.0 to 100.0 representing probability of tuberculosis).\n\n"
+                        "If 'is_chest_xray' is false, set all the probability float scores to 0.0.\n"
+                        "If 'is_chest_xray' is true, follow these radiological guidelines:\n"
                         "- COVID-19 Pneumonia features bilateral, peripheral ground-glass opacities (GGOs) or consolidations, predominantly in the lower zones.\n"
                         "- Tuberculosis (TB) typically shows upper lobe consolidations, cavitary lesions, apical scarring, hilar/mediastinal lymphadenopathy, or pleural effusion.\n"
                         "- Standard Pneumonia features lobar consolidation, air bronchograms, or focal opacity.\n"
                         "- Normal shows clear lung fields, normal cardiomediastinal silhouette, and sharp costophrenic angles.\n\n"
-                        "Estimate the probability percentages (0.0 to 100.0) for exactly these 4 conditions:\n"
-                        "1. Pneumonia\n"
-                        "2. COVID-19 Pneumonia\n"
-                        "3. Tuberculosis (TB)\n"
-                        "4. Normal\n\n"
-                        "Your response must be ONLY a single valid JSON object mapping these exactly 4 condition names to their probability percentage value (as floats between 0.0 and 100.0). Ensure the probabilities reflect the visual evidence carefully. Do not include markdown code block syntax (like ```json)."
+                        "Ensure your response is ONLY the raw JSON object matching this schema. Do not include markdown code block formatting (like ```json)."
                     )
 
                     payload = {
@@ -240,18 +241,19 @@ class InferenceEngine:
 
                 prompt = (
                     "You are an expert board-certified thoracic radiologist. "
-                    "Analyze this chest radiograph and differentiate between Normal, standard Pneumonia, COVID-19 Pneumonia, and Tuberculosis (TB). "
-                    "To do this accurately, follow these specific radiological guidelines:\n"
+                    "You must analyze the input image and return a JSON object with exactly 5 keys:\n"
+                    "1. 'is_chest_xray': boolean (true if the image is a frontal/lateral chest radiograph/X-ray, false if it is a cartoon, illustration, portrait of a person, pet, everyday object, or any non-chest-X-ray image).\n"
+                    "2. 'Normal': float (percentage 0.0 to 100.0 representing probability of normal lung fields).\n"
+                    "3. 'Pneumonia': float (percentage 0.0 to 100.0 representing probability of standard pneumonia).\n"
+                    "4. 'COVID-19 Pneumonia': float (percentage 0.0 to 100.0 representing probability of COVID-19 pneumonia).\n"
+                    "5. 'Tuberculosis (TB)': float (percentage 0.0 to 100.0 representing probability of tuberculosis).\n\n"
+                    "If 'is_chest_xray' is false, set all the probability float scores to 0.0.\n"
+                    "If 'is_chest_xray' is true, follow these radiological guidelines:\n"
                     "- COVID-19 Pneumonia features bilateral, peripheral ground-glass opacities (GGOs) or consolidations, predominantly in the lower zones.\n"
                     "- Tuberculosis (TB) typically shows upper lobe consolidations, cavitary lesions, apical scarring, hilar/mediastinal lymphadenopathy, or pleural effusion.\n"
                     "- Standard Pneumonia features lobar consolidation, air bronchograms, or focal opacity.\n"
                     "- Normal shows clear lung fields, normal cardiomediastinal silhouette, and sharp costophrenic angles.\n\n"
-                    "Estimate the probability percentages (0.0 to 100.0) for exactly these 4 conditions:\n"
-                    "1. Pneumonia\n"
-                    "2. COVID-19 Pneumonia\n"
-                    "3. Tuberculosis (TB)\n"
-                    "4. Normal\n\n"
-                    "Your response must be ONLY a single valid JSON object mapping these exactly 4 condition names to their probability percentage value (as floats between 0.0 and 100.0). Ensure the probabilities reflect the visual evidence carefully. Do not include markdown code block syntax (like ```json)."
+                    "Ensure your response is ONLY the raw JSON object matching this schema. Do not include markdown code block formatting (like ```json)."
                 )
 
                 payload = {
@@ -292,6 +294,27 @@ class InferenceEngine:
         # Process the predictions if Direct Gemini API or Hugging Face succeeded
         if gemini_probs:
             try:
+                # Handle invalid image error returned by LLM
+                if "error" in gemini_probs or not gemini_probs.get("is_chest_xray", True):
+
+                    processing_time = time.time() - start_time
+                    return {
+                        "success": False,
+                        "predictions": [],
+                        "prediction": "Invalid image / Not an X-ray",
+                        "confidence": 0.0,
+                        "severity": "Low",
+                        "normal_probability": 0.0,
+                        "heatmap": "",
+                        "heatmap_only": "",
+                        "scan_quality": "Invalid",
+                        "processing_time": f"{processing_time:.2f} sec ({used_api})",
+                        "health_advice": ["Please upload a valid chest X-ray image for diagnosis."],
+                        "precautions": ["Ensure image is a frontal/lateral chest radiograph"],
+                        "consult_doctor_if": ["N/A"],
+                        "symptoms": ["N/A"]
+                    }
+
                 predictions_list = []
                 normal_conf = gemini_probs.get("Normal", 0.0)
                 
