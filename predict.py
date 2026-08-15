@@ -142,8 +142,11 @@ class InferenceEngine:
         """Runs inference on a single image and returns multi-label predictions."""
         start_time = time.time()
         
-        # Check if OpenRouter API Key is configured
-        if OPENROUTER_API_KEY:
+        # Check if API Keys are configured
+        gemini_probs = None
+        
+        # 1. Try Direct Google Gemini API first if key is present
+        if GEMINI_API_KEY:
             try:
                 # Resize image to max 512x512 before encoding — full-res X-rays cause silent API failures
                 api_image = image.convert("RGB")
@@ -151,9 +154,75 @@ class InferenceEngine:
                 buffered = io.BytesIO()
                 api_image.save(buffered, format="JPEG", quality=85)
                 img_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                logger.info(f"Image resized for API: {api_image.size}, base64 size: {len(img_b64)} chars")
+                logger.info(f"Image resized for Direct Gemini API: {api_image.size}, base64 size: {len(img_b64)} chars")
 
-                # Setup OpenRouter payload using Gemini 2.5 Flash
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+                headers = {"Content-Type": "application/json"}
+                
+                prompt = (
+                    "You are an expert board-certified thoracic radiologist. "
+                    "Analyze this chest radiograph and differentiate between Normal, standard Pneumonia, COVID-19 Pneumonia, and Tuberculosis (TB). "
+                    "To do this accurately, follow these specific radiological guidelines:\n"
+                    "- COVID-19 Pneumonia features bilateral, peripheral ground-glass opacities (GGOs) or consolidations, predominantly in the lower zones.\n"
+                    "- Tuberculosis (TB) typically shows upper lobe consolidations, cavitary lesions, apical scarring, hilar/mediastinal lymphadenopathy, or pleural effusion.\n"
+                    "- Standard Pneumonia features lobar consolidation, air bronchograms, or focal opacity.\n"
+                    "- Normal shows clear lung fields, normal cardiomediastinal silhouette, and sharp costophrenic angles.\n\n"
+                    "Estimate the probability percentages (0.0 to 100.0) for exactly these 4 conditions:\n"
+                    "1. Pneumonia\n"
+                    "2. COVID-19 Pneumonia\n"
+                    "3. Tuberculosis (TB)\n"
+                    "4. Normal\n\n"
+                    "Your response must be ONLY a single valid JSON object mapping these exactly 4 condition names to their probability percentage value (as floats between 0.0 and 100.0). Ensure the probabilities reflect the visual evidence carefully. Do not include markdown code block syntax (like ```json)."
+                )
+
+                payload = {
+                    "contents": [
+                        {
+                            "parts": [
+                                {"text": prompt},
+                                {
+                                    "inlineData": {
+                                        "mimeType": "image/jpeg",
+                                        "data": img_b64
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    "generationConfig": {
+                        "responseMimeType": "application/json"
+                    }
+                }
+
+                res = requests.post(url, headers=headers, json=payload, timeout=45)
+                if res.status_code != 200:
+                    logger.error(f"Direct Gemini API error {res.status_code}: {res.text[:500]}")
+                else:
+                    res_json = res.json()
+                    candidates = res_json.get("candidates", [])
+                    if not candidates:
+                        logger.error(f"Direct Gemini API returned empty candidates. Response: {res_json}")
+                    else:
+                        content_text = candidates[0]["content"]["parts"][0]["text"].strip()
+                        if content_text.startswith("```"):
+                            lines = content_text.split("\n")
+                            content_text = "\n".join([line for line in lines if not line.strip().startswith("```")])
+                        gemini_probs = json.loads(content_text)
+                        logger.info("Successfully fetched predictions using Direct Gemini API")
+            except Exception as api_err:
+                logger.error(f"Direct Gemini API call failed: {api_err}")
+
+        # 2. Try OpenRouter if direct Gemini key was not set or failed
+        if not gemini_probs and OPENROUTER_API_KEY:
+            try:
+                # Resize image to max 512x512 before encoding — full-res X-rays cause silent API failures
+                api_image = image.convert("RGB")
+                api_image.thumbnail((512, 512), Image.LANCZOS)
+                buffered = io.BytesIO()
+                api_image.save(buffered, format="JPEG", quality=85)
+                img_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                logger.info(f"Image resized for OpenRouter API: {api_image.size}, base64 size: {len(img_b64)} chars")
+
                 url = "https://openrouter.ai/api/v1/chat/completions"
                 headers = {
                     "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -202,7 +271,7 @@ class InferenceEngine:
                 if res.status_code == 402:
                     # Out of credits — retry with a free model
                     logger.warning("Primary model out of credits, retrying with free model...")
-                    payload["model"] = "google/gemini-flash-1.5-8b"
+                    payload["model"] = "google/gemma-4-31b-it:free"
                     payload["max_tokens"] = 150
                     res = requests.post(url, headers=headers, json=payload, timeout=45)
                 if res.status_code != 200:
@@ -217,74 +286,81 @@ class InferenceEngine:
                         if content_text.startswith("```"):
                             lines = content_text.split("\n")
                             content_text = "\n".join([line for line in lines if not line.strip().startswith("```")])
-                        
                         gemini_probs = json.loads(content_text)
-                        
-                        # Populate predictions list
-                        predictions_list = []
-                        normal_conf = gemini_probs.get("Normal", 0.0)
-                        
-                        for finding_name, val in gemini_probs.items():
-                            conf_val = float(val)
-                            conf_val = round(conf_val, 2)
-                            
-                            if finding_name.lower() == "normal":
-                                normal_conf = conf_val
-                                
-                            threshold_percentage = 30.0  # Lower threshold so TB/COVID-19 surface properly
-                            if conf_val >= threshold_percentage:
-                                severity = self.get_severity(conf_val)
-                                info = DISEASE_INFO.get(finding_name, {
-                                    "description": f"Radiological finding of {finding_name} detected.",
-                                    "symptoms": ["Shortness of breath", "Cough", "Fever"],
-                                    "precautions": ["Consult a medical professional", "Clinical correlation"],
-                                    "follow_up": "Seek physician advice for detailed assessment."
-                                })
-                                predictions_list.append({
-                                    "disease": finding_name,
-                                    "confidence": conf_val,
-                                    "severity": severity,
-                                    "description": info["description"],
-                                    "symptoms": info["symptoms"],
-                                    "precautions": info["precautions"],
-                                    "follow_up": info["follow_up"]
-                                })
-                                
-                        # Sort predictions by confidence
-                        predictions_list = sorted(predictions_list, key=lambda x: x["confidence"], reverse=True)
-                        if len(predictions_list) == 0:
-                            normal_info = DISEASE_INFO.get("Normal")
-                            predictions_list.append({
-                                "disease": "Normal",
-                                "confidence": max(normal_conf, 100.0),
-                                "severity": "Low",
-                                "description": normal_info["description"],
-                                "symptoms": normal_info["symptoms"],
-                                "precautions": normal_info["precautions"],
-                                "follow_up": normal_info["follow_up"]
-                            })
+                        logger.info("Successfully fetched predictions using OpenRouter API")
+            except Exception as api_err:
+                logger.error(f"OpenRouter API call failed: {api_err}")
 
-                        processing_time = time.time() - start_time
-                        primary = predictions_list[0]
+        # 3. Process the predictions if any API call succeeded
+        if gemini_probs:
+            try:
+                predictions_list = []
+                normal_conf = gemini_probs.get("Normal", 0.0)
+                
+                for finding_name, val in gemini_probs.items():
+                    conf_val = float(val)
+                    conf_val = round(conf_val, 2)
+                    
+                    if finding_name.lower() == "normal":
+                        normal_conf = conf_val
                         
-                        return {
-                            "success": True,
-                            "predictions": predictions_list,
-                            "prediction": primary["disease"],
-                            "confidence": primary["confidence"],
-                            "severity": primary["severity"],
-                            "normal_probability": round(normal_conf, 2),
-                            "heatmap": "",  # Grad-CAM not supported directly on OpenRouter
-                            "heatmap_only": "",
-                            "scan_quality": "Good",
-                            "processing_time": f"{processing_time:.2f} sec (OpenRouter Gemini 2.5 Flash)",
-                            "health_advice": primary.get("precautions", ["Maintain healthy habits"]),
-                            "precautions": primary.get("precautions", ["Standard checkup"]),
-                            "consult_doctor_if": primary.get("symptoms", ["Symptoms persist"]),
-                            "symptoms": primary.get("symptoms", ["Cough", "Fever"])
-                        }
-            except Exception as open_err:
-                logger.error(f"OpenRouter Vision API prediction failed: {open_err}. Falling back...")
+                    threshold_percentage = 30.0  # Lower threshold so TB/COVID-19 surface properly
+                    if conf_val >= threshold_percentage:
+                        severity = self.get_severity(conf_val)
+                        info = DISEASE_INFO.get(finding_name, {
+                            "description": f"Radiological finding of {finding_name} detected.",
+                            "symptoms": ["Shortness of breath", "Cough", "Fever"],
+                            "precautions": ["Consult a medical professional", "Clinical correlation"],
+                            "follow_up": "Seek physician advice for detailed assessment."
+                        })
+                        predictions_list.append({
+                            "disease": finding_name,
+                            "confidence": conf_val,
+                            "severity": severity,
+                            "description": info["description"],
+                            "symptoms": info["symptoms"],
+                            "precautions": info["precautions"],
+                            "follow_up": info["follow_up"]
+                        })
+                        
+                # Sort predictions by confidence
+                predictions_list = sorted(predictions_list, key=lambda x: x["confidence"], reverse=True)
+                if len(predictions_list) == 0:
+                    normal_info = DISEASE_INFO.get("Normal")
+                    predictions_list.append({
+                        "disease": "Normal",
+                        "confidence": max(normal_conf, 100.0),
+                        "severity": "Low",
+                        "description": normal_info["description"],
+                        "symptoms": normal_info["symptoms"],
+                        "precautions": normal_info["precautions"],
+                        "follow_up": normal_info["follow_up"]
+                    })
+
+                processing_time = time.time() - start_time
+                primary = predictions_list[0]
+                
+                # Check which source succeeded for custom logging info
+                source_label = "Direct Gemini API" if GEMINI_API_KEY else "OpenRouter Gemini 2.5 Flash"
+                
+                return {
+                    "success": True,
+                    "predictions": predictions_list,
+                    "prediction": primary["disease"],
+                    "confidence": primary["confidence"],
+                    "severity": primary["severity"],
+                    "normal_probability": round(normal_conf, 2),
+                    "heatmap": "",  # Grad-CAM not supported directly on API
+                    "heatmap_only": "",
+                    "scan_quality": "Good",
+                    "processing_time": f"{processing_time:.2f} sec ({source_label})",
+                    "health_advice": primary.get("precautions", ["Maintain healthy habits"]),
+                    "precautions": primary.get("precautions", ["Standard checkup"]),
+                    "consult_doctor_if": primary.get("symptoms", ["Symptoms persist"]),
+                    "symptoms": primary.get("symptoms", ["Cough", "Fever"])
+                }
+            except Exception as parse_err:
+                logger.error(f"Failed to parse API predictions: {parse_err}. Falling back...")
 
         # Check if Gemini API Key is configured for 18-disease zero-shot vision prediction
         if GEMINI_API_KEY:

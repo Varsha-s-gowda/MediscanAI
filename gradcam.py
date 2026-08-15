@@ -79,4 +79,4 @@ def overlay_heatmap(heatmap: np.ndarray, original_img: Image.Image, alpha: float
     _, heatmap_buffer = cv2.imencode('.png', heatmap_color)
     heatmap_base64 = base64.b64encode(heatmap_buffer).decode('utf-8')
 
-    return heatmap_base64, overlay_base64
+    return f"data:image/png;base64,{heatmap_base64}", f"data:image/png;base64,{overlay_base64}"
