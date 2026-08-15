@@ -146,74 +146,79 @@ class InferenceEngine:
         gemini_probs = None
         
         # 1. Try Direct Google Gemini API first if key is present
+        used_api = "Direct Gemini API"
         if GEMINI_API_KEY:
-            try:
-                # Resize image to max 512x512 before encoding — full-res X-rays cause silent API failures
-                api_image = image.convert("RGB")
-                api_image.thumbnail((512, 512), Image.LANCZOS)
-                buffered = io.BytesIO()
-                api_image.save(buffered, format="JPEG", quality=85)
-                img_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                logger.info(f"Image resized for Direct Gemini API: {api_image.size}, base64 size: {len(img_b64)} chars")
+            gemini_models = ["gemini-3.1-flash-lite", "gemini-3.5-flash-lite"]
+            for model_name in gemini_models:
+                try:
+                    # Resize image to max 512x512 before encoding — full-res X-rays cause silent API failures
+                    api_image = image.convert("RGB")
+                    api_image.thumbnail((512, 512), Image.LANCZOS)
+                    buffered = io.BytesIO()
+                    api_image.save(buffered, format="JPEG", quality=85)
+                    img_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                    logger.info(f"Image resized for Direct {model_name} API: {api_image.size}, base64 size: {len(img_b64)} chars")
 
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key={GEMINI_API_KEY}"
-                headers = {"Content-Type": "application/json"}
-                
-                prompt = (
-                    "You are an expert board-certified thoracic radiologist. "
-                    "Analyze this chest radiograph and differentiate between Normal, standard Pneumonia, COVID-19 Pneumonia, and Tuberculosis (TB). "
-                    "To do this accurately, follow these specific radiological guidelines:\n"
-                    "- COVID-19 Pneumonia features bilateral, peripheral ground-glass opacities (GGOs) or consolidations, predominantly in the lower zones.\n"
-                    "- Tuberculosis (TB) typically shows upper lobe consolidations, cavitary lesions, apical scarring, hilar/mediastinal lymphadenopathy, or pleural effusion.\n"
-                    "- Standard Pneumonia features lobar consolidation, air bronchograms, or focal opacity.\n"
-                    "- Normal shows clear lung fields, normal cardiomediastinal silhouette, and sharp costophrenic angles.\n\n"
-                    "Estimate the probability percentages (0.0 to 100.0) for exactly these 4 conditions:\n"
-                    "1. Pneumonia\n"
-                    "2. COVID-19 Pneumonia\n"
-                    "3. Tuberculosis (TB)\n"
-                    "4. Normal\n\n"
-                    "Your response must be ONLY a single valid JSON object mapping these exactly 4 condition names to their probability percentage value (as floats between 0.0 and 100.0). Ensure the probabilities reflect the visual evidence carefully. Do not include markdown code block syntax (like ```json)."
-                )
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+                    headers = {"Content-Type": "application/json"}
+                    
+                    prompt = (
+                        "You are an expert board-certified thoracic radiologist. "
+                        "Analyze this chest radiograph and differentiate between Normal, standard Pneumonia, COVID-19 Pneumonia, and Tuberculosis (TB). "
+                        "To do this accurately, follow these specific radiological guidelines:\n"
+                        "- COVID-19 Pneumonia features bilateral, peripheral ground-glass opacities (GGOs) or consolidations, predominantly in the lower zones.\n"
+                        "- Tuberculosis (TB) typically shows upper lobe consolidations, cavitary lesions, apical scarring, hilar/mediastinal lymphadenopathy, or pleural effusion.\n"
+                        "- Standard Pneumonia features lobar consolidation, air bronchograms, or focal opacity.\n"
+                        "- Normal shows clear lung fields, normal cardiomediastinal silhouette, and sharp costophrenic angles.\n\n"
+                        "Estimate the probability percentages (0.0 to 100.0) for exactly these 4 conditions:\n"
+                        "1. Pneumonia\n"
+                        "2. COVID-19 Pneumonia\n"
+                        "3. Tuberculosis (TB)\n"
+                        "4. Normal\n\n"
+                        "Your response must be ONLY a single valid JSON object mapping these exactly 4 condition names to their probability percentage value (as floats between 0.0 and 100.0). Ensure the probabilities reflect the visual evidence carefully. Do not include markdown code block syntax (like ```json)."
+                    )
 
-                payload = {
-                    "contents": [
-                        {
-                            "parts": [
-                                {"text": prompt},
-                                {
-                                    "inlineData": {
-                                        "mimeType": "image/jpeg",
-                                        "data": img_b64
+                    payload = {
+                        "contents": [
+                            {
+                                "parts": [
+                                    {"text": prompt},
+                                    {
+                                        "inlineData": {
+                                            "mimeType": "image/jpeg",
+                                            "data": img_b64
+                                        }
                                     }
-                                }
-                            ]
+                                ]
+                            }
+                        ],
+                        "generationConfig": {
+                            "responseMimeType": "application/json"
                         }
-                    ],
-                    "generationConfig": {
-                        "responseMimeType": "application/json"
                     }
-                }
 
-                res = requests.post(url, headers=headers, json=payload, timeout=45)
-                if res.status_code != 200:
-                    logger.error(f"Direct Gemini API error {res.status_code}: {res.text[:500]}")
-                else:
-                    res_json = res.json()
-                    candidates = res_json.get("candidates", [])
-                    if not candidates:
-                        logger.error(f"Direct Gemini API returned empty candidates. Response: {res_json}")
+                    res = requests.post(url, headers=headers, json=payload, timeout=45)
+                    if res.status_code != 200:
+                        logger.error(f"Direct {model_name} API error {res.status_code}: {res.text[:500]}")
                     else:
-                        content_text = candidates[0]["content"]["parts"][0]["text"].strip()
-                        # Extract JSON object substring robustly (handles markdown code blocks and conversational filler)
-                        start_idx = content_text.find('{')
-                        end_idx = content_text.rfind('}')
-                        if start_idx != -1 and end_idx != -1 and start_idx < end_idx:
-                            content_text = content_text[start_idx:end_idx+1]
-                        gemini_probs = json.loads(content_text)
-                        logger.info("Successfully fetched predictions using Direct Gemini API")
+                        res_json = res.json()
+                        candidates = res_json.get("candidates", [])
+                        if not candidates:
+                            logger.error(f"Direct {model_name} API returned empty candidates. Response: {res_json}")
+                        else:
+                            content_text = candidates[0]["content"]["parts"][0]["text"].strip()
+                            # Extract JSON object substring robustly (handles markdown code blocks and conversational filler)
+                            start_idx = content_text.find('{')
+                            end_idx = content_text.rfind('}')
+                            if start_idx != -1 and end_idx != -1 and start_idx < end_idx:
+                                content_text = content_text[start_idx:end_idx+1]
+                            gemini_probs = json.loads(content_text)
+                            used_api = f"Direct {model_name} API"
+                            logger.info(f"Successfully fetched predictions using Direct {model_name} API")
+                            break
+                except Exception as api_err:
+                    logger.error(f"Direct {model_name} API call failed: {api_err}")
 
-            except Exception as api_err:
-                logger.error(f"Direct Gemini API call failed: {api_err}")
 
         # 2. Try Hugging Face API fallback if Direct Gemini API failed and HF_API_KEY is present
         used_api = "Direct Gemini 3.1 Flash Lite API"
