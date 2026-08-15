@@ -12,7 +12,7 @@ from model import MediScanModel
 from preprocessing import MedicalImagePreprocessor
 from device import get_device
 from constants import DISEASE_CLASSES, SEVERITY_MAPPING, DISEASE_INFO
-from config import MODEL_PATH, CONFIDENCE_THRESHOLD, GEMINI_API_KEY, OPENROUTER_API_KEY, DISABLE_GRADCAM
+from config import MODEL_PATH, CONFIDENCE_THRESHOLD, GEMINI_API_KEY, OPENROUTER_API_KEY, HF_API_KEY, DISABLE_GRADCAM
 from gradcam import GradCAM, overlay_heatmap
 from logger import get_logger
 
@@ -146,7 +146,83 @@ class InferenceEngine:
         gemini_probs = None
         
         # 1. Try Direct Google Gemini API first if key is present
+        used_api = "Direct Gemini API"
         if GEMINI_API_KEY:
+            gemini_models = ["gemini-3.1-flash-lite", "gemini-3.5-flash-lite"]
+            for model_name in gemini_models:
+                try:
+                    # Resize image to max 512x512 before encoding — full-res X-rays cause silent API failures
+                    api_image = image.convert("RGB")
+                    api_image.thumbnail((512, 512), Image.LANCZOS)
+                    buffered = io.BytesIO()
+                    api_image.save(buffered, format="JPEG", quality=85)
+                    img_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                    logger.info(f"Image resized for Direct {model_name} API: {api_image.size}, base64 size: {len(img_b64)} chars")
+
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+                    headers = {"Content-Type": "application/json"}
+                    
+                    prompt = (
+                        "You are an expert board-certified thoracic radiologist. "
+                        "Analyze this chest radiograph and differentiate between Normal, standard Pneumonia, COVID-19 Pneumonia, and Tuberculosis (TB). "
+                        "To do this accurately, follow these specific radiological guidelines:\n"
+                        "- COVID-19 Pneumonia features bilateral, peripheral ground-glass opacities (GGOs) or consolidations, predominantly in the lower zones.\n"
+                        "- Tuberculosis (TB) typically shows upper lobe consolidations, cavitary lesions, apical scarring, hilar/mediastinal lymphadenopathy, or pleural effusion.\n"
+                        "- Standard Pneumonia features lobar consolidation, air bronchograms, or focal opacity.\n"
+                        "- Normal shows clear lung fields, normal cardiomediastinal silhouette, and sharp costophrenic angles.\n\n"
+                        "Estimate the probability percentages (0.0 to 100.0) for exactly these 4 conditions:\n"
+                        "1. Pneumonia\n"
+                        "2. COVID-19 Pneumonia\n"
+                        "3. Tuberculosis (TB)\n"
+                        "4. Normal\n\n"
+                        "Your response must be ONLY a single valid JSON object mapping these exactly 4 condition names to their probability percentage value (as floats between 0.0 and 100.0). Ensure the probabilities reflect the visual evidence carefully. Do not include markdown code block syntax (like ```json)."
+                    )
+
+                    payload = {
+                        "contents": [
+                            {
+                                "parts": [
+                                    {"text": prompt},
+                                    {
+                                        "inlineData": {
+                                            "mimeType": "image/jpeg",
+                                            "data": img_b64
+                                        }
+                                    }
+                                ]
+                            }
+                        ],
+                        "generationConfig": {
+                            "responseMimeType": "application/json"
+                        }
+                    }
+
+                    res = requests.post(url, headers=headers, json=payload, timeout=45)
+                    if res.status_code != 200:
+                        logger.error(f"Direct {model_name} API error {res.status_code}: {res.text[:500]}")
+                    else:
+                        res_json = res.json()
+                        candidates = res_json.get("candidates", [])
+                        if not candidates:
+                            logger.error(f"Direct {model_name} API returned empty candidates. Response: {res_json}")
+                        else:
+                            content_text = candidates[0]["content"]["parts"][0]["text"].strip()
+                            # Extract JSON object substring robustly (handles markdown code blocks and conversational filler)
+                            start_idx = content_text.find('{')
+                            end_idx = content_text.rfind('}')
+                            if start_idx != -1 and end_idx != -1 and start_idx < end_idx:
+                                content_text = content_text[start_idx:end_idx+1]
+                            gemini_probs = json.loads(content_text)
+                            used_api = f"Direct {model_name} API"
+                            logger.info(f"Successfully fetched predictions using Direct {model_name} API")
+                            break
+                except Exception as api_err:
+                    logger.error(f"Direct {model_name} API call failed: {api_err}")
+
+
+        # 2. Try Hugging Face API fallback if Direct Gemini API failed and HF_API_KEY is present
+        used_api = "Direct Gemini 3.1 Flash Lite API"
+        if not gemini_probs and HF_API_KEY:
             try:
                 # Resize image to max 512x512 before encoding — full-res X-rays cause silent API failures
                 api_image = image.convert("RGB")
@@ -154,11 +230,14 @@ class InferenceEngine:
                 buffered = io.BytesIO()
                 api_image.save(buffered, format="JPEG", quality=85)
                 img_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                logger.info(f"Image resized for Direct Gemini API: {api_image.size}, base64 size: {len(img_b64)} chars")
+                logger.info(f"Image resized for Hugging Face API: {api_image.size}, base64 size: {len(img_b64)} chars")
 
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent?key={GEMINI_API_KEY}"
-                headers = {"Content-Type": "application/json"}
-                
+                url = "https://api-inference.huggingface.co/models/Qwen/Qwen2.5-VL-7B-Instruct/v1/chat/completions"
+                headers = {
+                    "Authorization": f"Bearer {HF_API_KEY}",
+                    "Content-Type": "application/json"
+                }
+
                 prompt = (
                     "You are an expert board-certified thoracic radiologist. "
                     "Analyze this chest radiograph and differentiate between Normal, standard Pneumonia, COVID-19 Pneumonia, and Tuberculosis (TB). "
@@ -176,43 +255,41 @@ class InferenceEngine:
                 )
 
                 payload = {
-                    "contents": [
+                    "model": "Qwen/Qwen2.5-VL-7B-Instruct",
+                    "messages": [
                         {
-                            "parts": [
-                                {"text": prompt},
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
                                 {
-                                    "inlineData": {
-                                        "mimeType": "image/jpeg",
-                                        "data": img_b64
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/jpeg;base64,{img_b64}"
                                     }
                                 }
                             ]
                         }
-                    ],
-                    "generationConfig": {
-                        "responseMimeType": "application/json"
-                    }
+                    ]
                 }
 
                 res = requests.post(url, headers=headers, json=payload, timeout=45)
                 if res.status_code != 200:
-                    logger.error(f"Direct Gemini API error {res.status_code}: {res.text[:500]}")
+                    logger.error(f"Hugging Face API error {res.status_code}: {res.text[:500]}")
                 else:
                     res_json = res.json()
-                    candidates = res_json.get("candidates", [])
-                    if not candidates:
-                        logger.error(f"Direct Gemini API returned empty candidates. Response: {res_json}")
-                    else:
-                        content_text = candidates[0]["content"]["parts"][0]["text"].strip()
+                    choices = res_json.get("choices", [])
+                    if choices:
+                        content_text = choices[0]["message"]["content"].strip()
                         if content_text.startswith("```"):
                             lines = content_text.split("\n")
                             content_text = "\n".join([line for line in lines if not line.strip().startswith("```")])
                         gemini_probs = json.loads(content_text)
-                        logger.info("Successfully fetched predictions using Direct Gemini API")
-            except Exception as api_err:
-                logger.error(f"Direct Gemini API call failed: {api_err}")
+                        used_api = "Hugging Face Qwen2.5-VL API"
+                        logger.info("Successfully fetched predictions using Hugging Face API")
+            except Exception as hf_err:
+                logger.error(f"Hugging Face API call failed: {hf_err}")
 
-        # Process the predictions if Direct Gemini API succeeded
+        # Process the predictions if Direct Gemini API or Hugging Face succeeded
         if gemini_probs:
             try:
                 predictions_list = []
@@ -271,14 +348,14 @@ class InferenceEngine:
                     "heatmap": "",  # Grad-CAM not supported directly on API
                     "heatmap_only": "",
                     "scan_quality": "Good",
-                    "processing_time": f"{processing_time:.2f} sec (Direct Gemini 3.7 Flash API)",
+                    "processing_time": f"{processing_time:.2f} sec ({used_api})",
                     "health_advice": primary.get("precautions", ["Maintain healthy habits"]),
                     "precautions": primary.get("precautions", ["Standard checkup"]),
                     "consult_doctor_if": primary.get("symptoms", ["Symptoms persist"]),
                     "symptoms": primary.get("symptoms", ["Cough", "Fever"])
                 }
             except Exception as parse_err:
-                logger.error(f"Failed to parse Direct Gemini API predictions: {parse_err}. Falling back to local model...")
+                logger.error(f"Failed to parse API predictions: {parse_err}. Falling back to local model...")
 
         # Check if Gemini API Key is configured for 18-disease zero-shot vision prediction
         if GEMINI_API_KEY:
@@ -289,7 +366,7 @@ class InferenceEngine:
                 img_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
 
                 # Setup payload
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent?key={GEMINI_API_KEY}"
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key={GEMINI_API_KEY}"
                 prompt = (
                     "Analyze this chest X-ray and return a JSON mapping of probability percentages (0 to 100) for these 18 thoracic conditions: "
                     "Atelectasis, Cardiomegaly, Consolidation, Edema, Effusion, Emphysema, Fibrosis, Hernia, Infiltration, Mass, Nodule, Pleural Thickening, Pneumonia, Pneumothorax, COVID-19, Tuberculosis, Lung Opacity, Normal. "
