@@ -204,11 +204,14 @@ class InferenceEngine:
                         logger.error(f"Direct Gemini API returned empty candidates. Response: {res_json}")
                     else:
                         content_text = candidates[0]["content"]["parts"][0]["text"].strip()
-                        if content_text.startswith("```"):
-                            lines = content_text.split("\n")
-                            content_text = "\n".join([line for line in lines if not line.strip().startswith("```")])
+                        # Extract JSON object substring robustly (handles markdown code blocks and conversational filler)
+                        start_idx = content_text.find('{')
+                        end_idx = content_text.rfind('}')
+                        if start_idx != -1 and end_idx != -1 and start_idx < end_idx:
+                            content_text = content_text[start_idx:end_idx+1]
                         gemini_probs = json.loads(content_text)
                         logger.info("Successfully fetched predictions using Direct Gemini API")
+
             except Exception as api_err:
                 logger.error(f"Direct Gemini API call failed: {api_err}")
 
