@@ -156,7 +156,7 @@ class InferenceEngine:
                 img_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
                 logger.info(f"Image resized for Direct Gemini API: {api_image.size}, base64 size: {len(img_b64)} chars")
 
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent?key={GEMINI_API_KEY}"
                 headers = {"Content-Type": "application/json"}
                 
                 prompt = (
@@ -271,7 +271,7 @@ class InferenceEngine:
                     "heatmap": "",  # Grad-CAM not supported directly on API
                     "heatmap_only": "",
                     "scan_quality": "Good",
-                    "processing_time": f"{processing_time:.2f} sec (Direct Gemini 2.5 Flash API)",
+                    "processing_time": f"{processing_time:.2f} sec (Direct Gemini 3.7 Flash API)",
                     "health_advice": primary.get("precautions", ["Maintain healthy habits"]),
                     "precautions": primary.get("precautions", ["Standard checkup"]),
                     "consult_doctor_if": primary.get("symptoms", ["Symptoms persist"]),
@@ -289,7 +289,7 @@ class InferenceEngine:
                 img_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
 
                 # Setup payload
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent?key={GEMINI_API_KEY}"
                 prompt = (
                     "Analyze this chest X-ray and return a JSON mapping of probability percentages (0 to 100) for these 18 thoracic conditions: "
                     "Atelectasis, Cardiomegaly, Consolidation, Edema, Effusion, Emphysema, Fibrosis, Hernia, Infiltration, Mass, Nodule, Pleural Thickening, Pneumonia, Pneumothorax, COVID-19, Tuberculosis, Lung Opacity, Normal. "
