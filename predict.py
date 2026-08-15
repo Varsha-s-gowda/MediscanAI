@@ -156,7 +156,7 @@ class InferenceEngine:
                 img_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
                 logger.info(f"Image resized for Direct Gemini API: {api_image.size}, base64 size: {len(img_b64)} chars")
 
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent?key={GEMINI_API_KEY}"
                 headers = {"Content-Type": "application/json"}
                 
                 prompt = (
@@ -246,7 +246,7 @@ class InferenceEngine:
                 )
 
                 payload = {
-                    "model": "google/gemini-2.5-flash",
+                    "model": "google/gemini-3.7-flash",
                     "max_tokens": 150,
                     "messages": [
                         {
@@ -371,7 +371,7 @@ class InferenceEngine:
                 img_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
 
                 # Setup payload
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent?key={GEMINI_API_KEY}"
                 prompt = (
                     "Analyze this chest X-ray and return a JSON mapping of probability percentages (0 to 100) for these 18 thoracic conditions: "
                     "Atelectasis, Cardiomegaly, Consolidation, Edema, Effusion, Emphysema, Fibrosis, Hernia, Infiltration, Mass, Nodule, Pleural Thickening, Pneumonia, Pneumothorax, COVID-19, Tuberculosis, Lung Opacity, Normal. "
