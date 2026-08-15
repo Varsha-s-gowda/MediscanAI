@@ -212,86 +212,7 @@ class InferenceEngine:
             except Exception as api_err:
                 logger.error(f"Direct Gemini API call failed: {api_err}")
 
-        # 2. Try OpenRouter if direct Gemini key was not set or failed
-        if not gemini_probs and OPENROUTER_API_KEY:
-            try:
-                # Resize image to max 512x512 before encoding — full-res X-rays cause silent API failures
-                api_image = image.convert("RGB")
-                api_image.thumbnail((512, 512), Image.LANCZOS)
-                buffered = io.BytesIO()
-                api_image.save(buffered, format="JPEG", quality=85)
-                img_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                logger.info(f"Image resized for OpenRouter API: {api_image.size}, base64 size: {len(img_b64)} chars")
-
-                url = "https://openrouter.ai/api/v1/chat/completions"
-                headers = {
-                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                    "Content-Type": "application/json"
-                }
-                
-                prompt = (
-                    "You are an expert board-certified thoracic radiologist. "
-                    "Analyze this chest radiograph and differentiate between Normal, standard Pneumonia, COVID-19 Pneumonia, and Tuberculosis (TB). "
-                    "To do this accurately, follow these specific radiological guidelines:\n"
-                    "- COVID-19 Pneumonia features bilateral, peripheral ground-glass opacities (GGOs) or consolidations, predominantly in the lower zones.\n"
-                    "- Tuberculosis (TB) typically shows upper lobe consolidations, cavitary lesions, apical scarring, hilar/mediastinal lymphadenopathy, or pleural effusion.\n"
-                    "- Standard Pneumonia features lobar consolidation, air bronchograms, or focal opacity.\n"
-                    "- Normal shows clear lung fields, normal cardiomediastinal silhouette, and sharp costophrenic angles.\n\n"
-                    "Estimate the probability percentages (0.0 to 100.0) for exactly these 4 conditions:\n"
-                    "1. Pneumonia\n"
-                    "2. COVID-19 Pneumonia\n"
-                    "3. Tuberculosis (TB)\n"
-                    "4. Normal\n\n"
-                    "Your response must be ONLY a single valid JSON object mapping these exactly 4 condition names to their probability percentage value (as floats between 0.0 and 100.0). Ensure the probabilities reflect the visual evidence carefully. Do not include markdown code block syntax (like ```json)."
-                )
-
-                payload = {
-                    "model": "google/gemini-3.7-flash",
-                    "max_tokens": 150,
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": prompt},
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": f"data:image/jpeg;base64,{img_b64}"
-                                    }
-                                }
-                            ]
-                        }
-                    ],
-                    "response_format": {
-                        "type": "json_object"
-                    }
-                }
-
-                res = requests.post(url, headers=headers, json=payload, timeout=45)
-                if res.status_code == 402:
-                    # Out of credits — retry with a free model
-                    logger.warning("Primary model out of credits, retrying with free model...")
-                    payload["model"] = "google/gemma-4-31b-it:free"
-                    payload["max_tokens"] = 150
-                    res = requests.post(url, headers=headers, json=payload, timeout=45)
-                if res.status_code != 200:
-                    logger.error(f"OpenRouter API error {res.status_code}: {res.text[:500]}")
-                else:
-                    res_json = res.json()
-                    choices = res_json.get("choices", [])
-                    if not choices:
-                        logger.error(f"OpenRouter returned empty choices. Full response: {res_json}")
-                    if choices:
-                        content_text = choices[0]["message"]["content"].strip()
-                        if content_text.startswith("```"):
-                            lines = content_text.split("\n")
-                            content_text = "\n".join([line for line in lines if not line.strip().startswith("```")])
-                        gemini_probs = json.loads(content_text)
-                        logger.info("Successfully fetched predictions using OpenRouter API")
-            except Exception as api_err:
-                logger.error(f"OpenRouter API call failed: {api_err}")
-
-        # 3. Process the predictions if any API call succeeded
+        # Process the predictions if Direct Gemini API succeeded
         if gemini_probs:
             try:
                 predictions_list = []
@@ -340,9 +261,6 @@ class InferenceEngine:
                 processing_time = time.time() - start_time
                 primary = predictions_list[0]
                 
-                # Check which source succeeded for custom logging info
-                source_label = "Direct Gemini API" if GEMINI_API_KEY else "OpenRouter Gemini 2.5 Flash"
-                
                 return {
                     "success": True,
                     "predictions": predictions_list,
@@ -353,14 +271,14 @@ class InferenceEngine:
                     "heatmap": "",  # Grad-CAM not supported directly on API
                     "heatmap_only": "",
                     "scan_quality": "Good",
-                    "processing_time": f"{processing_time:.2f} sec ({source_label})",
+                    "processing_time": f"{processing_time:.2f} sec (Direct Gemini 3.7 Flash API)",
                     "health_advice": primary.get("precautions", ["Maintain healthy habits"]),
                     "precautions": primary.get("precautions", ["Standard checkup"]),
                     "consult_doctor_if": primary.get("symptoms", ["Symptoms persist"]),
                     "symptoms": primary.get("symptoms", ["Cough", "Fever"])
                 }
             except Exception as parse_err:
-                logger.error(f"Failed to parse API predictions: {parse_err}. Falling back...")
+                logger.error(f"Failed to parse Direct Gemini API predictions: {parse_err}. Falling back to local model...")
 
         # Check if Gemini API Key is configured for 18-disease zero-shot vision prediction
         if GEMINI_API_KEY:
