@@ -224,7 +224,7 @@ class InferenceEngine:
                 img_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
                 logger.info(f"Image resized for Hugging Face API: {api_image.size}, base64 size: {len(img_b64)} chars")
 
-                url = "https://router.huggingface.co/v1/chat/completions"
+                url = "https://api-inference.huggingface.co/models/Qwen/Qwen2.5-VL-7B-Instruct/v1/chat/completions"
                 headers = {
                     "Authorization": f"Bearer {HF_API_KEY}",
                     "Content-Type": "application/json"
