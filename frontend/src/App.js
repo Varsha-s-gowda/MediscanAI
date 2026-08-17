@@ -626,7 +626,7 @@ function App() {
                   )}
                   {result.processing_time && (
                     <span className="meta-tag" style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
-                      Inference Time: {result.processing_time} | Model: DenseNet121 v2.0
+                      Inference Time: {result.processing_time}
                     </span>
                   )}
                 </div>
