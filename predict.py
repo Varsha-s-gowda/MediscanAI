@@ -164,18 +164,22 @@ class InferenceEngine:
                     
                     prompt = (
                         "You are an expert board-certified thoracic radiologist. "
-                        "You must analyze the input image and return a JSON object with exactly 5 keys:\n"
+                        "You must analyze the input image and return a JSON object with exactly 13 keys:\n"
                         "1. 'is_chest_xray': boolean (true if the image is a frontal/lateral chest radiograph/X-ray, false if it is a cartoon, illustration, portrait of a person, pet, everyday object, or any non-chest-X-ray image).\n"
                         "2. 'Normal': float (percentage 0.0 to 100.0 representing probability of normal lung fields).\n"
                         "3. 'Pneumonia': float (percentage 0.0 to 100.0 representing probability of standard pneumonia).\n"
-                        "4. 'COVID-19 Pneumonia': float (percentage 0.0 to 100.0 representing probability of COVID-19 pneumonia).\n"
-                        "5. 'Tuberculosis (TB)': float (percentage 0.0 to 100.0 representing probability of tuberculosis).\n\n"
+                        "4. 'Tuberculosis': float (percentage 0.0 to 100.0 representing probability of tuberculosis).\n"
+                        "5. 'COVID-19': float (percentage 0.0 to 100.0 representing probability of COVID-19 infection or COVID pneumonia).\n"
+                        "6. 'Pleural Effusion': float (percentage 0.0 to 100.0 representing probability of abnormal fluid in the pleural space).\n"
+                        "7. 'Pneumothorax': float (percentage 0.0 to 100.0 representing probability of collapsed lung/air in pleural space).\n"
+                        "8. 'Atelectasis': float (percentage 0.0 to 100.0 representing probability of partial/complete lung collapse).\n"
+                        "9. 'Pulmonary Edema': float (percentage 0.0 to 100.0 representing probability of fluid accumulation in lung tissue).\n"
+                        "10. 'Lung Mass/Nodule': float (percentage 0.0 to 100.0 representing probability of abnormal lung growths or lesions).\n"
+                        "11. 'Emphysema': float (percentage 0.0 to 100.0 representing probability of damaged air sacs).\n"
+                        "12. 'Fibrosis': float (percentage 0.0 to 100.0 representing probability of lung tissue scarring).\n"
+                        "13. 'Cardiomegaly': float (percentage 0.0 to 100.0 representing probability of enlarged heart).\n\n"
                         "If 'is_chest_xray' is false, set all the probability float scores to 0.0.\n"
-                        "If 'is_chest_xray' is true, follow these radiological guidelines:\n"
-                        "- COVID-19 Pneumonia features bilateral, peripheral ground-glass opacities (GGOs) or consolidations, predominantly in the lower zones.\n"
-                        "- Tuberculosis (TB) typically shows upper lobe consolidations, cavitary lesions, apical scarring, hilar/mediastinal lymphadenopathy, or pleural effusion.\n"
-                        "- Standard Pneumonia features lobar consolidation, air bronchograms, or focal opacity.\n"
-                        "- Normal shows clear lung fields, normal cardiomediastinal silhouette, and sharp costophrenic angles.\n\n"
+                        "If 'is_chest_xray' is true, estimate the probability for each of these conditions based on radiographic features.\n"
                         "Ensure your response is ONLY the raw JSON object matching this schema. Do not include markdown code block formatting (like ```json)."
                     )
 
@@ -241,18 +245,22 @@ class InferenceEngine:
 
                 prompt = (
                     "You are an expert board-certified thoracic radiologist. "
-                    "You must analyze the input image and return a JSON object with exactly 5 keys:\n"
+                    "You must analyze the input image and return a JSON object with exactly 13 keys:\n"
                     "1. 'is_chest_xray': boolean (true if the image is a frontal/lateral chest radiograph/X-ray, false if it is a cartoon, illustration, portrait of a person, pet, everyday object, or any non-chest-X-ray image).\n"
                     "2. 'Normal': float (percentage 0.0 to 100.0 representing probability of normal lung fields).\n"
                     "3. 'Pneumonia': float (percentage 0.0 to 100.0 representing probability of standard pneumonia).\n"
-                    "4. 'COVID-19 Pneumonia': float (percentage 0.0 to 100.0 representing probability of COVID-19 pneumonia).\n"
-                    "5. 'Tuberculosis (TB)': float (percentage 0.0 to 100.0 representing probability of tuberculosis).\n\n"
+                    "4. 'Tuberculosis': float (percentage 0.0 to 100.0 representing probability of tuberculosis).\n"
+                    "5. 'COVID-19': float (percentage 0.0 to 100.0 representing probability of COVID-19 infection or COVID pneumonia).\n"
+                    "6. 'Pleural Effusion': float (percentage 0.0 to 100.0 representing probability of abnormal fluid in the pleural space).\n"
+                    "7. 'Pneumothorax': float (percentage 0.0 to 100.0 representing probability of collapsed lung/air in pleural space).\n"
+                    "8. 'Atelectasis': float (percentage 0.0 to 100.0 representing probability of partial/complete lung collapse).\n"
+                    "9. 'Pulmonary Edema': float (percentage 0.0 to 100.0 representing probability of fluid accumulation in lung tissue).\n"
+                    "10. 'Lung Mass/Nodule': float (percentage 0.0 to 100.0 representing probability of abnormal lung growths or lesions).\n"
+                    "11. 'Emphysema': float (percentage 0.0 to 100.0 representing probability of damaged air sacs).\n"
+                    "12. 'Fibrosis': float (percentage 0.0 to 100.0 representing probability of lung tissue scarring).\n"
+                    "13. 'Cardiomegaly': float (percentage 0.0 to 100.0 representing probability of enlarged heart).\n\n"
                     "If 'is_chest_xray' is false, set all the probability float scores to 0.0.\n"
-                    "If 'is_chest_xray' is true, follow these radiological guidelines:\n"
-                    "- COVID-19 Pneumonia features bilateral, peripheral ground-glass opacities (GGOs) or consolidations, predominantly in the lower zones.\n"
-                    "- Tuberculosis (TB) typically shows upper lobe consolidations, cavitary lesions, apical scarring, hilar/mediastinal lymphadenopathy, or pleural effusion.\n"
-                    "- Standard Pneumonia features lobar consolidation, air bronchograms, or focal opacity.\n"
-                    "- Normal shows clear lung fields, normal cardiomediastinal silhouette, and sharp costophrenic angles.\n\n"
+                    "If 'is_chest_xray' is true, estimate the probability for each of these conditions based on radiographic features.\n"
                     "Ensure your response is ONLY the raw JSON object matching this schema. Do not include markdown code block formatting (like ```json)."
                 )
 
@@ -319,6 +327,8 @@ class InferenceEngine:
                 normal_conf = gemini_probs.get("Normal", 0.0)
                 
                 for finding_name, val in gemini_probs.items():
+                    if finding_name == "is_chest_xray" or finding_name.lower() == "lung opacity":
+                        continue
                     conf_val = float(val)
                     conf_val = round(conf_val, 2)
                     
@@ -328,7 +338,17 @@ class InferenceEngine:
                     threshold_percentage = 30.0  # Lower threshold so TB/COVID-19 surface properly
                     if conf_val >= threshold_percentage:
                         severity = self.get_severity(conf_val)
-                        info = DISEASE_INFO.get(finding_name, {
+                        
+                        # Map to existing disease metadata keys
+                        mapped_name = finding_name
+                        if finding_name == "Pleural Effusion":
+                            mapped_name = "Effusion"
+                        elif finding_name == "Pulmonary Edema":
+                            mapped_name = "Edema"
+                        elif finding_name == "Lung Mass/Nodule":
+                            mapped_name = "Mass"
+                            
+                        info = DISEASE_INFO.get(mapped_name, {
                             "description": f"Radiological finding of {finding_name} detected.",
                             "symptoms": ["Shortness of breath", "Cough", "Fever"],
                             "precautions": ["Consult a medical professional", "Clinical correlation"],
@@ -391,9 +411,9 @@ class InferenceEngine:
                 # Setup payload
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key={GEMINI_API_KEY}"
                 prompt = (
-                    "Analyze this chest X-ray and return a JSON mapping of probability percentages (0 to 100) for these 18 thoracic conditions: "
-                    "Atelectasis, Cardiomegaly, Consolidation, Edema, Effusion, Emphysema, Fibrosis, Hernia, Infiltration, Mass, Nodule, Pleural Thickening, Pneumonia, Pneumothorax, COVID-19, Tuberculosis, Lung Opacity, Normal. "
-                    "Make sure that your response is ONLY a single valid JSON object containing exactly these 18 keys mapped to their estimated probability values (as floats between 0.0 and 100.0). Do not include markdown code block syntax (like ```json)."
+                    "Analyze this chest X-ray and return a JSON mapping of probability percentages (0 to 100) for these 17 thoracic conditions: "
+                    "Atelectasis, Cardiomegaly, Consolidation, Edema, Effusion, Emphysema, Fibrosis, Hernia, Infiltration, Mass, Nodule, Pleural Thickening, Pneumonia, Pneumothorax, COVID-19, Tuberculosis, Normal. "
+                    "Make sure that your response is ONLY a single valid JSON object containing exactly these 17 keys mapped to their estimated probability values (as floats between 0.0 and 100.0). Do not include markdown code block syntax (like ```json)."
                 )
                 
                 payload = {
