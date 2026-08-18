@@ -1,5 +1,5 @@
 venv/
-database/
+datasets/
 frontend/node_modules/
 __pycache__/
 *.pycs
