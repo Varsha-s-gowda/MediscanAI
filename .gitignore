@@ -1,14 +1,71 @@
+# ==========================================
+# Environments & Dependency Folders
+# ==========================================
 venv/
-datasets/
+.venv/
+env/
+ENV/
 frontend/node_modules/
-__pycache__/
-*.pycs
-pretrained/
-.env
+frontend/build/
+
+# ==========================================
+# Large Model Weights (.pth files)
+# ==========================================
 *.pth
+backend/*.pth
+backend/models/*.pth
+backend/pretrained/
+
+# ==========================================
+# Databases & Diagnostic Cache Data
+# ==========================================
+*.db
+backend/*.db
+# Excludes SQLite databases and local diagnostic logs/histories
+history.json
+metrics.json
+backend/history.json
+backend/metrics.json
+
+# ==========================================
+# Grad-CAM overlays & static clinical uploads
+# ==========================================
+backend/static/*
+# Keep placeholder directory but ignore contents
+!backend/static/.gitkeep
+
+# ==========================================
+# Datasets (Prevent uploading raw diagnostic images)
+# ==========================================
+datasets chestxray/
+datasets/
+testingimage/
+
+# ==========================================
+# Secrets and Credentials
+# ==========================================
+.env
+backend/.env
+
+# ==========================================
+# Python Compiler & Cache files
+# ==========================================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# ==========================================
+# TensorBoard training metrics
+# ==========================================
 runs/
-*.json
-*.png
-*.log
+backend/runs/
+
+# ==========================================
+# Operating System & IDE Configs
+# ==========================================
 .vscode/
 .idea/
+.DS_Store
+Thumbs.db

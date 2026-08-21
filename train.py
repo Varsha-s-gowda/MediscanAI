@@ -7,6 +7,10 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.tensorboard import SummaryWriter
 from typing import Optional, List
 
+import sys
+# Make backend directory discoverable when train.py is executed from workspace root
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'backend')))
+
 # Modular imports
 from model import MediScanModel
 from dataset import get_dataloaders
@@ -167,4 +171,4 @@ def train_model(
 
 if __name__ == "__main__":
     # Example execution (expects path to a dataset)
-    train_model(data_dir="database/pnemonia database/chest_xray/chest_xray/train", epochs=5)
+    train_model(data_dir="datasets chestxray/train", epochs=5)

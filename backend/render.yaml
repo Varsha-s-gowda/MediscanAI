@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: mediscan-ai-backend
+    runtime: python
+    buildCommand: pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHONIOENCODING
+        value: utf-8
+      - key: MODEL_PATH
+        value: pneumonia_model.pth
+      - key: IMAGE_SIZE
+        value: "224"
+      - key: DEVICE
+        value: cpu
+      - key: CONFIDENCE_THRESHOLD
+        value: "0.50"
+      - key: API_VERSION
+        value: 1.0.0
+      - key: WEB_CONCURRENCY
+        value: "1"
+      - key: DISABLE_GRADCAM
+        value: "true"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: HF_API_KEY
+        sync: false

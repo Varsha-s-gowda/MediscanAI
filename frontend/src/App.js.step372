@@ -1,0 +1,688 @@
+        {activeTab === "patient-profile" && selectedPatient && (
+          <div className="profile-view" style={{ color: "var(--text-main)" }}>
+            {/* 1. Patient Profile Header */}
+            <header className="profile-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-color)", paddingBottom: "24px", marginBottom: "24px" }}>
+              <div className="header-info">
+                <h1 style={{ fontSize: "28px", fontWeight: "800", marginBottom: "8px", color: "#fff" }}>{selectedPatient.name}</h1>
+                <div className="patient-meta" style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+                  <span className="badge" style={{ padding: "4px 10px", background: "rgba(59, 130, 246, 0.1)", border: "1px solid rgba(59, 130, 246, 0.2)", borderRadius: "6px", fontFamily: "monospace", fontWeight: "700", color: "var(--accent)", fontSize: "12px" }}>
+                    ID: {selectedPatient.patientId}
+                  </span>
+                  <span className="meta-item" style={{ fontSize: "14px", color: "var(--text-muted)" }}>• &nbsp; {selectedPatient.age} Years</span>
+                  <span className="meta-item" style={{ fontSize: "14px", color: "var(--text-muted)" }}>• &nbsp; {selectedPatient.gender}</span>
+                  {selectedPatient.contact && <span className="meta-item" style={{ fontSize: "14px", color: "var(--text-muted)" }}>• &nbsp; Contact: {selectedPatient.contact}</span>}
+                  <span className="meta-item" style={{ fontSize: "14px", color: "var(--text-muted)" }}>• &nbsp; Registered: {selectedPatient.createdAt ? new Date(selectedPatient.createdAt).toLocaleDateString("en-US", { day: 'numeric', month: 'short', year: 'numeric' }) : "Unknown"}</span>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+                <button
+                  className="primary-btn"
+                  style={{ background: "var(--warning)", border: "none", color: "#000" }}
+                  onClick={() => {
+                    setPublicMode("login"); // tab for X-ray upload
+                    document.getElementById("analyze-file-sec")?.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                >
+                  Analyze X-Ray
+                </button>
+                <button
+                  className="primary-btn"
+                  style={{ background: "var(--cyan)", border: "none", color: "#fff" }}
+                  onClick={() => {
+                    setPublicMode("xray"); // tab for Report upload
+                    document.getElementById("analyze-file-sec")?.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                >
+                  Analyze Report
+                </button>
+                <button
+                  className="outline-btn"
+                  onClick={() => {
+                    setEditPatientData({ patientId: selectedPatient.patientId, name: selectedPatient.name, age: selectedPatient.age, gender: selectedPatient.gender, contact: selectedPatient.contact || "" });
+                    setShowEditModal(true);
+                  }}
+                >
+                  Edit Patient
+                </button>
+                <button
+                  className="outline-btn"
+                  style={{ borderColor: "rgba(239, 68, 68, 0.4)", color: "rgba(239, 68, 68, 0.9)" }}
+                  onClick={() => handleArchivePatient(selectedPatient.patientId)}
+                >
+                  Archive Patient
+                </button>
+                <button
+                  className="outline-btn"
+                  onClick={() => {
+                    setActiveTab("patients");
+                    fetchRegistryData();
+                  }}
+                >
+                  Back to Registry
+                </button>
+              </div>
+            </header>
+
+            {/* 2. Overall Patient Analysis Section */}
+            <section className="overall-analysis" style={{ background: "rgba(13, 19, 35, 0.6)", border: "1px solid var(--border-color)", borderRadius: "16px", padding: "20px", marginBottom: "24px" }}>
+              <h2 style={{ fontSize: "16px", fontWeight: "800", color: "#fff", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Overall Patient Analysis</h2>
+              <p style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "12px" }}>Summary of findings from the patient's available X-ray and medical report analyses.</p>
+              <div style={{ background: "rgba(0,0,0,0.2)", borderLeft: "4px solid var(--accent)", padding: "12px 16px", borderRadius: "0 8px 8px 0", fontSize: "14px", lineHeight: "1.6", color: "#fff" }}>
+                "{overallSummary}"
+              </div>
+            </section>
+
+            {/* 3. Summary Statistics Grid */}
+            <div className="stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "20px", marginBottom: "24px" }}>
+              <div className="stat-card" style={{ background: "rgba(13, 19, 35, 0.45)", border: "1px solid var(--border-color)", borderRadius: "16px", padding: "16px" }}>
+                <span className="label" style={{ display: "block", fontSize: "12px", color: "var(--text-muted)", marginBottom: "4px" }}>Total Analyses</span>
+                <span className="value" style={{ fontSize: "24px", fontWeight: "800", color: "#fff" }}>{profileStats?.total || 0}</span>
+                <span className="indicator green" style={{ fontSize: "11px", color: "var(--green)", display: "block", marginTop: "4px" }}>All Time</span>
+              </div>
+              <div className="stat-card" style={{ background: "rgba(13, 19, 35, 0.45)", border: "1px solid var(--border-color)", borderRadius: "16px", padding: "16px" }}>
+                <span className="label" style={{ display: "block", fontSize: "12px", color: "var(--text-muted)", marginBottom: "4px" }}>X-Ray Analyses</span>
+                <span className="value" style={{ fontSize: "24px", fontWeight: "800", color: "var(--warning)" }}>{profileStats?.xrays || 0}</span>
+                <span className="indicator yellow" style={{ fontSize: "11px", color: "var(--text-muted)", display: "block", marginTop: "4px" }}>Radiographs</span>
+              </div>
+              <div className="stat-card" style={{ background: "rgba(13, 19, 35, 0.45)", border: "1px solid var(--border-color)", borderRadius: "16px", padding: "16px" }}>
+                <span className="label" style={{ display: "block", fontSize: "12px", color: "var(--text-muted)", marginBottom: "4px" }}>Report Analyses</span>
+                <span className="value" style={{ fontSize: "24px", fontWeight: "800", color: "var(--cyan)" }}>{profileStats?.reports || 0}</span>
+                <span className="indicator blue" style={{ fontSize: "11px", color: "var(--text-muted)", display: "block", marginTop: "4px" }}>Lab Reports</span>
+              </div>
+              <div className="stat-card" style={{ background: "rgba(13, 19, 35, 0.45)", border: "1px solid var(--border-color)", borderRadius: "16px", padding: "16px" }}>
+                <span className="label" style={{ display: "block", fontSize: "12px", color: "var(--text-muted)", marginBottom: "4px" }}>Last Analysis</span>
+                <span className="value" style={{ fontSize: "14px", fontWeight: "700", color: "#fff", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {profileStats?.lastAnalysis || "No analyses yet"}
+                </span>
+                <span className="indicator green" style={{ fontSize: "11px", color: "var(--text-muted)", display: "block", marginTop: "4px" }}>Most Recent</span>
+              </div>
+            </div>
+
+            {/* 4. Findings Summary Cards & Overview Metrics */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "24px" }}>
+              <div style={{ background: "rgba(13, 19, 35, 0.45)", border: "1px solid var(--border-color)", borderRadius: "16px", padding: "16px" }}>
+                <h3 style={{ fontSize: "13px", fontWeight: "700", color: "var(--warning)", marginBottom: "12px", textTransform: "uppercase", letterSpacing: "0.05em" }}>X-Ray Findings</h3>
+                <p style={{ fontSize: "14px", color: "#fff", margin: 0 }}>
+                  <strong>{profileStats?.xrayFindings || "No X-ray findings yet."}</strong>
+                </p>
+                <div style={{ marginTop: "12px", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "8px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                  {profileStats?.xrayOverview && Object.keys(profileStats.xrayOverview).length > 0 ? (
+                    Object.entries(profileStats.xrayOverview).map(([cls, cnt]) => (
+                      <span key={cls} style={{ background: "rgba(245, 158, 11, 0.1)", border: "1px solid rgba(245, 158, 11, 0.2)", borderRadius: "12px", padding: "2px 8px", fontSize: "11px", color: "var(--warning)" }}>
+                        {cls} × {cnt}
+                      </span>
+                    ))
+                  ) : (
+                    <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>No overview chips available.</span>
+                  )}
+                </div>
+              </div>
+              <div style={{ background: "rgba(13, 19, 35, 0.45)", border: "1px solid var(--border-color)", borderRadius: "16px", padding: "16px" }}>
+                <h3 style={{ fontSize: "13px", fontWeight: "700", color: "var(--cyan)", marginBottom: "12px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Report Findings</h3>
+                <p style={{ fontSize: "14px", color: "#fff", margin: 0 }}>
+                  {profileStats?.reports && profileStats.reports > 0 ? (
+                    <>
+                      Abnormal values: <strong style={{ color: "#EF4444" }}>{profileStats.reportFindingsAbnormal}</strong> &nbsp;|&nbsp; Normal values: <strong style={{ color: "#10B981" }}>{profileStats.reportFindingsNormal}</strong>
+                    </>
+                  ) : (
+                    "No report findings yet."
+                  )}
+                </p>
+                <div style={{ marginTop: "12px", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "8px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                  {profileStats?.reportOverview && (profileStats.reportOverview.HIGH > 0 || profileStats.reportOverview.LOW > 0 || profileStats.reportOverview.NORMAL > 0) ? (
+                    <>
+                      {profileStats.reportOverview.HIGH > 0 && <span style={{ background: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.2)", borderRadius: "12px", padding: "2px 8px", fontSize: "11px", color: "#EF4444" }}>HIGH × {profileStats.reportOverview.HIGH}</span>}
+                      {profileStats.reportOverview.LOW > 0 && <span style={{ background: "rgba(59, 130, 246, 0.1)", border: "1px solid rgba(59, 130, 246, 0.2)", borderRadius: "12px", padding: "2px 8px", fontSize: "11px", color: "var(--accent)" }}>LOW × {profileStats.reportOverview.LOW}</span>}
+                      {profileStats.reportOverview.NORMAL > 0 && <span style={{ background: "rgba(16, 185, 129, 0.1)", border: "1px solid rgba(16, 185, 129, 0.2)", borderRadius: "12px", padding: "2px 8px", fontSize: "11px", color: "var(--green)" }}>NORMAL × {profileStats.reportOverview.NORMAL}</span>}
+                    </>
+                  ) : (
+                    <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>No overview chips available.</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* 5. Recent Analyses Quick Row */}
+            <section style={{ background: "rgba(13, 19, 35, 0.2)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "16px", padding: "16px", marginBottom: "24px" }}>
+              <h3 style={{ fontSize: "12px", fontWeight: "800", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "12px" }}>Recent Activity</h3>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px" }}>
+                {patientHistory.slice(0, 3).map((item, index) => (
+                  <div 
+                    key={item.analysisId || index} 
+                    style={{ background: "rgba(0, 0, 0, 0.25)", border: "1px solid rgba(255, 255, 255, 0.05)", borderRadius: "12px", padding: "12px", cursor: "pointer", transition: "var(--transition)" }}
+                    onClick={() => setAnalysisResult(item)}
+                    className="recent-item-hover"
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                      <span style={{ fontSize: "10px", fontWeight: "700", textTransform: "uppercase", color: item.fileType === "Chest X-Ray" ? "var(--warning)" : "var(--cyan)" }}>
+                        {item.fileType === "Chest X-Ray" ? "X-Ray" : "Report"}
+                      </span>
+                      <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>
+                        {new Date(item.date).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: "13px", fontWeight: "600", color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {item.fileName}
+                    </div>
+                    <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
+                      {item.fileType === "Chest X-Ray" ? `${item.prediction} (${item.confidence}%)` : (item.reportFindings?.length || 0) + " tests detected"}
+                    </div>
+                  </div>
+                ))}
+                {patientHistory.length === 0 && (
+                  <div style={{ gridColumn: "span 3", textAlign: "center", color: "var(--text-muted)", padding: "12px", fontSize: "12px" }}>
+                    No recent analyses.
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {/* 6. Main Workspace Grid */}
+            <div id="analyze-file-sec" className="profile-grid" style={{ marginBottom: "24px" }}>
+              <div className="profile-left">
+                {/* Analyze New File Card */}
+                <div className="upload-card">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                    <h3>Analyze New File</h3>
+                    <div style={{ display: "flex", gap: "6px" }}>
+                      <button
+                        className={`period-btn ${publicMode === "login" ? "active" : ""}`}
+                        style={{ padding: "4px 8px", fontSize: "11px" }}
+                        onClick={() => { setPublicMode("login"); setUploadFile(null); }}
+                      >
+                        X-Ray
+                      </button>
+                      <button
+                        className={`period-btn ${publicMode === "xray" ? "active" : ""}`}
+                        style={{ padding: "4px 8px", fontSize: "11px" }}
+                        onClick={() => { setPublicMode("xray"); setUploadFile(null); }}
+                      >
+                        Report
+                      </button>
+                    </div>
+                  </div>
+                  <p className="upload-subtitle">
+                    {publicMode === "login"
+                      ? "Upload a Chest X-ray image film for immediate AI model classification."
+                      : "Upload a structured medical/hematology laboratory report document (PNG/JPG/PDF)."}
+                  </p>
+
+                  <div className="upload-form">
+                    <label className="drag-area">
+                      <Upload size={32} className="upload-icon" />
+                      <span>{uploadFile ? uploadFile.name : "Select or drag file here"}</span>
+                      <span className="supported">
+                        {publicMode === "login" ? "Supported: JPEG, PNG" : "Supported: JPEG, PNG, PDF"}
+                      </span>
+                      <input
+                        type="file"
+                        required
+                        style={{ display: "none" }}
+                        onChange={(e) => setUploadFile(e.target.files[0])}
+                      />
+                    </label>
+
+                    {uploadFile && (
+                      <button
+                        type="button"
+                        className={`submit-btn ${uploading ? "disabled" : ""}`}
+                        disabled={uploading}
+                        onClick={async (e) => {
+                          e.preventDefault();
+                          if (!uploadFile) return;
+                          setUploading(true);
+                          const formData = new FormData();
+                          formData.append("file", uploadFile);
+                          const chosenType = publicMode === "login" ? "Chest X-Ray" : "Medical Report";
+                          try {
+                            const res = await fetch(`${API_BASE}/api/patients/${selectedPatient.patientId}/files?analysis_type=${encodeURIComponent(chosenType)}`, {
+                              method: "POST",
+                              body: formData
+                            });
+                            if (res.ok) {
+                              const data = await res.json();
+                              setAnalysisResult(data);
+                              showToast("Analysis Completed successfully.");
+                              selectPatient(selectedPatient);
+                              fetchDashboardData(period);
+                              fetchRegistryData();
+                              setUploadFile(null);
+                            } else {
+                              const err = await res.json();
+                              showToast(err.detail || "Analysis failed.");
+                            }
+                          } catch (err) {
+                            showToast("Server communication error.");
+                          } finally {
+                            setUploading(false);
+                          }
+                        }}
+                      >
+                        {uploading ? "Executing AI Engine..." : `Analyze ${publicMode === "login" ? "X-Ray" : "Report"}`}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Analysis Viewer (Right hand Workspace) */}
+              <div className="profile-right" style={{ background: "rgba(13, 19, 35, 0.45)", border: "1px solid var(--border-color)", borderRadius: "24px", padding: "24px", minHeight: "350px", display: "flex", flexDirection: "column" }}>
+                {analysisResult ? (
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "16px", marginBottom: "16px" }}>
+                      <div>
+                        <span style={{ background: analysisResult.fileType === "Chest X-Ray" ? "rgba(245,158,11,0.15)" : "rgba(6,182,212,0.15)", color: analysisResult.fileType === "Chest X-Ray" ? "var(--warning)" : "var(--cyan)", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", padding: "4px 8px", borderRadius: "6px", display: "inline-block", marginBottom: "6px" }}>
+                          {analysisResult.fileType} Analysis
+                        </span>
+                        <h2 style={{ fontSize: "18px", fontWeight: "800", color: "#fff", margin: 0 }}>{analysisResult.fileName}</h2>
+                        <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Date: {new Date(analysisResult.date).toLocaleString()}</span>
+                      </div>
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        <button
+                          className="outline-btn"
+                          style={{ padding: "6px 12px", fontSize: "12px" }}
+                          onClick={() => {
+                            setEditingAnalysis(analysisResult);
+                            setEditNoteText(analysisResult.doctorNote || analysisResult.doctor_note || "");
+                          }}
+                        >
+                          Edit Note
+                        </button>
+                        <button
+                          className="outline-btn"
+                          style={{ padding: "6px 12px", fontSize: "12px", borderColor: "rgba(239, 68, 68, 0.4)", color: "rgba(239, 68, 68, 0.9)" }}
+                          onClick={() => handleDeleteAnalysis(analysisResult.analysisId)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={{ flex: 1 }}>
+                      {analysisResult.fileType === "Chest X-Ray" ? (
+                        <div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", marginBottom: "20px" }}>
+                            <div>
+                              <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>AI Prediction</span>
+                              <div style={{ fontSize: "20px", fontWeight: "800", color: "#fff", marginTop: "4px" }}>
+                                {analysisResult.prediction}
+                              </div>
+                            </div>
+                            <div>
+                              <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Model Confidence</span>
+                              <div style={{ fontSize: "20px", fontWeight: "800", color: "var(--warning)", marginTop: "4px" }}>
+                                {analysisResult.confidence}%
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginTop: "16px" }}>
+                            <div>
+                              <h4 style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>Original X-Ray</h4>
+                              <div style={{ position: "relative", paddingBottom: "100%", background: "#000", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", overflow: "hidden" }}>
+                                <img
+                                  src={analysisResult.filePath.startsWith("http") ? analysisResult.filePath : `${API_BASE}${analysisResult.filePath}`}
+                                  alt="Original X-ray"
+                                  style={{ position: "absolute", width: "100%", height: "100%", objectFit: "contain" }}
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <h4 style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>Grad-CAM Visualization</h4>
+                              {analysisResult.gradcamPath ? (
+                                <div style={{ position: "relative", paddingBottom: "100%", background: "#000", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", overflow: "hidden" }}>
+                                  <img
+                                    src={analysisResult.gradcamPath.startsWith("http") ? analysisResult.gradcamPath : `${API_BASE}${analysisResult.gradcamPath}`}
+                                    alt="Gradcam heatmap"
+                                    style={{ position: "absolute", width: "100%", height: "100%", objectFit: "contain" }}
+                                  />
+                                </div>
+                              ) : (
+                                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", background: "rgba(0,0,0,0.1)" }}>
+                                  <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Heatmap overlay not available.</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "12px", fontStyle: "italic", textAlign: "center" }}>
+                            "Highlighted regions indicate areas of the X-ray that contributed most strongly to the model's prediction."
+                          </p>
+                        </div>
+                      ) : (
+                        <div>
+                          <div style={{ background: "rgba(0,0,0,0.15)", padding: "12px 16px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.05)", marginBottom: "20px" }}>
+                            <h4 style={{ fontSize: "12px", color: "var(--cyan)", textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 6px 0" }}>Report Summary</h4>
+                            <p style={{ fontSize: "13px", lineHeight: "1.5", color: "#fff", margin: 0 }}>{analysisResult.reportSummary || "No summary text generated."}</p>
+                          </div>
+
+                          <h4 style={{ fontSize: "13px", color: "#fff", marginBottom: "8px" }}>Extracted Lab Metrics</h4>
+                          <div style={{ overflowX: "auto" }}>
+                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+                              <thead>
+                                <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)", color: "var(--text-muted)" }}>
+                                  <th style={{ padding: "8px 12px", textAlign: "left" }}>Test</th>
+                                  <th style={{ padding: "8px 12px", textAlign: "left" }}>Value</th>
+                                  <th style={{ padding: "8px 12px", textAlign: "left" }}>Unit</th>
+                                  <th style={{ padding: "8px 12px", textAlign: "left" }}>Reference Range</th>
+                                  <th style={{ padding: "8px 12px", textAlign: "left" }}>Status</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {analysisResult.reportFindings && Array.isArray(analysisResult.reportFindings) && analysisResult.reportFindings.length > 0 ? (
+                                  analysisResult.reportFindings.map((row, rIdx) => (
+                                    <tr key={rIdx} style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+                                      <td style={{ padding: "8px 12px", fontWeight: "600", color: "#fff" }}>{row.test_name}</td>
+                                      <td style={{ padding: "8px 12px" }}>{row.value}</td>
+                                      <td style={{ padding: "8px 12px" }}>{row.unit}</td>
+                                      <td style={{ padding: "8px 12px" }}>{row.reference || "-"}</td>
+                                      <td style={{ padding: "8px 12px" }}>
+                                        <span style={{
+                                          padding: "2px 6px",
+                                          borderRadius: "4px",
+                                          fontSize: "10px",
+                                          fontWeight: "700",
+                                          background: row.status === "HIGH" ? "rgba(239,68,68,0.15)" : row.status === "LOW" ? "rgba(59,130,246,0.15)" : "rgba(16,185,129,0.15)",
+                                          color: row.status === "HIGH" ? "#EF4444" : row.status === "LOW" ? "var(--accent)" : "var(--green)"
+                                        }}>
+                                          {row.status}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  ))
+                                ) : (
+                                  <tr>
+                                    <td colSpan="5" style={{ padding: "16px", textAlign: "center", color: "var(--text-muted)" }}>No lab metrics extracted.</td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Doctor Notes Box */}
+                      {(analysisResult.doctorNote || analysisResult.doctor_note) && (
+                        <div style={{ marginTop: "20px", background: "rgba(59,130,246,0.05)", border: "1px solid rgba(59,130,246,0.15)", borderRadius: "12px", padding: "12px 16px" }}>
+                          <h4 style={{ fontSize: "11px", fontWeight: "700", textTransform: "uppercase", color: "var(--accent)", margin: "0 0 6px 0", letterSpacing: "0.05em" }}>Doctor Note</h4>
+                          <p style={{ fontSize: "13px", lineHeight: "1.5", color: "#fff", margin: 0 }}>
+                            {analysisResult.doctorNote || analysisResult.doctor_note}
+                          </p>
+                        </div>
+                      )}
+
+                      {analysisResult.filePath && (
+                        <div style={{ marginTop: "16px", textAlign: "right" }}>
+                          <a
+                            href={analysisResult.filePath.startsWith("http") ? analysisResult.filePath : `${API_BASE}${analysisResult.filePath}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ fontSize: "12px", color: "var(--accent)", fontWeight: "600", textDecoration: "none" }}
+                          >
+                            View Original File &rarr;
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                    <Brain size={48} className="brain-icon" style={{ color: "var(--text-muted)", marginBottom: "16px" }} />
+                    <h3 style={{ fontSize: "16px", color: "#fff", margin: "0 0 8px 0" }}>Awaiting Selection</h3>
+                    <p style={{ fontSize: "13px", color: "var(--text-muted)", margin: 0, textAlign: "center" }}>Select an analysis from history or upload a new file.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 7. Compare Selected Panel (Visible when exactly 2 compare checkbox keys are selected) */}
+            {compareIds.length === 2 && (
+              <section style={{ background: "rgba(59,130,246,0.05)", border: "1px solid rgba(59,130,246,0.2)", borderRadius: "16px", padding: "20px", marginBottom: "24px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                  <div>
+                    <h2 style={{ fontSize: "16px", fontWeight: "800", color: "#fff", margin: 0 }}>Side-by-Side Comparison</h2>
+                    <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Comparing two historical medical records</span>
+                  </div>
+                  <button className="outline-btn" style={{ padding: "4px 8px", fontSize: "11px" }} onClick={() => setCompareIds([])}>
+                    Clear Comparison
+                  </button>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
+                  {[...patientHistory].filter(h => compareIds.includes(h.analysisId)).map((item, cIdx) => (
+                    <div key={item.analysisId || cIdx} style={{ background: "rgba(0,0,0,0.2)", borderRadius: "12px", padding: "16px", border: "1px solid rgba(255,255,255,0.05)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px", borderBottom: "1px solid rgba(255,255,255,0.05)", paddingBottom: "8px" }}>
+                        <span style={{ fontSize: "11px", fontWeight: "700", textTransform: "uppercase", color: item.fileType === "Chest X-Ray" ? "var(--warning)" : "var(--cyan)" }}>
+                          {item.fileType === "Chest X-Ray" ? "X-Ray" : "Report"}
+                        </span>
+                        <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{new Date(item.date).toLocaleDateString()}</span>
+                      </div>
+                      <h4 style={{ fontSize: "13px", color: "#fff", margin: "0 0 8px 0" }}>{item.fileName}</h4>
+                      {item.fileType === "Chest X-Ray" ? (
+                        <div>
+                          <div style={{ display: "flex", gap: "16px", marginBottom: "12px" }}>
+                            <div>
+                              <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>Prediction</span>
+                              <div style={{ fontSize: "14px", fontWeight: "700", color: "#fff" }}>{item.prediction}</div>
+                            </div>
+                            <div>
+                              <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>Confidence</span>
+                              <div style={{ fontSize: "14px", fontWeight: "700", color: "var(--warning)" }}>{item.confidence}%</div>
+                            </div>
+                          </div>
+                          <div style={{ position: "relative", paddingBottom: "100%", background: "#000", borderRadius: "8px", overflow: "hidden" }}>
+                            <img
+                              src={item.gradcamPath ? (item.gradcamPath.startsWith("http") ? item.gradcamPath : `${API_BASE}${item.gradcamPath}`) : (item.filePath.startsWith("http") ? item.filePath : `${API_BASE}${item.filePath}`)}
+                              alt="X-ray check"
+                              style={{ position: "absolute", width: "100%", height: "100%", objectFit: "contain" }}
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>Report Metrics</span>
+                          <div style={{ marginTop: "6px" }}>
+                            {item.reportFindings && Array.isArray(item.reportFindings) ? (
+                              item.reportFindings.slice(0, 5).map((row, rIdx) => (
+                                <div key={rIdx} style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", padding: "4px 0", borderBottom: "1px dashed rgba(255,255,255,0.03)" }}>
+                                  <span style={{ color: "#fff" }}>{row.test_name}</span>
+                                  <span>{row.value} {row.unit} &nbsp; 
+                                    <span style={{ color: row.status === "HIGH" ? "#EF4444" : row.status === "LOW" ? "var(--accent)" : "var(--green)", fontWeight: "700" }}>{row.status}</span>
+                                  </span>
+                                </div>
+                              ))
+                            ) : null}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* 8. Analysis History Timeline section */}
+            <section className="timeline-card" style={{ background: "rgba(13, 19, 35, 0.45)", border: "1px solid var(--border-color)", borderRadius: "24px", padding: "24px", marginBottom: "24px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginBottom: "20px" }}>
+                <div>
+                  <h2 style={{ fontSize: "16px", fontWeight: "800", color: "#fff", margin: 0, textTransform: "uppercase", letterSpacing: "0.05em" }}>Analysis History</h2>
+                  <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: "4px 0 0 0" }}>Complete chronological history of this patient's AI-assisted analyses.</p>
+                </div>
+                <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+                  <input
+                    type="text"
+                    placeholder="Search history by name, prediction, note..."
+                    value={timelineSearch}
+                    onChange={(e) => setTimelineSearch(e.target.value)}
+                    style={{ flex: 2, minWidth: "200px", background: "rgba(5,8,22,0.8)", border: "1px solid var(--border-color)", color: "#fff", padding: "8px 14px", borderRadius: "8px", fontSize: "12px" }}
+                  />
+                  <select
+                    value={timelineFilter}
+                    onChange={(e) => { setTimelineFilter(e.target.value); setTimelineResultFilter("All"); }}
+                    style={{ background: "rgba(5,8,22,0.8)", border: "1px solid var(--border-color)", color: "#fff", padding: "8px 14px", borderRadius: "8px", fontSize: "12px" }}
+                  >
+                    <option value="All">All Types</option>
+                    <option value="X-Ray">X-Ray Files</option>
+                    <option value="Reports">Medical Reports</option>
+                  </select>
+
+                  <select
+                    value={timelineResultFilter}
+                    onChange={(e) => setTimelineResultFilter(e.target.value)}
+                    style={{ background: "rgba(5,8,22,0.8)", border: "1px solid var(--border-color)", color: "#fff", padding: "8px 14px", borderRadius: "8px", fontSize: "12px" }}
+                  >
+                    <option value="All">All Findings</option>
+                    {timelineFilter === "X-Ray" ? (
+                      <>
+                        <option value="Normal">Normal</option>
+                        <option value="Pneumonia">Pneumonia</option>
+                        <option value="COVID-19">COVID-19</option>
+                        <option value="Tuberculosis">Tuberculosis</option>
+                      </>
+                    ) : timelineFilter === "Reports" ? (
+                      <>
+                        <option value="High">High Values</option>
+                        <option value="Low">Low Values</option>
+                        <option value="Normal">Normal Values</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="Normal">Normal</option>
+                        <option value="Pneumonia">Pneumonia</option>
+                        <option value="High">High (Lab)</option>
+                        <option value="Low">Low (Lab)</option>
+                      </>
+                    )}
+                  </select>
+
+                  <select
+                    value={timelineDateFilter}
+                    onChange={(e) => setTimelineDateFilter(e.target.value)}
+                    style={{ background: "rgba(5,8,22,0.8)", border: "1px solid var(--border-color)", color: "#fff", padding: "8px 14px", borderRadius: "8px", fontSize: "12px" }}
+                  >
+                    <option value="All">All Dates</option>
+                    <option value="7d">Last 7 Days</option>
+                    <option value="30d">Last 30 Days</option>
+                    <option value="3m">Last 3 Months</option>
+                  </select>
+
+                  <select
+                    value={timelineSort}
+                    onChange={(e) => setTimelineSort(e.target.value)}
+                    style={{ background: "rgba(5,8,22,0.8)", border: "1px solid var(--border-color)", color: "#fff", padding: "8px 14px", borderRadius: "8px", fontSize: "12px" }}
+                  >
+                    <option value="Newest">Newest First</option>
+                    <option value="Oldest">Oldest First</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="timeline-list" style={{ display: "grid", gridTemplateColumns: "1fr", gap: "12px" }}>
+                {filteredTimeline.map((item, idx) => {
+                  const isCompareChecked = compareIds.includes(item.analysisId);
+                  return (
+                    <div 
+                      className={`timeline-item-row`} 
+                      style={{ display: "flex", gap: "16px", background: "rgba(0,0,0,0.15)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "12px", padding: "16px", alignItems: "center" }}
+                      key={item.analysisId || idx}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isCompareChecked}
+                        onChange={() => {
+                          if (isCompareChecked) {
+                            setCompareIds(prev => prev.filter(id => id !== item.analysisId));
+                          } else {
+                            if (compareIds.length >= 2) {
+                              showToast("You can only compare two analyses side-by-side.");
+                            } else {
+                              setCompareIds(prev => [...prev, item.analysisId]);
+                            }
+                          }
+                        }}
+                        style={{ cursor: "pointer", width: "16px", height: "16px" }}
+                      />
+                      <div style={{ flex: 1, cursor: "pointer" }} onClick={() => setAnalysisResult(item)}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                          <span style={{ fontSize: "11px", fontWeight: "700", textTransform: "uppercase", color: item.fileType === "Chest X-Ray" ? "var(--warning)" : "var(--cyan)" }}>
+                            {item.fileType}
+                          </span>
+                          <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{new Date(item.date).toLocaleDateString()}</span>
+                        </div>
+                        <h4 style={{ fontSize: "14px", fontWeight: "600", color: "#fff", margin: "0 0 6px 0" }}>{item.fileName}</h4>
+                        {item.fileType === "Chest X-Ray" ? (
+                          <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+                            Prediction: <strong style={{ color: "#fff" }}>{item.prediction}</strong> ({item.confidence}%)
+                            {item.gradcamPath && <span style={{ color: "var(--green)", marginLeft: "12px" }}>• Grad-CAM Overlay Available</span>}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+                            {item.reportFindings?.length || 0} tests detected &nbsp;|&nbsp; 
+                            Abnormal findings: <span style={{ color: "#EF4444", fontWeight: "700" }}>{item.reportFindings?.filter(f => ["HIGH", "LOW", "ABNORMAL"].includes(f.status?.toUpperCase())).length || 0}</span>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        <button
+                          className="action-btn"
+                          style={{ padding: "6px 12px", fontSize: "12px" }}
+                          onClick={() => setAnalysisResult(item)}
+                        >
+                          View Analysis
+                        </button>
+                        <button
+                          className="action-btn"
+                          style={{ padding: "6px 12px", fontSize: "12px" }}
+                          onClick={() => {
+                            setEditingAnalysis(item);
+                            setEditNoteText(item.doctorNote || item.doctor_note || "");
+                          }}
+                        >
+                          Edit Note
+                        </button>
+                        <button
+                          className="action-btn"
+                          style={{ padding: "6px 12px", fontSize: "12px", borderColor: "rgba(239, 68, 68, 0.4)", color: "rgba(239, 68, 68, 0.9)" }}
+                          onClick={() => handleDeleteAnalysis(item.analysisId)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+                {filteredTimeline.length === 0 && (
+                  <p style={{ color: "var(--text-muted)", fontSize: "13px", padding: "16px 0", textAlign: "center" }}>
+                    {timelineSearch ? "No matching history found." : "No medical analyses yet. Start by uploading files."}
+                  </p>
+                )}
+              </div>
+            </section>
+
+            {/* 9. Patient Overview Section at Bottom */}
+            <section style={{ background: "rgba(13, 19, 35, 0.45)", border: "1px solid var(--border-color)", borderRadius: "16px", padding: "16px" }}>
+              <h3 style={{ fontSize: "13px", fontWeight: "700", color: "#fff", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "12px" }}>Patient Overview & Registry Info</h3>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "16px", fontSize: "12px" }}>
+                <div>
+                  <span style={{ color: "var(--text-muted)", display: "block" }}>Registration Date</span>
+                  <span style={{ color: "#fff", fontWeight: "600" }}>{selectedPatient.createdAt ? new Date(selectedPatient.createdAt).toLocaleDateString() : "N/A"}</span>
+                </div>
+                <div>
+                  <span style={{ color: "var(--text-muted)", display: "block" }}>Total Uploads</span>
+                  <span style={{ color: "#fff", fontWeight: "600" }}>{profileStats?.total || 0} Files</span>
+                </div>
+                <div>
+                  <span style={{ color: "var(--text-muted)", display: "block" }}>Last Activity Date</span>
+                  <span style={{ color: "#fff", fontWeight: "600" }}>{patientHistory.length > 0 ? new Date(patientHistory[0].date).toLocaleDateString() : "No Activity"}</span>
+                </div>
+                <div>
+                  <span style={{ color: "var(--text-muted)", display: "block" }}>X-Ray Count</span>
+                  <span style={{ color: "var(--warning)", fontWeight: "600" }}>{profileStats?.xrays || 0} X-Rays</span>
+                </div>
+                <div>
+                  <span style={{ color: "var(--text-muted)", display: "block" }}>Lab Report Count</span>
+                  <span style={{ color: "var(--cyan)", fontWeight: "600" }}>{profileStats?.reports || 0} Reports</span>
+                </div>
+              </div>
+            </section>
+          </div>
+        )}
