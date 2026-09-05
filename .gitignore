@@ -40,6 +40,10 @@ backend/static/*
 datasets chestxray/
 datasets/
 testingimage/
+Cavity Dataset/
+dental dataset/
+"Cavity Dataset"/
+"datasets chestxray"/
 
 # ==========================================
 # Secrets and Credentials
