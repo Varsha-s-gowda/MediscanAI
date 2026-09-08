@@ -49,7 +49,7 @@ function App() {
     setPublicResult(null);
 
     const formData = new FormData();
-    if (publicMode === "xray" || publicMode === "cavity") {
+    if (publicMode === "xray" || publicMode === "cavity" || publicMode === "ct_scan") {
       formData.append("image", uploadFile);
     } else {
       formData.append("file", uploadFile);
@@ -58,6 +58,8 @@ function App() {
     let endpoint = "/predict";
     if (publicMode === "cavity") {
       endpoint = "/predict/cavity";
+    } else if (publicMode === "ct_scan") {
+      endpoint = "/predict/ct";
     } else if (publicMode === "report") {
       endpoint = "/api/reports/analyze";
     }
@@ -87,7 +89,9 @@ function App() {
   const [dashboardData, setDashboardData] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [dashboardError, setDashboardError] = useState("");
+  // eslint-disable-next-line no-unused-vars
   const [loadingPatients, setLoadingPatients] = useState(true);
+  // eslint-disable-next-line no-unused-vars
   const [loadingError, setLoadingError] = useState("");
   const [registryPatients, setRegistryPatients] = useState([]);
   const [registryStats, setRegistryStats] = useState({ total_patients: 0, active_cases: 0, analyses_this_month: 0, recently_added: 0 });
@@ -291,58 +295,30 @@ function App() {
       showToast("Could not load patient timeline.");
     }
   };
-  const handleFileUpload = async (e) => {
-    e.preventDefault();
-    if (!uploadFile || !selectedPatient) return;
-    setUploading(true);
-    setAnalysisResult(null);
-
-    const formData = new FormData();
-    formData.append("file", uploadFile);
-
-    try {
-      const res = await fetch(`${API_BASE}/api/patients/${selectedPatient.patientId}/files`, {
-        method: "POST",
-        body: formData
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setAnalysisResult(data);
-        showToast("Analysis Completed successfully.");
-        selectPatient(selectedPatient);
-        fetchDashboardData(period);
-        fetchRegistryData();
-        setUploadFile(null);
-      } else {
-        const err = await res.json();
-        showToast(err.detail || "Analysis failed.");
-      }
-    } catch (err) {
-      showToast("Server communication error.");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-
 
   if (!token) {
-    if (publicMode === "xray" || publicMode === "report" || publicMode === "cavity") {
+    if (publicMode === "xray" || publicMode === "report" || publicMode === "cavity" || publicMode === "ct_scan") {
       return (
         <div className="login-container" style={{ padding: "40px" }}>
           <div className="login-card" style={{ maxWidth: "800px", width: "100%" }}>
             <div className="logo-section">
               <div className="pulse-circle">
-                <Activity size={32} color={publicMode === "cavity" ? "#F59E0B" : "#10B981"} />
+                <Activity size={32} color={publicMode === "cavity" ? "#F59E0B" : publicMode === "ct_scan" ? "#8B5CF6" : "#10B981"} />
               </div>
               <h2>
-                {publicMode === "cavity" ? "Public Dental Cavity Detection" : "Public AI Diagnostic Analysis"}
+                {publicMode === "cavity"
+                  ? "Public Dental Cavity Detection"
+                  : publicMode === "ct_scan"
+                  ? "Public CT Scan Kidney Stone Classifier"
+                  : "Public AI Diagnostic Analysis"}
               </h2>
               <p>
                 {publicMode === "xray"
                   ? "Upload a Chest X-ray film for DenseNet121 multi-label prediction"
                   : publicMode === "cavity"
                   ? "Upload a dental intraoral photo or dental radiograph for AI caries lesion detection"
+                  : publicMode === "ct_scan"
+                  ? "Upload an abdominal/pelvic CT scan slice for AI kidney stone detection"
                   : "Upload a lab/medical report image for parsing and summary extraction"}
               </p>
             </div>
@@ -353,7 +329,7 @@ function App() {
                 <form onSubmit={handlePublicUpload} className="upload-form">
                   <label className="drag-area" style={{ minHeight: "220px" }}>
                     <Upload size={32} className="upload-icon" />
-                    <span>{uploadFile ? uploadFile.name : "Select or drag dental / diagnostic file here"}</span>
+                    <span>{uploadFile ? uploadFile.name : "Select or drag CT scan / diagnostic file here"}</span>
                     <span className="supported">Supported: JPEG, PNG</span>
                     <input
                       type="file"
@@ -368,9 +344,22 @@ function App() {
                       type="submit"
                       className={`submit-btn ${uploading ? "disabled" : ""}`}
                       disabled={uploading}
-                      style={{ width: "100%", background: publicMode === "cavity" ? "linear-gradient(135deg, #F59E0B, #D97706)" : undefined }}
+                      style={{
+                        width: "100%",
+                        background: publicMode === "cavity"
+                          ? "linear-gradient(135deg, #F59E0B, #D97706)"
+                          : publicMode === "ct_scan"
+                          ? "linear-gradient(135deg, #8B5CF6, #6D28D9)"
+                          : undefined
+                      }}
                     >
-                      {uploading ? "Executing AI Engine..." : publicMode === "cavity" ? "Detect Dental Cavity" : "Analyze Diagnostic File"}
+                      {uploading
+                        ? "Executing AI Engine..."
+                        : publicMode === "cavity"
+                        ? "Detect Dental Cavity"
+                        : publicMode === "ct_scan"
+                        ? "Detect Kidney Stone"
+                        : "Analyze Diagnostic File"}
                     </button>
                   )}
                 </form>
@@ -390,7 +379,58 @@ function App() {
                     <h3 style={{ fontSize: "16px", fontWeight: "800" }}>Analysis Results</h3>
                   </div>
 
-                  {publicMode === "cavity" ? (
+                  {publicMode === "ct_scan" ? (
+                    <div className="xray-diagnostic" style={{ gap: "16px" }}>
+                      <div className="metric-row" style={{ gap: "16px" }}>
+                        <div className="metric">
+                          <span className="label" style={{ fontSize: "10px" }}>Kidney Status</span>
+                          <span className="value" style={{ fontSize: "18px", color: publicResult.is_stone ? "#EF4444" : "#10B981" }}>
+                            {publicResult.prediction}
+                          </span>
+                        </div>
+                        <div className="metric">
+                          <span className="label" style={{ fontSize: "10px" }}>Confidence</span>
+                          <span className="value" style={{ fontSize: "18px", color: "#8B5CF6" }}>{publicResult.confidence}%</span>
+                        </div>
+                      </div>
+
+                      {publicResult.recommendation && (
+                        <div style={{ background: "rgba(139, 92, 246, 0.1)", border: "1px solid rgba(139, 92, 246, 0.25)", borderRadius: "8px", padding: "10px 14px", marginTop: "12px" }}>
+                          <span style={{ fontSize: "10px", fontWeight: "700", textTransform: "uppercase", color: "#A78BFA" }}>
+                            Clinical Guidance:
+                          </span>
+                          <p style={{ fontSize: "12px", color: "#F3F4F6", margin: "4px 0 0 0", lineHeight: "1.4" }}>
+                            {publicResult.recommendation}
+                          </p>
+                        </div>
+                      )}
+
+                      <div style={{ marginTop: "16px", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "16px" }}>
+                        <h4 style={{ fontSize: "13px", fontWeight: "700", marginBottom: "12px", color: "#A78BFA", display: "flex", alignItems: "center", gap: "6px" }}>
+                          <Brain size={16} /> Explainable AI — CT Heatmap
+                        </h4>
+
+                        <div className="visuals-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                          <div className="img-holder">
+                            <span style={{ fontSize: "10px", color: "var(--muted)" }}>Original CT Slice</span>
+                            <img
+                              src={publicResult.original_image ? `${API_BASE}${publicResult.original_image}` : (publicResult.heatmap ? publicResult.heatmap : "")}
+                              alt="Original CT Scan"
+                              style={{ borderRadius: "8px", marginTop: "4px", width: "100%", border: "1px solid rgba(255,255,255,0.05)" }}
+                            />
+                          </div>
+                          <div className="img-holder">
+                            <span style={{ fontSize: "10px", color: "var(--muted)" }}>Grad-CAM Overlay</span>
+                            <img
+                              src={publicResult.gradcam_image ? `${API_BASE}${publicResult.gradcam_image}` : (publicResult.heatmap ? publicResult.heatmap : "")}
+                              alt="Grad-CAM Overlay"
+                              style={{ borderRadius: "8px", marginTop: "4px", width: "100%", border: "1px solid rgba(255,255,255,0.05)" }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : publicMode === "cavity" ? (
                     <div className="xray-diagnostic" style={{ gap: "16px" }}>
                       <div className="metric-row" style={{ gap: "16px" }}>
                         <div className="metric">
@@ -642,6 +682,19 @@ function App() {
                   Public Dental Cavity
                 </button>
                 <button
+                  onClick={() => { setPublicMode("ct_scan"); setAuthError(""); }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#8B5CF6",
+                    fontSize: "12px",
+                    fontWeight: "700",
+                    cursor: "pointer"
+                  }}
+                >
+                  Public CT Scan (Kidney)
+                </button>
+                <button
                   onClick={() => { setPublicMode("report"); setAuthError(""); }}
                   style={{
                     background: "none",
@@ -875,6 +928,8 @@ function App() {
 
       let matchAnalysis = true;
       if (analysisTypeFilter === "X-Ray") matchAnalysis = p.lastAnalysis && p.lastAnalysis.type === "X-Ray";
+      else if (analysisTypeFilter === "Cavity") matchAnalysis = p.lastAnalysis && p.lastAnalysis.type === "Dental Cavity";
+      else if (analysisTypeFilter === "CT Scan") matchAnalysis = p.lastAnalysis && p.lastAnalysis.type === "CT Scan";
       else if (analysisTypeFilter === "Report") matchAnalysis = p.lastAnalysis && p.lastAnalysis.type === "Report";
 
       return matchSearch && matchGender && matchAge && matchAnalysis;
@@ -909,6 +964,7 @@ function App() {
     const matchFilter = timelineFilter === "All" ||
       (timelineFilter === "X-Ray" && item.fileType === "Chest X-Ray") ||
       (timelineFilter === "Cavity" && item.fileType === "Dental Cavity") ||
+      (timelineFilter === "CT Scan" && (item.fileType === "CT Scan" || item.fileType === "Kidney Stone CT")) ||
       (timelineFilter === "Reports" && item.fileType === "Medical Report");
 
     return matchSearch && matchFilter;
@@ -1531,6 +1587,16 @@ function App() {
                 </button>
                 <button
                   className="primary-btn"
+                  style={{ background: "#8B5CF6", border: "none", color: "#fff" }}
+                  onClick={() => {
+                    setPublicMode("ct_patient"); // tab for CT Scan upload
+                    document.getElementById("analyze-file-sec")?.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                >
+                  Analyze CT Scan
+                </button>
+                <button
+                  className="primary-btn"
                   style={{ background: "var(--cyan)", border: "none", color: "#fff" }}
                   onClick={() => {
                     setPublicMode("xray"); // tab for Report upload
@@ -1658,8 +1724,8 @@ function App() {
                     className="recent-item-hover"
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-                      <span style={{ fontSize: "10px", fontWeight: "700", textTransform: "uppercase", color: item.fileType === "Chest X-Ray" ? "var(--warning)" : "var(--cyan)" }}>
-                        {item.fileType === "Chest X-Ray" ? "X-Ray" : "Report"}
+                      <span style={{ fontSize: "10px", fontWeight: "700", textTransform: "uppercase", color: item.fileType === "Chest X-Ray" ? "var(--warning)" : item.fileType === "Dental Cavity" ? "#F59E0B" : item.fileType === "CT Scan" ? "#8B5CF6" : "var(--cyan)" }}>
+                        {item.fileType === "Chest X-Ray" ? "X-Ray" : item.fileType === "Dental Cavity" ? "Cavity" : item.fileType === "CT Scan" ? "CT Scan" : "Report"}
                       </span>
                       <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>
                         {new Date(item.date).toLocaleDateString()}
@@ -1669,7 +1735,7 @@ function App() {
                       {item.fileName}
                     </div>
                     <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
-                      {item.fileType === "Chest X-Ray" ? `${item.prediction} (${item.confidence}%)` : (item.reportFindings?.length || 0) + " tests detected"}
+                      {item.fileType === "Medical Report" ? (item.reportFindings?.length || 0) + " tests detected" : `${item.prediction} (${item.confidence}%)`}
                     </div>
                   </div>
                 ))}
@@ -1704,6 +1770,13 @@ function App() {
                         Cavity
                       </button>
                       <button
+                        className={`period-btn ${publicMode === "ct_patient" ? "active" : ""}`}
+                        style={{ padding: "4px 8px", fontSize: "11px", background: publicMode === "ct_patient" ? "#8B5CF6" : undefined, color: publicMode === "ct_patient" ? "#fff" : undefined }}
+                        onClick={() => { setPublicMode("ct_patient"); setUploadFile(null); }}
+                      >
+                        CT Scan
+                      </button>
+                      <button
                         className={`period-btn ${publicMode === "xray" ? "active" : ""}`}
                         style={{ padding: "4px 8px", fontSize: "11px" }}
                         onClick={() => { setPublicMode("xray"); setUploadFile(null); }}
@@ -1717,6 +1790,8 @@ function App() {
                       ? "Upload a Chest X-ray image film for immediate AI model classification."
                       : publicMode === "cavity_patient"
                       ? "Upload a dental intraoral photo or radiograph for AI caries lesion detection."
+                      : publicMode === "ct_patient"
+                      ? "Upload an abdominal/pelvic CT scan slice for AI kidney stone detection."
                       : "Upload a structured medical/hematology laboratory report document (PNG/JPG/PDF)."}
                   </p>
 
@@ -1746,7 +1821,13 @@ function App() {
                           setUploading(true);
                           const formData = new FormData();
                           formData.append("file", uploadFile);
-                          const chosenType = publicMode === "login" ? "Chest X-Ray" : publicMode === "cavity_patient" ? "Dental Cavity" : "Medical Report";
+                          const chosenType = publicMode === "login"
+                            ? "Chest X-Ray"
+                            : publicMode === "cavity_patient"
+                            ? "Dental Cavity"
+                            : publicMode === "ct_patient"
+                            ? "CT Scan"
+                            : "Medical Report";
                           try {
                             const res = await fetch(`${API_BASE}/api/patients/${selectedPatient.patientId}/files?analysis_type=${encodeURIComponent(chosenType)}`, {
                               method: "POST",
@@ -1771,7 +1852,9 @@ function App() {
                           }
                         }}
                       >
-                        {uploading ? "Executing AI Engine..." : `Analyze ${publicMode === "login" ? "X-Ray" : publicMode === "cavity_patient" ? "Cavity" : "Report"}`}
+                        {uploading
+                          ? "Executing AI Engine..."
+                          : `Analyze ${publicMode === "login" ? "X-Ray" : publicMode === "cavity_patient" ? "Cavity" : publicMode === "ct_patient" ? "CT Scan" : "Report"}`}
                       </button>
                     )}
                   </div>
@@ -1784,7 +1867,29 @@ function App() {
                   <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "16px", marginBottom: "16px" }}>
                       <div>
-                        <span style={{ background: analysisResult.fileType === "Chest X-Ray" ? "rgba(245,158,11,0.15)" : "rgba(6,182,212,0.15)", color: analysisResult.fileType === "Chest X-Ray" ? "var(--warning)" : "var(--cyan)", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", padding: "4px 8px", borderRadius: "6px", display: "inline-block", marginBottom: "6px" }}>
+                        <span style={{
+                          background: analysisResult.fileType === "Chest X-Ray"
+                            ? "rgba(245,158,11,0.15)"
+                            : analysisResult.fileType === "Dental Cavity"
+                            ? "rgba(245,158,11,0.15)"
+                            : analysisResult.fileType === "CT Scan"
+                            ? "rgba(139,92,246,0.15)"
+                            : "rgba(6,182,212,0.15)",
+                          color: analysisResult.fileType === "Chest X-Ray"
+                            ? "var(--warning)"
+                            : analysisResult.fileType === "Dental Cavity"
+                            ? "#F59E0B"
+                            : analysisResult.fileType === "CT Scan"
+                            ? "#8B5CF6"
+                            : "var(--cyan)",
+                          fontSize: "11px",
+                          fontWeight: "700",
+                          textTransform: "uppercase",
+                          padding: "4px 8px",
+                          borderRadius: "6px",
+                          display: "inline-block",
+                          marginBottom: "6px"
+                        }}>
                           {analysisResult.fileType} Analysis
                         </span>
                         <h2 style={{ fontSize: "18px", fontWeight: "800", color: "#fff", margin: 0 }}>{analysisResult.fileName}</h2>
@@ -1812,7 +1917,63 @@ function App() {
                     </div>
 
                     <div style={{ flex: 1 }}>
-                      {analysisResult.fileType === "Dental Cavity" ? (
+                      {analysisResult.fileType === "CT Scan" ? (
+                        <div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", marginBottom: "20px" }}>
+                            <div>
+                              <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Kidney AI Prediction</span>
+                              <div style={{ fontSize: "20px", fontWeight: "800", color: analysisResult.prediction?.includes("Stone") ? "#EF4444" : "#10B981", marginTop: "4px" }}>
+                                {analysisResult.prediction}
+                              </div>
+                            </div>
+                            <div>
+                              <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Model Confidence</span>
+                              <div style={{ fontSize: "20px", fontWeight: "800", color: "#8B5CF6", marginTop: "4px" }}>
+                                {analysisResult.confidence}%
+                              </div>
+                            </div>
+                          </div>
+
+                          {analysisResult.reportSummary && (
+                            <div style={{ background: "rgba(139, 92, 246, 0.08)", border: "1px solid rgba(139, 92, 246, 0.25)", borderRadius: "12px", padding: "12px 16px", marginBottom: "16px" }}>
+                              <h4 style={{ fontSize: "11px", fontWeight: "700", textTransform: "uppercase", color: "#A78BFA", margin: "0 0 6px 0", letterSpacing: "0.05em" }}>Clinical Guidance</h4>
+                              <p style={{ fontSize: "13px", lineHeight: "1.5", color: "#fff", margin: 0 }}>{analysisResult.reportSummary}</p>
+                            </div>
+                          )}
+
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginTop: "16px" }}>
+                            <div>
+                              <h4 style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>Original CT Scan</h4>
+                              <div style={{ position: "relative", paddingBottom: "100%", background: "#000", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", overflow: "hidden" }}>
+                                <img
+                                  src={analysisResult.filePath.startsWith("http") ? analysisResult.filePath : `${API_BASE}${analysisResult.filePath}`}
+                                  alt="Original CT Scan"
+                                  style={{ position: "absolute", width: "100%", height: "100%", objectFit: "contain" }}
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <h4 style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>Explainable AI Heatmap</h4>
+                              {analysisResult.gradcamPath ? (
+                                <div style={{ position: "relative", paddingBottom: "100%", background: "#000", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", overflow: "hidden" }}>
+                                  <img
+                                    src={analysisResult.gradcamPath.startsWith("http") ? analysisResult.gradcamPath : `${API_BASE}${analysisResult.gradcamPath}`}
+                                    alt="CT heatmap"
+                                    style={{ position: "absolute", width: "100%", height: "100%", objectFit: "contain" }}
+                                  />
+                                </div>
+                              ) : (
+                                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", background: "rgba(0,0,0,0.1)" }}>
+                                  <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Heatmap overlay not generated.</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "12px", fontStyle: "italic", textAlign: "center" }}>
+                            "Highlighted regions identify radiographic attenuation areas associated with renal calculi."
+                          </p>
+                        </div>
+                      ) : analysisResult.fileType === "Dental Cavity" ? (
                         <div>
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", marginBottom: "20px" }}>
                             <div>
@@ -2020,28 +2181,28 @@ function App() {
                   {[...patientHistory].filter(h => compareIds.includes(h.analysisId)).map((item, cIdx) => (
                     <div key={item.analysisId || cIdx} style={{ background: "rgba(0,0,0,0.2)", borderRadius: "12px", padding: "16px", border: "1px solid rgba(255,255,255,0.05)" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px", borderBottom: "1px solid rgba(255,255,255,0.05)", paddingBottom: "8px" }}>
-                        <span style={{ fontSize: "11px", fontWeight: "700", textTransform: "uppercase", color: item.fileType === "Chest X-Ray" ? "var(--warning)" : "var(--cyan)" }}>
-                          {item.fileType === "Chest X-Ray" ? "X-Ray" : "Report"}
+                        <span style={{ fontSize: "11px", fontWeight: "700", textTransform: "uppercase", color: item.fileType === "Chest X-Ray" ? "var(--warning)" : item.fileType === "Dental Cavity" ? "#F59E0B" : item.fileType === "CT Scan" ? "#8B5CF6" : "var(--cyan)" }}>
+                          {item.fileType === "Chest X-Ray" ? "X-Ray" : item.fileType === "Dental Cavity" ? "Cavity" : item.fileType === "CT Scan" ? "CT Scan" : "Report"}
                         </span>
                         <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{new Date(item.date).toLocaleDateString()}</span>
                       </div>
                       <h4 style={{ fontSize: "13px", color: "#fff", margin: "0 0 8px 0" }}>{item.fileName}</h4>
-                      {item.fileType === "Chest X-Ray" ? (
+                      {item.fileType === "CT Scan" || item.fileType === "Dental Cavity" || item.fileType === "Chest X-Ray" ? (
                         <div>
                           <div style={{ display: "flex", gap: "16px", marginBottom: "12px" }}>
                             <div>
                               <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>Prediction</span>
-                              <div style={{ fontSize: "14px", fontWeight: "700", color: "#fff" }}>{item.prediction}</div>
+                              <div style={{ fontSize: "14px", fontWeight: "700", color: item.prediction?.includes("Stone") || item.prediction?.includes("Cavity") ? "#EF4444" : "#fff" }}>{item.prediction}</div>
                             </div>
                             <div>
                               <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>Confidence</span>
-                              <div style={{ fontSize: "14px", fontWeight: "700", color: "var(--warning)" }}>{item.confidence}%</div>
+                              <div style={{ fontSize: "14px", fontWeight: "700", color: item.fileType === "CT Scan" ? "#8B5CF6" : item.fileType === "Dental Cavity" ? "#F59E0B" : "var(--warning)" }}>{item.confidence}%</div>
                             </div>
                           </div>
                           <div style={{ position: "relative", paddingBottom: "100%", background: "#000", borderRadius: "8px", overflow: "hidden" }}>
                             <img
                               src={item.gradcamPath ? (item.gradcamPath.startsWith("http") ? item.gradcamPath : `${API_BASE}${item.gradcamPath}`) : (item.filePath.startsWith("http") ? item.filePath : `${API_BASE}${item.filePath}`)}
-                              alt="X-ray check"
+                              alt="Scan check"
                               style={{ position: "absolute", width: "100%", height: "100%", objectFit: "contain" }}
                             />
                           </div>
@@ -2092,6 +2253,7 @@ function App() {
                     <option value="All">All Types</option>
                     <option value="X-Ray">X-Ray Files</option>
                     <option value="Cavity">Dental Cavity</option>
+                    <option value="CT Scan">CT Scan</option>
                     <option value="Reports">Medical Reports</option>
                   </select>
 
@@ -2113,6 +2275,11 @@ function App() {
                         <option value="Cavity">Cavity Detected</option>
                         <option value="Normal">Normal</option>
                       </>
+                    ) : timelineFilter === "CT Scan" ? (
+                      <>
+                        <option value="Stone">Kidney Stone Detected</option>
+                        <option value="Normal">Normal</option>
+                      </>
                     ) : timelineFilter === "Reports" ? (
                       <>
                         <option value="High">High Values</option>
@@ -2124,6 +2291,7 @@ function App() {
                         <option value="Normal">Normal</option>
                         <option value="Pneumonia">Pneumonia</option>
                         <option value="Cavity">Cavity</option>
+                        <option value="Stone">Kidney Stone</option>
                         <option value="High">High (Lab)</option>
                         <option value="Low">Low (Lab)</option>
                       </>
@@ -2183,14 +2351,19 @@ function App() {
                             fontSize: "11px",
                             fontWeight: "700",
                             textTransform: "uppercase",
-                            color: item.fileType === "Chest X-Ray" ? "var(--warning)" : item.fileType === "Dental Cavity" ? "#F59E0B" : "var(--cyan)"
+                            color: item.fileType === "Chest X-Ray" ? "var(--warning)" : item.fileType === "Dental Cavity" ? "#F59E0B" : item.fileType === "CT Scan" ? "#8B5CF6" : "var(--cyan)"
                           }}>
                             {item.fileType}
                           </span>
                           <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{new Date(item.date).toLocaleDateString()}</span>
                         </div>
                         <h4 style={{ fontSize: "14px", fontWeight: "600", color: "#fff", margin: "0 0 6px 0" }}>{item.fileName}</h4>
-                        {item.fileType === "Dental Cavity" ? (
+                        {item.fileType === "CT Scan" ? (
+                          <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+                            Prediction: <strong style={{ color: item.prediction?.includes("Stone") ? "#EF4444" : "#10B981" }}>{item.prediction}</strong> ({item.confidence}%)
+                            {item.gradcamPath && <span style={{ color: "#8B5CF6", marginLeft: "12px" }}>• CT Heatmap Available</span>}
+                          </div>
+                        ) : item.fileType === "Dental Cavity" ? (
                           <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
                             Prediction: <strong style={{ color: item.prediction?.includes("Cavity") ? "#EF4444" : "#10B981" }}>{item.prediction}</strong> ({item.confidence}%)
                             {item.gradcamPath && <span style={{ color: "var(--green)", marginLeft: "12px" }}>• Caries Heatmap Available</span>}

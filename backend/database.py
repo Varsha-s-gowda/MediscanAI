@@ -557,12 +557,13 @@ def get_dashboard_data(period: str = "30d") -> Dict[str, Any]:
         recent_rows = cursor.fetchall()
         recent_analyses = []
         for r in recent_rows:
+            atype = "CT Scan" if r["analysis_type"] in ["CT Scan", "Kidney Stone CT"] else ("Dental Cavity" if r["analysis_type"] == "Dental Cavity" else ("X-Ray" if r["analysis_type"] == "Chest X-Ray" else "Report"))
             recent_analyses.append({
                 "analysisId": r["analysis_id"],
                 "patientId": r["patient_id"],
-                "type": "X-Ray" if r["analysis_type"] == "Chest X-Ray" else "Report",
+                "type": atype,
                 "result": r["prediction"] or "Awaiting Review",
-                "confidence": round(r["confidence"], 1) if (r["confidence"] is not None and r["analysis_type"] == "Chest X-Ray") else None,
+                "confidence": round(r["confidence"], 1) if r["confidence"] is not None else None,
                 "date": r["created_at"],
                 "fileName": r["file_name"] or "Unknown"
             })
@@ -576,7 +577,7 @@ def get_dashboard_data(period: str = "30d") -> Dict[str, Any]:
         cursor.execute("SELECT patient_id, analysis_type, prediction, created_at FROM analysis_results ORDER BY created_at DESC LIMIT 5")
         analysis_activities = []
         for a in cursor.fetchall():
-            atype = "X-ray" if a["analysis_type"] == "Chest X-Ray" else "Report"
+            atype = "CT Scan" if a["analysis_type"] in ["CT Scan", "Kidney Stone CT"] else ("Dental Cavity" if a["analysis_type"] == "Dental Cavity" else ("X-ray" if a["analysis_type"] == "Chest X-Ray" else "Report"))
             pred = a["prediction"] or "Normal"
             analysis_activities.append({
                 "type": "analysis",
@@ -741,10 +742,11 @@ def get_patients_registry() -> List[Dict[str, Any]]:
                     except Exception:
                         pass
                 
+                atype = "CT Scan" if r["analysis_type"] in ["CT Scan", "Kidney Stone CT"] else ("Dental Cavity" if r["analysis_type"] == "Dental Cavity" else ("X-Ray" if r["analysis_type"] == "Chest X-Ray" else "Report"))
                 an_data = {
-                    "type": "X-Ray" if r["analysis_type"] == "Chest X-Ray" else "Report",
+                    "type": atype,
                     "result": r["prediction"],
-                    "confidence": round(r["confidence"], 1) if (r["confidence"] is not None and r["analysis_type"] == "Chest X-Ray") else None,
+                    "confidence": round(r["confidence"], 1) if r["confidence"] is not None else None,
                     "date": r["last_analysis_date"],
                     "abnormalCount": num_findings
                 }

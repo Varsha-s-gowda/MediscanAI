@@ -20,6 +20,7 @@ from predict import InferenceEngine
 from ocr.extract_text import MedicalReportOCR
 from report_analysis.report_analyzer import MedicalReportAnalyzer
 from cavity_engine import CavityInferenceEngine
+from ct_engine import CTInferenceEngine
 
 import database
 import report_analyzer
@@ -52,6 +53,7 @@ app.add_middleware(
 # Thread-safe Single Instance Inference Engines & OCR
 inference_engine = InferenceEngine()
 cavity_engine = CavityInferenceEngine()
+ct_engine = CTInferenceEngine()
 ocr_processor = MedicalReportOCR()
 
 # --------------------------------------------
@@ -287,6 +289,55 @@ async def predict_dental_cavity(image: UploadFile = File(...)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Cavity inference computation failed: {str(e)}"
+        )
+
+@app.post("/predict/ct", tags=["CT Scan Diagnostics"])
+@app.post("/predict/ct-scan", tags=["CT Scan Diagnostics"])
+async def predict_ct_scan(image: UploadFile = File(...)):
+    validate_image_file(image)
+    contents = await image.read()
+    
+    try:
+        pil_img = Image.open(io.BytesIO(contents)).convert("RGB")
+        res = ct_engine.predict(pil_img)
+        
+        # Save images to static uploads for frontend retrieval
+        uploads_dir = os.path.join(os.path.dirname(__file__), "static", "uploads")
+        os.makedirs(uploads_dir, exist_ok=True)
+        
+        timestamp = int(time.time() * 1000)
+        ext = os.path.splitext(image.filename)[1].lower() or ".jpg"
+        orig_filename = f"ct_orig_{timestamp}{ext}"
+        orig_path = os.path.join(uploads_dir, orig_filename)
+        with open(orig_path, "wb") as f_out:
+            f_out.write(contents)
+            
+        res["original_image"] = f"/static/uploads/{orig_filename}"
+        
+        # Save Grad-CAM overlay if present
+        if res.get("heatmap"):
+            try:
+                import base64
+                h_str = res["heatmap"]
+                if "," in h_str:
+                    h_str = h_str.split(",")[1]
+                gc_filename = f"ct_gradcam_{timestamp}.png"
+                gc_path = os.path.join(uploads_dir, gc_filename)
+                with open(gc_path, "wb") as gc_f:
+                    gc_f.write(base64.b64decode(h_str))
+                res["gradcam_image"] = f"/static/uploads/{gc_filename}"
+            except Exception as gc_err:
+                logger.error(f"Failed to save CT scan gradcam image: {gc_err}")
+                res["gradcam_image"] = res.get("heatmap")
+        else:
+            res["gradcam_image"] = None
+
+        return res
+    except Exception as e:
+        logger.error(f"CT scan prediction error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"CT scan inference computation failed: {str(e)}"
         )
 
 @app.post("/predict/batch", tags=["Inference"])
@@ -649,8 +700,36 @@ async def upload_patient_file(patient_id: str, file: UploadFile = File(...), ana
     force_xray = (analysis_type == "Chest X-Ray")
     force_report = (analysis_type == "Medical Report")
     force_cavity = (analysis_type == "Dental Cavity")
+    force_ct = (analysis_type in ["CT Scan", "Kidney Stone CT", "CT Scan (Kidney)"])
     
-    if force_cavity:
+    if force_ct:
+        if not is_image:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CT Scan analysis requires a JPEG or PNG image.")
+        try:
+            img = Image.open(local_path).convert("RGB")
+            ct_result = ct_engine.predict(img)
+            if ct_result.get("success"):
+                analysis_type = "CT Scan"
+                prediction = ct_result.get("prediction")
+                confidence = ct_result.get("confidence")
+                report_summary = f"{ct_result.get('severity')}. {ct_result.get('recommendation')}"
+                if ct_result.get("heatmap"):
+                    heatmap_filename = f"heatmap_ct_{local_filename}"
+                    heatmap_path = os.path.join(uploads_dir, heatmap_filename)
+                    import base64
+                    h_data_str = ct_result.get("heatmap")
+                    if "," in h_data_str:
+                        h_data_str = h_data_str.split(",")[1]
+                    h_data = base64.b64decode(h_data_str)
+                    with open(heatmap_path, "wb") as h_buffer:
+                        h_buffer.write(h_data)
+                    gradcam_path = f"/static/uploads/{heatmap_filename}"
+            else:
+                raise HTTPException(status_code=500, detail="CT scan model inference failed.")
+        except Exception as e:
+            logger.error(f"CT scan file analysis failed: {e}")
+            raise HTTPException(status_code=500, detail=f"CT scan model inference failed: {str(e)}")
+    elif force_cavity:
         if not is_image:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Dental Cavity analysis requires a JPEG or PNG image.")
         try:

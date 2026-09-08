@@ -5,16 +5,29 @@ venv/
 .venv/
 env/
 ENV/
+**/venv/
+**/.venv/
+**/env/
 frontend/node_modules/
 frontend/build/
 
 # ==========================================
-# Large Model Weights (.pth files)
+# Large Model Weights & Checkpoints (.pth, .pt, .onnx, etc.)
 # ==========================================
 *.pth
+*.pt
+*.onnx
+*.h5
+*.pkl
+*.joblib
+*.bin
 backend/*.pth
 backend/models/*.pth
 backend/pretrained/
+ct-scan-classifier/**/*.pth
+ct-scan-classifier/src/*.pth
+ct-scan-classifier/models/
+ct-scan-classifier/checkpoints/
 
 # ==========================================
 # Databases & Diagnostic Cache Data
@@ -35,7 +48,7 @@ backend/static/*
 !backend/static/.gitkeep
 
 # ==========================================
-# Datasets (Prevent uploading raw diagnostic images)
+# Datasets (Prevent uploading raw diagnostic images & large batches)
 # ==========================================
 datasets chestxray/
 datasets/
@@ -44,27 +57,39 @@ Cavity Dataset/
 dental dataset/
 "Cavity Dataset"/
 "datasets chestxray"/
+ct-scan-classifier/Data/
+ct-scan-classifier/data/
+**/Data/
+**/datasets/
 
 # ==========================================
 # Secrets and Credentials
 # ==========================================
 .env
 backend/.env
+ct-scan-classifier/.env
+**/.env
 
 # ==========================================
 # Python Compiler & Cache files
 # ==========================================
 __pycache__/
+**/__pycache__/
 *.pyc
 *.pyo
 *.pyd
 .pytest_cache/
+**/.pytest_cache/
 
 # ==========================================
-# TensorBoard training metrics
+# TensorBoard training metrics & logs
 # ==========================================
 runs/
 backend/runs/
+ct-scan-classifier/runs/
+ct-scan-classifier/logs/
+**/runs/
+**/logs/
 
 # ==========================================
 # Operating System & IDE Configs
@@ -73,3 +98,4 @@ backend/runs/
 .idea/
 .DS_Store
 Thumbs.db
+
