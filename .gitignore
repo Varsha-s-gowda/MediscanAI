@@ -12,10 +12,11 @@ frontend/node_modules/
 frontend/build/
 
 # ==========================================
-# Large Model Weights & Checkpoints (.pth, .pt, .onnx, etc.)
+# Large Model Weights & Checkpoints (.pth, .pt, .onnx, .ckpt, etc.)
 # ==========================================
 *.pth
 *.pt
+*.ckpt
 *.onnx
 *.h5
 *.pkl
@@ -28,6 +29,11 @@ ct-scan-classifier/**/*.pth
 ct-scan-classifier/src/*.pth
 ct-scan-classifier/models/
 ct-scan-classifier/checkpoints/
+brain_mri/**/*.pth
+brain_mri/**/*.pt
+brain_mri/**/*.ckpt
+brain_mri/models/
+brain_mri/checkpoints/
 
 # ==========================================
 # Databases & Diagnostic Cache Data
@@ -59,7 +65,11 @@ dental dataset/
 "datasets chestxray"/
 ct-scan-classifier/Data/
 ct-scan-classifier/data/
+brain_mri/data/
+brain_mri/data/**
 **/Data/
+**/data/raw/
+**/data/processed/
 **/datasets/
 
 # ==========================================
@@ -68,6 +78,7 @@ ct-scan-classifier/data/
 .env
 backend/.env
 ct-scan-classifier/.env
+brain_mri/.env
 **/.env
 
 # ==========================================
@@ -82,12 +93,20 @@ __pycache__/
 **/.pytest_cache/
 
 # ==========================================
+# Jupyter Notebook & Training Checkpoints
+# ==========================================
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# ==========================================
 # TensorBoard training metrics & logs
 # ==========================================
 runs/
 backend/runs/
 ct-scan-classifier/runs/
 ct-scan-classifier/logs/
+brain_mri/runs/
+brain_mri/logs/
 **/runs/
 **/logs/
 
@@ -98,4 +117,5 @@ ct-scan-classifier/logs/
 .idea/
 .DS_Store
 Thumbs.db
+
 

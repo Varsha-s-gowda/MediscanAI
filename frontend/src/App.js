@@ -49,7 +49,7 @@ function App() {
     setPublicResult(null);
 
     const formData = new FormData();
-    if (publicMode === "xray" || publicMode === "cavity" || publicMode === "ct_scan") {
+    if (publicMode === "xray" || publicMode === "cavity" || publicMode === "ct_scan" || publicMode === "mri") {
       formData.append("image", uploadFile);
     } else {
       formData.append("file", uploadFile);
@@ -60,6 +60,8 @@ function App() {
       endpoint = "/predict/cavity";
     } else if (publicMode === "ct_scan") {
       endpoint = "/predict/ct";
+    } else if (publicMode === "mri") {
+      endpoint = "/predict/mri";
     } else if (publicMode === "report") {
       endpoint = "/api/reports/analyze";
     }
@@ -297,23 +299,27 @@ function App() {
   };
 
   if (!token) {
-    if (publicMode === "xray" || publicMode === "report" || publicMode === "cavity" || publicMode === "ct_scan") {
+    if (publicMode === "xray" || publicMode === "report" || publicMode === "cavity" || publicMode === "ct_scan" || publicMode === "mri") {
       return (
         <div className="login-container" style={{ padding: "40px" }}>
           <div className="login-card" style={{ maxWidth: "800px", width: "100%" }}>
             <div className="logo-section">
               <div className="pulse-circle">
-                <Activity size={32} color={publicMode === "cavity" ? "#F59E0B" : publicMode === "ct_scan" ? "#8B5CF6" : "#10B981"} />
+                <Activity size={32} color={publicMode === "cavity" ? "#F59E0B" : publicMode === "ct_scan" ? "#8B5CF6" : publicMode === "mri" ? "#EC4899" : "#10B981"} />
               </div>
               <h2>
-                {publicMode === "cavity"
+                {publicMode === "mri"
+                  ? "Public Brain Tumor MRI Classifier"
+                  : publicMode === "cavity"
                   ? "Public Dental Cavity Detection"
                   : publicMode === "ct_scan"
                   ? "Public CT Scan Kidney Stone Classifier"
                   : "Public AI Diagnostic Analysis"}
               </h2>
               <p>
-                {publicMode === "xray"
+                {publicMode === "mri"
+                  ? "Upload a Brain MRI slice image for AI 4-class tumor classification (Glioma, Meningioma, Pituitary, or No Tumor)"
+                  : publicMode === "xray"
                   ? "Upload a Chest X-ray film for DenseNet121 multi-label prediction"
                   : publicMode === "cavity"
                   ? "Upload a dental intraoral photo or dental radiograph for AI caries lesion detection"
@@ -329,7 +335,7 @@ function App() {
                 <form onSubmit={handlePublicUpload} className="upload-form">
                   <label className="drag-area" style={{ minHeight: "220px" }}>
                     <Upload size={32} className="upload-icon" />
-                    <span>{uploadFile ? uploadFile.name : "Select or drag CT scan / diagnostic file here"}</span>
+                    <span>{uploadFile ? uploadFile.name : (publicMode === "mri" ? "Select or drag Brain MRI scan here" : "Select or drag diagnostic file here")}</span>
                     <span className="supported">Supported: JPEG, PNG</span>
                     <input
                       type="file"
@@ -346,7 +352,9 @@ function App() {
                       disabled={uploading}
                       style={{
                         width: "100%",
-                        background: publicMode === "cavity"
+                        background: publicMode === "mri"
+                          ? "linear-gradient(135deg, #EC4899, #BE185D)"
+                          : publicMode === "cavity"
                           ? "linear-gradient(135deg, #F59E0B, #D97706)"
                           : publicMode === "ct_scan"
                           ? "linear-gradient(135deg, #8B5CF6, #6D28D9)"
@@ -355,6 +363,8 @@ function App() {
                     >
                       {uploading
                         ? "Executing AI Engine..."
+                        : publicMode === "mri"
+                        ? "Detect Brain Tumor"
                         : publicMode === "cavity"
                         ? "Detect Dental Cavity"
                         : publicMode === "ct_scan"
@@ -379,7 +389,74 @@ function App() {
                     <h3 style={{ fontSize: "16px", fontWeight: "800" }}>Analysis Results</h3>
                   </div>
 
-                  {publicMode === "ct_scan" ? (
+                  {publicMode === "mri" ? (
+                    <div className="xray-diagnostic" style={{ gap: "16px" }}>
+                      <div className="metric-row" style={{ gap: "16px" }}>
+                        <div className="metric">
+                          <span className="label" style={{ fontSize: "10px" }}>Brain MRI Diagnosis</span>
+                          <span className="value" style={{ fontSize: "18px", color: publicResult.is_tumor ? "#EF4444" : "#10B981" }}>
+                            {publicResult.prediction}
+                          </span>
+                        </div>
+                        <div className="metric">
+                          <span className="label" style={{ fontSize: "10px" }}>Confidence</span>
+                          <span className="value" style={{ fontSize: "18px", color: "#EC4899" }}>{publicResult.confidence}%</span>
+                        </div>
+                      </div>
+
+                      {publicResult.class_probabilities && (
+                        <div style={{ background: "rgba(236, 72, 153, 0.08)", border: "1px solid rgba(236, 72, 153, 0.2)", borderRadius: "8px", padding: "10px 14px", marginTop: "12px" }}>
+                          <span style={{ fontSize: "10px", fontWeight: "700", textTransform: "uppercase", color: "#F472B6" }}>
+                            Class Probabilities Distribution:
+                          </span>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 12px", marginTop: "8px" }}>
+                            {Object.entries(publicResult.class_probabilities).map(([cls, prob]) => (
+                              <div key={cls} style={{ display: "flex", justifyContent: "space-between", fontSize: "11px" }}>
+                                <span style={{ color: "#E5E7EB", textTransform: "capitalize" }}>{cls === "notumor" ? "No Tumor" : cls}:</span>
+                                <strong style={{ color: cls === publicResult.raw_class ? "#EC4899" : "#9CA3AF" }}>{prob}%</strong>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {publicResult.recommendation && (
+                        <div style={{ background: "rgba(236, 72, 153, 0.1)", border: "1px solid rgba(236, 72, 153, 0.25)", borderRadius: "8px", padding: "10px 14px", marginTop: "12px" }}>
+                          <span style={{ fontSize: "10px", fontWeight: "700", textTransform: "uppercase", color: "#F472B6" }}>
+                            Clinical Guidance:
+                          </span>
+                          <p style={{ fontSize: "12px", color: "#F3F4F6", margin: "4px 0 0 0", lineHeight: "1.4" }}>
+                            {publicResult.recommendation}
+                          </p>
+                        </div>
+                      )}
+
+                      <div style={{ marginTop: "16px", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "16px" }}>
+                        <h4 style={{ fontSize: "13px", fontWeight: "700", marginBottom: "12px", color: "#F472B6", display: "flex", alignItems: "center", gap: "6px" }}>
+                          <Brain size={16} /> Explainable AI — Brain MRI Heatmap
+                        </h4>
+
+                        <div className="visuals-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                          <div className="img-holder">
+                            <span style={{ fontSize: "10px", color: "var(--muted)" }}>Original MRI Slice</span>
+                            <img
+                              src={publicResult.original_image ? `${API_BASE}${publicResult.original_image}` : (publicResult.heatmap ? publicResult.heatmap : "")}
+                              alt="Original Brain MRI"
+                              style={{ borderRadius: "8px", marginTop: "4px", width: "100%", border: "1px solid rgba(255,255,255,0.05)" }}
+                            />
+                          </div>
+                          <div className="img-holder">
+                            <span style={{ fontSize: "10px", color: "var(--muted)" }}>Grad-CAM Overlay</span>
+                            <img
+                              src={publicResult.gradcam_image ? `${API_BASE}${publicResult.gradcam_image}` : (publicResult.heatmap ? publicResult.heatmap : "")}
+                              alt="Grad-CAM Overlay"
+                              style={{ borderRadius: "8px", marginTop: "4px", width: "100%", border: "1px solid rgba(255,255,255,0.05)" }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : publicMode === "ct_scan" ? (
                     <div className="xray-diagnostic" style={{ gap: "16px" }}>
                       <div className="metric-row" style={{ gap: "16px" }}>
                         <div className="metric">
@@ -695,6 +772,19 @@ function App() {
                   Public CT Scan (Kidney)
                 </button>
                 <button
+                  onClick={() => { setPublicMode("mri"); setAuthError(""); }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#EC4899",
+                    fontSize: "12px",
+                    fontWeight: "700",
+                    cursor: "pointer"
+                  }}
+                >
+                  Public Brain MRI
+                </button>
+                <button
                   onClick={() => { setPublicMode("report"); setAuthError(""); }}
                   style={{
                     background: "none",
@@ -930,6 +1020,7 @@ function App() {
       if (analysisTypeFilter === "X-Ray") matchAnalysis = p.lastAnalysis && p.lastAnalysis.type === "X-Ray";
       else if (analysisTypeFilter === "Cavity") matchAnalysis = p.lastAnalysis && p.lastAnalysis.type === "Dental Cavity";
       else if (analysisTypeFilter === "CT Scan") matchAnalysis = p.lastAnalysis && p.lastAnalysis.type === "CT Scan";
+      else if (analysisTypeFilter === "MRI") matchAnalysis = p.lastAnalysis && (p.lastAnalysis.type === "Brain MRI" || p.lastAnalysis.type === "MRI");
       else if (analysisTypeFilter === "Report") matchAnalysis = p.lastAnalysis && p.lastAnalysis.type === "Report";
 
       return matchSearch && matchGender && matchAge && matchAnalysis;
@@ -965,6 +1056,7 @@ function App() {
       (timelineFilter === "X-Ray" && item.fileType === "Chest X-Ray") ||
       (timelineFilter === "Cavity" && item.fileType === "Dental Cavity") ||
       (timelineFilter === "CT Scan" && (item.fileType === "CT Scan" || item.fileType === "Kidney Stone CT")) ||
+      (timelineFilter === "MRI" && (item.fileType === "Brain MRI" || item.fileType === "MRI")) ||
       (timelineFilter === "Reports" && item.fileType === "Medical Report");
 
     return matchSearch && matchFilter;
@@ -1396,6 +1488,9 @@ function App() {
                     >
                       <option value="All">All Types</option>
                       <option value="X-Ray">Chest X-Ray</option>
+                      <option value="Cavity">Dental Cavity</option>
+                      <option value="CT Scan">CT Scan</option>
+                      <option value="MRI">Brain MRI</option>
                       <option value="Report">Lab Report</option>
                     </select>
                   </div>
@@ -1597,6 +1692,16 @@ function App() {
                 </button>
                 <button
                   className="primary-btn"
+                  style={{ background: "#EC4899", border: "none", color: "#fff" }}
+                  onClick={() => {
+                    setPublicMode("mri_patient"); // tab for Brain MRI upload
+                    document.getElementById("analyze-file-sec")?.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                >
+                  Analyze Brain MRI
+                </button>
+                <button
+                  className="primary-btn"
                   style={{ background: "var(--cyan)", border: "none", color: "#fff" }}
                   onClick={() => {
                     setPublicMode("xray"); // tab for Report upload
@@ -1777,6 +1882,13 @@ function App() {
                         CT Scan
                       </button>
                       <button
+                        className={`period-btn ${publicMode === "mri_patient" ? "active" : ""}`}
+                        style={{ padding: "4px 8px", fontSize: "11px", background: publicMode === "mri_patient" ? "#EC4899" : undefined, color: publicMode === "mri_patient" ? "#fff" : undefined }}
+                        onClick={() => { setPublicMode("mri_patient"); setUploadFile(null); }}
+                      >
+                        Brain MRI
+                      </button>
+                      <button
                         className={`period-btn ${publicMode === "xray" ? "active" : ""}`}
                         style={{ padding: "4px 8px", fontSize: "11px" }}
                         onClick={() => { setPublicMode("xray"); setUploadFile(null); }}
@@ -1792,13 +1904,15 @@ function App() {
                       ? "Upload a dental intraoral photo or radiograph for AI caries lesion detection."
                       : publicMode === "ct_patient"
                       ? "Upload an abdominal/pelvic CT scan slice for AI kidney stone detection."
+                      : publicMode === "mri_patient"
+                      ? "Upload a Brain MRI slice image for AI 4-class brain tumor classification (Glioma, Meningioma, Pituitary, Normal)."
                       : "Upload a structured medical/hematology laboratory report document (PNG/JPG/PDF)."}
                   </p>
 
                   <div className="upload-form">
                     <label className="drag-area">
                       <Upload size={32} className="upload-icon" />
-                      <span>{uploadFile ? uploadFile.name : "Select or drag file here"}</span>
+                      <span>{uploadFile ? uploadFile.name : (publicMode === "mri_patient" ? "Select or drag Brain MRI scan here" : "Select or drag file here")}</span>
                       <span className="supported">
                         {publicMode === "xray" ? "Supported: JPEG, PNG, PDF" : "Supported: JPEG, PNG"}
                       </span>
@@ -1827,6 +1941,8 @@ function App() {
                             ? "Dental Cavity"
                             : publicMode === "ct_patient"
                             ? "CT Scan"
+                            : publicMode === "mri_patient"
+                            ? "Brain MRI"
                             : "Medical Report";
                           try {
                             const res = await fetch(`${API_BASE}/api/patients/${selectedPatient.patientId}/files?analysis_type=${encodeURIComponent(chosenType)}`, {
@@ -1854,7 +1970,7 @@ function App() {
                       >
                         {uploading
                           ? "Executing AI Engine..."
-                          : `Analyze ${publicMode === "login" ? "X-Ray" : publicMode === "cavity_patient" ? "Cavity" : publicMode === "ct_patient" ? "CT Scan" : "Report"}`}
+                          : `Analyze ${publicMode === "login" ? "X-Ray" : publicMode === "cavity_patient" ? "Cavity" : publicMode === "ct_patient" ? "CT Scan" : publicMode === "mri_patient" ? "Brain MRI" : "Report"}`}
                       </button>
                     )}
                   </div>
@@ -1874,6 +1990,8 @@ function App() {
                             ? "rgba(245,158,11,0.15)"
                             : analysisResult.fileType === "CT Scan"
                             ? "rgba(139,92,246,0.15)"
+                            : analysisResult.fileType === "Brain MRI"
+                            ? "rgba(236,72,153,0.15)"
                             : "rgba(6,182,212,0.15)",
                           color: analysisResult.fileType === "Chest X-Ray"
                             ? "var(--warning)"
@@ -1881,6 +1999,8 @@ function App() {
                             ? "#F59E0B"
                             : analysisResult.fileType === "CT Scan"
                             ? "#8B5CF6"
+                            : analysisResult.fileType === "Brain MRI"
+                            ? "#EC4899"
                             : "var(--cyan)",
                           fontSize: "11px",
                           fontWeight: "700",
@@ -1917,7 +2037,63 @@ function App() {
                     </div>
 
                     <div style={{ flex: 1 }}>
-                      {analysisResult.fileType === "CT Scan" ? (
+                      {analysisResult.fileType === "Brain MRI" ? (
+                        <div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", marginBottom: "20px" }}>
+                            <div>
+                              <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Brain Tumor AI Prediction</span>
+                              <div style={{ fontSize: "20px", fontWeight: "800", color: (analysisResult.prediction?.toLowerCase().includes("normal") || analysisResult.prediction?.toLowerCase().includes("no tumor")) ? "#10B981" : "#EF4444", marginTop: "4px" }}>
+                                {analysisResult.prediction}
+                              </div>
+                            </div>
+                            <div>
+                              <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Model Confidence</span>
+                              <div style={{ fontSize: "20px", fontWeight: "800", color: "#EC4899", marginTop: "4px" }}>
+                                {analysisResult.confidence}%
+                              </div>
+                            </div>
+                          </div>
+
+                          {analysisResult.reportSummary && (
+                            <div style={{ background: "rgba(236, 72, 153, 0.08)", border: "1px solid rgba(236, 72, 153, 0.25)", borderRadius: "12px", padding: "12px 16px", marginBottom: "16px" }}>
+                              <h4 style={{ fontSize: "11px", fontWeight: "700", textTransform: "uppercase", color: "#F472B6", margin: "0 0 6px 0", letterSpacing: "0.05em" }}>Clinical Guidance</h4>
+                              <p style={{ fontSize: "13px", lineHeight: "1.5", color: "#fff", margin: 0 }}>{analysisResult.reportSummary}</p>
+                            </div>
+                          )}
+
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginTop: "16px" }}>
+                            <div>
+                              <h4 style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>Original Brain MRI Scan</h4>
+                              <div style={{ position: "relative", paddingBottom: "100%", background: "#000", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", overflow: "hidden" }}>
+                                <img
+                                  src={analysisResult.filePath.startsWith("http") ? analysisResult.filePath : `${API_BASE}${analysisResult.filePath}`}
+                                  alt="Original Brain MRI"
+                                  style={{ position: "absolute", width: "100%", height: "100%", objectFit: "contain" }}
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <h4 style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>Explainable AI Heatmap</h4>
+                              {analysisResult.gradcamPath ? (
+                                <div style={{ position: "relative", paddingBottom: "100%", background: "#000", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", overflow: "hidden" }}>
+                                  <img
+                                    src={analysisResult.gradcamPath.startsWith("http") ? analysisResult.gradcamPath : `${API_BASE}${analysisResult.gradcamPath}`}
+                                    alt="MRI heatmap"
+                                    style={{ position: "absolute", width: "100%", height: "100%", objectFit: "contain" }}
+                                  />
+                                </div>
+                              ) : (
+                                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", background: "rgba(0,0,0,0.1)" }}>
+                                  <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Heatmap overlay not generated.</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "12px", fontStyle: "italic", textAlign: "center" }}>
+                            "Grad-CAM highlighting identifies spatial intracranial activation features indicating neoplastic tissue characteristics."
+                          </p>
+                        </div>
+                      ) : analysisResult.fileType === "CT Scan" ? (
                         <div>
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", marginBottom: "20px" }}>
                             <div>
@@ -2181,22 +2357,22 @@ function App() {
                   {[...patientHistory].filter(h => compareIds.includes(h.analysisId)).map((item, cIdx) => (
                     <div key={item.analysisId || cIdx} style={{ background: "rgba(0,0,0,0.2)", borderRadius: "12px", padding: "16px", border: "1px solid rgba(255,255,255,0.05)" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px", borderBottom: "1px solid rgba(255,255,255,0.05)", paddingBottom: "8px" }}>
-                        <span style={{ fontSize: "11px", fontWeight: "700", textTransform: "uppercase", color: item.fileType === "Chest X-Ray" ? "var(--warning)" : item.fileType === "Dental Cavity" ? "#F59E0B" : item.fileType === "CT Scan" ? "#8B5CF6" : "var(--cyan)" }}>
-                          {item.fileType === "Chest X-Ray" ? "X-Ray" : item.fileType === "Dental Cavity" ? "Cavity" : item.fileType === "CT Scan" ? "CT Scan" : "Report"}
+                        <span style={{ fontSize: "11px", fontWeight: "700", textTransform: "uppercase", color: item.fileType === "Chest X-Ray" ? "var(--warning)" : item.fileType === "Dental Cavity" ? "#F59E0B" : item.fileType === "CT Scan" ? "#8B5CF6" : item.fileType === "Brain MRI" ? "#EC4899" : "var(--cyan)" }}>
+                          {item.fileType === "Chest X-Ray" ? "X-Ray" : item.fileType === "Dental Cavity" ? "Cavity" : item.fileType === "CT Scan" ? "CT Scan" : item.fileType === "Brain MRI" ? "Brain MRI" : "Report"}
                         </span>
                         <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{new Date(item.date).toLocaleDateString()}</span>
                       </div>
                       <h4 style={{ fontSize: "13px", color: "#fff", margin: "0 0 8px 0" }}>{item.fileName}</h4>
-                      {item.fileType === "CT Scan" || item.fileType === "Dental Cavity" || item.fileType === "Chest X-Ray" ? (
+                      {item.fileType === "CT Scan" || item.fileType === "Dental Cavity" || item.fileType === "Chest X-Ray" || item.fileType === "Brain MRI" ? (
                         <div>
                           <div style={{ display: "flex", gap: "16px", marginBottom: "12px" }}>
                             <div>
                               <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>Prediction</span>
-                              <div style={{ fontSize: "14px", fontWeight: "700", color: item.prediction?.includes("Stone") || item.prediction?.includes("Cavity") ? "#EF4444" : "#fff" }}>{item.prediction}</div>
+                              <div style={{ fontSize: "14px", fontWeight: "700", color: item.fileType === "Brain MRI" ? ((item.prediction?.toLowerCase().includes("normal") || item.prediction?.toLowerCase().includes("no tumor")) ? "#10B981" : "#EF4444") : item.prediction?.includes("Stone") || item.prediction?.includes("Cavity") ? "#EF4444" : "#fff" }}>{item.prediction}</div>
                             </div>
                             <div>
                               <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>Confidence</span>
-                              <div style={{ fontSize: "14px", fontWeight: "700", color: item.fileType === "CT Scan" ? "#8B5CF6" : item.fileType === "Dental Cavity" ? "#F59E0B" : "var(--warning)" }}>{item.confidence}%</div>
+                              <div style={{ fontSize: "14px", fontWeight: "700", color: item.fileType === "Brain MRI" ? "#EC4899" : item.fileType === "CT Scan" ? "#8B5CF6" : item.fileType === "Dental Cavity" ? "#F59E0B" : "var(--warning)" }}>{item.confidence}%</div>
                             </div>
                           </div>
                           <div style={{ position: "relative", paddingBottom: "100%", background: "#000", borderRadius: "8px", overflow: "hidden" }}>
@@ -2254,6 +2430,7 @@ function App() {
                     <option value="X-Ray">X-Ray Files</option>
                     <option value="Cavity">Dental Cavity</option>
                     <option value="CT Scan">CT Scan</option>
+                    <option value="MRI">Brain MRI</option>
                     <option value="Reports">Medical Reports</option>
                   </select>
 
@@ -2279,6 +2456,13 @@ function App() {
                       <>
                         <option value="Stone">Kidney Stone Detected</option>
                         <option value="Normal">Normal</option>
+                      </>
+                    ) : timelineFilter === "MRI" ? (
+                      <>
+                        <option value="Glioma">Glioma</option>
+                        <option value="Meningioma">Meningioma</option>
+                        <option value="Pituitary">Pituitary</option>
+                        <option value="Normal">Normal / No Tumor</option>
                       </>
                     ) : timelineFilter === "Reports" ? (
                       <>
@@ -2351,14 +2535,19 @@ function App() {
                             fontSize: "11px",
                             fontWeight: "700",
                             textTransform: "uppercase",
-                            color: item.fileType === "Chest X-Ray" ? "var(--warning)" : item.fileType === "Dental Cavity" ? "#F59E0B" : item.fileType === "CT Scan" ? "#8B5CF6" : "var(--cyan)"
+                            color: item.fileType === "Chest X-Ray" ? "var(--warning)" : item.fileType === "Dental Cavity" ? "#F59E0B" : item.fileType === "CT Scan" ? "#8B5CF6" : item.fileType === "Brain MRI" ? "#EC4899" : "var(--cyan)"
                           }}>
                             {item.fileType}
                           </span>
                           <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{new Date(item.date).toLocaleDateString()}</span>
                         </div>
                         <h4 style={{ fontSize: "14px", fontWeight: "600", color: "#fff", margin: "0 0 6px 0" }}>{item.fileName}</h4>
-                        {item.fileType === "CT Scan" ? (
+                        {item.fileType === "Brain MRI" ? (
+                          <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+                            Prediction: <strong style={{ color: (item.prediction?.toLowerCase().includes("normal") || item.prediction?.toLowerCase().includes("no tumor")) ? "#10B981" : "#EF4444" }}>{item.prediction}</strong> ({item.confidence}%)
+                            {item.gradcamPath && <span style={{ color: "#EC4899", marginLeft: "12px" }}>• Brain Heatmap Available</span>}
+                          </div>
+                        ) : item.fileType === "CT Scan" ? (
                           <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
                             Prediction: <strong style={{ color: item.prediction?.includes("Stone") ? "#EF4444" : "#10B981" }}>{item.prediction}</strong> ({item.confidence}%)
                             {item.gradcamPath && <span style={{ color: "#8B5CF6", marginLeft: "12px" }}>• CT Heatmap Available</span>}

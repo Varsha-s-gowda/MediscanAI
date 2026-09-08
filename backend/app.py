@@ -21,6 +21,7 @@ from ocr.extract_text import MedicalReportOCR
 from report_analysis.report_analyzer import MedicalReportAnalyzer
 from cavity_engine import CavityInferenceEngine
 from ct_engine import CTInferenceEngine
+from mri_engine import MRIInferenceEngine
 
 import database
 import report_analyzer
@@ -33,7 +34,7 @@ database.seed_default_doctor()
 # Initialize FastAPI App
 app = FastAPI(
     title="MediScan AI Engine",
-    description="Production-grade Chest X-Ray disease classifier and medical OCR parsing system.",
+    description="Production-grade Chest X-Ray, Dental Cavity, CT Scan, and Brain MRI disease classifier and medical OCR parsing system.",
     version=API_VERSION,
 )
 
@@ -54,6 +55,7 @@ app.add_middleware(
 inference_engine = InferenceEngine()
 cavity_engine = CavityInferenceEngine()
 ct_engine = CTInferenceEngine()
+mri_engine = MRIInferenceEngine()
 ocr_processor = MedicalReportOCR()
 
 # --------------------------------------------
@@ -340,6 +342,55 @@ async def predict_ct_scan(image: UploadFile = File(...)):
             detail=f"CT scan inference computation failed: {str(e)}"
         )
 
+@app.post("/predict/mri", tags=["Brain MRI Diagnostics"])
+@app.post("/predict/brain-mri", tags=["Brain MRI Diagnostics"])
+async def predict_brain_mri(image: UploadFile = File(...)):
+    validate_image_file(image)
+    contents = await image.read()
+    
+    try:
+        pil_img = Image.open(io.BytesIO(contents)).convert("RGB")
+        res = mri_engine.predict(pil_img)
+        
+        # Save images to static uploads for frontend retrieval
+        uploads_dir = os.path.join(os.path.dirname(__file__), "static", "uploads")
+        os.makedirs(uploads_dir, exist_ok=True)
+        
+        timestamp = int(time.time() * 1000)
+        ext = os.path.splitext(image.filename)[1].lower() or ".jpg"
+        orig_filename = f"mri_orig_{timestamp}{ext}"
+        orig_path = os.path.join(uploads_dir, orig_filename)
+        with open(orig_path, "wb") as f_out:
+            f_out.write(contents)
+            
+        res["original_image"] = f"/static/uploads/{orig_filename}"
+        
+        # Save Grad-CAM overlay if present
+        if res.get("heatmap"):
+            try:
+                import base64
+                h_str = res["heatmap"]
+                if "," in h_str:
+                    h_str = h_str.split(",")[1]
+                gc_filename = f"mri_gradcam_{timestamp}.png"
+                gc_path = os.path.join(uploads_dir, gc_filename)
+                with open(gc_path, "wb") as gc_f:
+                    gc_f.write(base64.b64decode(h_str))
+                res["gradcam_image"] = f"/static/uploads/{gc_filename}"
+            except Exception as gc_err:
+                logger.error(f"Failed to save MRI gradcam image: {gc_err}")
+                res["gradcam_image"] = res.get("heatmap")
+        else:
+            res["gradcam_image"] = None
+
+        return res
+    except Exception as e:
+        logger.error(f"Brain MRI prediction error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Brain MRI inference computation failed: {str(e)}"
+        )
+
 @app.post("/predict/batch", tags=["Inference"])
 async def predict_batch(files: List[UploadFile] = File(...)):
     results = []
@@ -483,6 +534,7 @@ async def get_patient_details(patient_id: str):
 def get_longitudinal_summary(history: list) -> dict:
     xrays = [h for h in history if h.get("analysisType") == "Chest X-Ray" or h.get("fileType") == "Chest X-Ray"]
     reports = [h for h in history if h.get("analysisType") == "Medical Report" or h.get("fileType") == "Medical Report"]
+    mris = [h for h in history if h.get("analysisType") in ["Brain MRI", "MRI"] or h.get("fileType") in ["Brain MRI", "MRI"]]
     
     # X-ray summary
     xray_part = None
@@ -494,6 +546,17 @@ def get_longitudinal_summary(history: list) -> dict:
                 xray_part = "Previous chest X-ray analyses were predicted as Normal."
             else:
                 xray_part = f"Previous chest X-ray analysis predicted {pred}."
+
+    # MRI summary
+    mri_part = None
+    if mris:
+        latest_mri = next((m for m in mris if m.get("prediction")), None)
+        if latest_mri:
+            pred_m = latest_mri.get("prediction")
+            if "normal" in str(pred_m).lower() or "no tumor" in str(pred_m).lower():
+                mri_part = "Recent Brain MRI indicates no focal intracranial tumor."
+            else:
+                mri_part = f"Recent Brain MRI identified {pred_m}."
                 
     # Report summary
     report_part = None
@@ -513,12 +576,9 @@ def get_longitudinal_summary(history: list) -> dict:
                     report_part = "Recent report analysis showed all laboratory values within reference ranges."
                     
     # Combine
-    if xray_part and report_part:
-        overall_summary = f"{xray_part} {report_part}"
-    elif xray_part:
-        overall_summary = f"{xray_part} No report findings are available yet."
-    elif report_part:
-        overall_summary = f"No chest X-ray findings are available yet. {report_part}"
+    summary_parts = [p for p in [xray_part, mri_part, report_part] if p]
+    if summary_parts:
+        overall_summary = " ".join(summary_parts)
     else:
         overall_summary = "No previous AI-assisted analysis is available."
         
@@ -527,7 +587,7 @@ def get_longitudinal_summary(history: list) -> dict:
     if history:
         last = history[0]
         ltype = last.get("analysisType") or last.get("fileType")
-        if ltype == "Chest X-Ray":
+        if ltype in ["Chest X-Ray", "Brain MRI", "Dental Cavity", "CT Scan"]:
             last_analysis_str = f"{last.get('prediction')} — {last.get('confidence')}%"
         else:
             last_analysis_str = "Report analyzed"
@@ -576,6 +636,7 @@ def get_longitudinal_summary(history: list) -> dict:
         "stats": {
             "total": len(history),
             "xrays": len(xrays),
+            "mris": len(mris),
             "reports": len(reports),
             "lastAnalysis": last_analysis_str,
             "xrayFindings": xray_findings,
@@ -649,6 +710,7 @@ async def get_dashboard_summary(period: str = "30d"):
         db_data = database.get_dashboard_data(period)
         db_data["system_health"] = {
             "xray_model": xray_online,
+            "mri_model": "Online",
             "validation": validation_status,
             "report_analysis": report_status,
             "database": db_status,
@@ -701,8 +763,36 @@ async def upload_patient_file(patient_id: str, file: UploadFile = File(...), ana
     force_report = (analysis_type == "Medical Report")
     force_cavity = (analysis_type == "Dental Cavity")
     force_ct = (analysis_type in ["CT Scan", "Kidney Stone CT", "CT Scan (Kidney)"])
+    force_mri = (analysis_type in ["Brain MRI", "Brain Tumor MRI", "MRI", "Brain Tumor", "MRI Scan"])
     
-    if force_ct:
+    if force_mri:
+        if not is_image:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Brain MRI analysis requires a JPEG or PNG image.")
+        try:
+            img = Image.open(local_path).convert("RGB")
+            mri_result = mri_engine.predict(img)
+            if mri_result.get("success"):
+                analysis_type = "Brain MRI"
+                prediction = mri_result.get("prediction")
+                confidence = mri_result.get("confidence")
+                report_summary = f"{mri_result.get('severity')}. {mri_result.get('recommendation')}"
+                if mri_result.get("heatmap"):
+                    heatmap_filename = f"heatmap_mri_{local_filename}"
+                    heatmap_path = os.path.join(uploads_dir, heatmap_filename)
+                    import base64
+                    h_data_str = mri_result.get("heatmap")
+                    if "," in h_data_str:
+                        h_data_str = h_data_str.split(",")[1]
+                    h_data = base64.b64decode(h_data_str)
+                    with open(heatmap_path, "wb") as h_buffer:
+                        h_buffer.write(h_data)
+                    gradcam_path = f"/static/uploads/{heatmap_filename}"
+            else:
+                raise HTTPException(status_code=500, detail="Brain MRI model inference failed.")
+        except Exception as e:
+            logger.error(f"Brain MRI file analysis failed: {e}")
+            raise HTTPException(status_code=500, detail=f"Brain MRI model inference failed: {str(e)}")
+    elif force_ct:
         if not is_image:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CT Scan analysis requires a JPEG or PNG image.")
         try:
@@ -921,8 +1011,9 @@ async def archive_patient_endpoint(patient_id: str):
 
 # Mount static folder for uploads serving
 from fastapi.staticfiles import StaticFiles
-os.makedirs(os.path.join(os.path.dirname(__file__), "static"), exist_ok=True)
-app.mount("/static", StaticFiles(directory="static"), name="static")
+static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+os.makedirs(static_dir, exist_ok=True)
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 if __name__ == "__main__":
     import uvicorn

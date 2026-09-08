@@ -14,6 +14,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'backend
 # Modular imports
 from model import MediScanModel
 from dataset import get_dataloaders
+# pyrefly: ignore [missing-import]
 from device import get_device
 from logger import get_logger, log_timing
 from constants import DISEASE_CLASSES
