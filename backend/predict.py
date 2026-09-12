@@ -607,17 +607,7 @@ class InferenceEngine:
         # Sort predictions by confidence
         predictions_list = sorted(predictions_list, key=lambda x: x["confidence"], reverse=True)
 
-        # Grad-CAM heatmap generation for top prediction (if any)
-        heatmap_b64 = ""
-        overlay_b64 = ""
-        
-        if len(predictions_list) > 0 and not DISABLE_GRADCAM:
-            top_class = predictions_list[0]["disease"]
-            heatmap_b64, overlay_b64 = self._generate_gradcam_safe(image, top_class)
-        elif DISABLE_GRADCAM:
-            logger.info("Grad-CAM generation is disabled to optimize memory footprint.")
-
-        # If no diseases detected, return Normal
+        # If no diseases detected above threshold, return Normal
         if len(predictions_list) == 0:
             normal_info = DISEASE_INFO.get("Normal")
             predictions_list.append({
@@ -629,6 +619,16 @@ class InferenceEngine:
                 "precautions": normal_info["precautions"],
                 "follow_up": normal_info["follow_up"]
             })
+
+        # Grad-CAM heatmap generation for top prediction
+        heatmap_b64 = ""
+        overlay_b64 = ""
+        
+        if len(predictions_list) > 0 and not DISABLE_GRADCAM:
+            top_class = predictions_list[0]["disease"]
+            heatmap_b64, overlay_b64 = self._generate_gradcam_safe(image, top_class)
+        elif DISABLE_GRADCAM:
+            logger.info("Grad-CAM generation is disabled to optimize memory footprint.")
 
         processing_time = time.time() - start_time
         

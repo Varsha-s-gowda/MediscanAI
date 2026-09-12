@@ -4,7 +4,6 @@ import {
   Activity,
   ShieldAlert,
   ArrowRight,
-  Info,
   Search,
   Plus,
   User,
@@ -19,7 +18,8 @@ import {
   Mail,
   Zap,
   Check,
-  HelpCircle
+  HelpCircle,
+  AlertTriangle
 } from "lucide-react";
 import "./App.css";
 import PostAnalysisWorkflow from "./components/PostAnalysisWorkflow";
@@ -61,11 +61,20 @@ function App() {
   const [uploading, setUploading] = useState(false);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [toastMsg, setToastMsg] = useState("");
+  const [uploadError, setUploadError] = useState("");
+
+  const showToast = (msg) => {
+    setToastMsg(msg);
+    setTimeout(() => {
+      setToastMsg("");
+    }, 5000);
+  };
 
   const handlePublicUpload = async (e) => {
     e.preventDefault();
     if (!uploadFile) return;
     setUploading(true);
+    setUploadError("");
     setPublicResult(null);
 
     const formData = new FormData();
@@ -93,6 +102,15 @@ function App() {
       });
       if (res.ok) {
         const data = await res.json();
+        if (data.is_valid === false || data.success === false || data.prediction === "Invalid Medical Image" || data.prediction?.toLowerCase().includes("invalid")) {
+          const errMsg = data.error || data.detail || "Invalid image detected: Please upload an authentic medical radiograph or scan.";
+          setUploadError(errMsg);
+          showToast(errMsg);
+          setPublicResult(null);
+          setUploadFile(null);
+          return;
+        }
+
         const modalityName = publicMode === "mri"
           ? "Brain MRI"
           : publicMode === "cavity"
@@ -113,29 +131,31 @@ function App() {
 
         setPublicResult(enriched);
 
-        // Persist to public history if image modality
-        if (publicMode !== "report") {
-          setPublicHistory(prev => {
-            const reportId = enriched.report_id || enriched.post_analysis?.report_id || `MED-${Date.now()}`;
-            enriched.report_id = reportId;
-            const updated = [enriched, ...prev.filter(item => (item.report_id || item.analysisId) !== reportId)].slice(0, 50);
-            try {
-              localStorage.setItem("mediscan_public_history", JSON.stringify(updated));
-            } catch (e) {
-              console.warn("Could not save to localStorage:", e);
-            }
-            return updated;
-          });
-        }
+        // Persist to public history
+        setPublicHistory(prev => {
+          const reportId = enriched.report_id || enriched.post_analysis?.report_id || `MED-${Date.now()}`;
+          enriched.report_id = reportId;
+          const updated = [enriched, ...prev.filter(item => (item.report_id || item.analysisId) !== reportId)].slice(0, 50);
+          try {
+            localStorage.setItem("mediscan_public_history", JSON.stringify(updated));
+          } catch (e) {
+            console.warn("Could not save to localStorage:", e);
+          }
+          return updated;
+        });
 
         showToast("AI analysis completed successfully.");
         setUploadFile(null);
       } else {
         const err = await res.json();
-        showToast(err.detail || "Analysis failed.");
+        const errMsg = err.detail || err.error || "Analysis failed.";
+        setUploadError(errMsg);
+        showToast(errMsg);
       }
     } catch (err) {
-      showToast("Connection failed.");
+      const errMsg = "Connection to AI server failed. Please ensure the backend is running.";
+      setUploadError(errMsg);
+      showToast(errMsg);
     } finally {
       setUploading(false);
     }
@@ -237,11 +257,6 @@ function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, period]);
-
-  const showToast = (msg) => {
-    setToastMsg(msg);
-    setTimeout(() => setToastMsg(""), 3500);
-  };
 
   const handleRegister = async (e) => {
     e.preventDefault();
@@ -353,57 +368,44 @@ function App() {
   };
 
   if (!token) {
-    if (publicResult && publicMode !== "report") {
+    if (publicResult) {
       return (
-        <div className="login-container" style={{ padding: "40px 20px", alignItems: "flex-start" }}>
-          <div className="login-card" style={{ maxWidth: "1100px", width: "100%", padding: "28px" }}>
-            <PostAnalysisWorkflow
-              result={publicResult}
-              modality={publicResult.modality || (
-                publicMode === "mri" ? "Brain MRI" :
-                  publicMode === "cavity" ? "Dental X-Ray" :
-                    publicMode === "ct_scan" ? "Kidney Stone CT" : "Chest X-Ray"
-              )}
-              apiBase={API_BASE}
-              historyList={publicHistory}
-              onSelectHistory={(item) => setPublicResult(item)}
-              onClearHistory={() => {
-                if (window.confirm("Clear all public analysis history?")) {
-                  setPublicHistory([]);
-                  localStorage.removeItem("mediscan_public_history");
-                }
-              }}
-              onDeleteHistoryItem={(id) => {
-                setPublicHistory(prev => {
-                  const filtered = prev.filter(h => (h.report_id || h.analysisId) !== id);
-                  localStorage.setItem("mediscan_public_history", JSON.stringify(filtered));
-                  return filtered;
-                });
-              }}
-              onBackToUpload={() => {
-                setPublicResult(null);
-                setUploadFile(null);
-              }}
-            />
-
-            <div style={{ textAlign: "center", marginTop: "24px", borderTop: "1px solid var(--border-color)", paddingTop: "16px" }}>
-              <button
-                onClick={() => { setPublicMode("login"); setPublicResult(null); setUploadFile(null); }}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "var(--accent)",
-                  fontSize: "13px",
-                  fontWeight: "600",
-                  cursor: "pointer",
-                  textDecoration: "underline"
-                }}
-              >
-                Back to Portal Login
-              </button>
-            </div>
-          </div>
-        </div>
+        <PostAnalysisWorkflow
+          result={publicResult}
+          modality={publicResult.modality || (
+            publicMode === "mri" ? "Brain MRI" :
+              publicMode === "cavity" ? "Dental X-Ray" :
+                publicMode === "ct_scan" ? "Kidney Stone CT" :
+                  publicMode === "report" ? "Medical Report" : "Chest X-Ray"
+          )}
+          apiBase={API_BASE}
+          historyList={publicHistory}
+          onSelectHistory={(item) => setPublicResult(item)}
+          onClearHistory={() => {
+            if (window.confirm("Clear all public analysis history?")) {
+              setPublicHistory([]);
+              localStorage.removeItem("mediscan_public_history");
+            }
+          }}
+          onDeleteHistoryItem={(id) => {
+            setPublicHistory(prev => {
+              const filtered = prev.filter(h => (h.report_id || h.analysisId) !== id);
+              localStorage.setItem("mediscan_public_history", JSON.stringify(filtered));
+              return filtered;
+            });
+          }}
+          onBackToUpload={() => {
+            setPublicResult(null);
+            setUploadFile(null);
+          }}
+          publicMode={publicMode}
+          setPublicMode={setPublicMode}
+          onBackToLogin={() => {
+            setPublicMode("login");
+            setPublicResult(null);
+            setUploadFile(null);
+          }}
+        />
       );
     }
 
@@ -448,6 +450,7 @@ function App() {
                         if (modLower.includes("cavity") || modLower.includes("dental")) setPublicMode("cavity");
                         else if (modLower.includes("ct") || modLower.includes("kidney") || modLower.includes("stone")) setPublicMode("ct_scan");
                         else if (modLower.includes("mri") || modLower.includes("brain")) setPublicMode("mri");
+                        else if (modLower.includes("report") || modLower.includes("lab")) setPublicMode("report");
                         else setPublicMode("xray");
                       }}
                     >
@@ -530,204 +533,563 @@ function App() {
 
     if (publicMode === "xray" || publicMode === "report" || publicMode === "cavity" || publicMode === "ct_scan" || publicMode === "mri") {
       return (
-        <div className="login-container" style={{ padding: "40px 20px" }}>
-          <div className="login-card" style={{ maxWidth: "800px", width: "100%" }}>
-            {/* Quick Switcher Module Tabs */}
-            <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "12px", marginBottom: "16px", borderBottom: "1px solid var(--border-color)" }}>
+        <div className="studio-preupload-workspace">
+          {/* Top Navbar */}
+          <header className="studio-nav-bar">
+            <div className="results-nav-left">
+              <div className="results-nav-brand">
+                <div className="results-brand-orb">
+                  <Sparkles size={18} color="#2DD4BF" />
+                </div>
+                <div>
+                  <div className="results-brand-title">
+                    MediScan<span className="ai-dot">.AI</span> <span style={{ fontSize: "11px", color: "#64748B", fontWeight: "600" }}>v2.8</span>
+                  </div>
+                  <div className="results-brand-subtitle">CLINICAL RADIOGRAPHIC STUDIO</div>
+                </div>
+              </div>
+
+              <div className="results-system-badge">
+                <span className="glowing-green-dot"></span>
+                NEURAL ENGINE ONLINE
+              </div>
+
+              <div className="results-hipaa-badge">
+                DICOM 3.0 PACS READY
+              </div>
+            </div>
+
+            {/* Center Modality Tabs */}
+            <div className="results-modality-tabs">
               <button
-                className={`period-btn ${publicMode === "xray" ? "active" : ""}`}
-                style={{ padding: "5px 12px", fontSize: "11px" }}
-                onClick={() => { setPublicMode("xray"); setUploadFile(null); setPublicResult(null); }}
+                className={`results-mod-tab ${publicMode === "xray" ? "active" : ""}`}
+                onClick={() => { setPublicMode("xray"); setUploadFile(null); setPublicResult(null); setUploadError(""); }}
               >
                 Chest X-Ray
               </button>
               <button
-                className={`period-btn ${publicMode === "cavity" ? "active" : ""}`}
-                style={{ padding: "5px 12px", fontSize: "11px" }}
-                onClick={() => { setPublicMode("cavity"); setUploadFile(null); setPublicResult(null); }}
+                className={`results-mod-tab ${publicMode === "cavity" ? "active" : ""}`}
+                onClick={() => { setPublicMode("cavity"); setUploadFile(null); setPublicResult(null); setUploadError(""); }}
               >
                 Dental Cavity
               </button>
               <button
-                className={`period-btn ${publicMode === "ct_scan" ? "active" : ""}`}
-                style={{ padding: "5px 12px", fontSize: "11px" }}
-                onClick={() => { setPublicMode("ct_scan"); setUploadFile(null); setPublicResult(null); }}
+                className={`results-mod-tab ${publicMode === "ct_scan" ? "active" : ""}`}
+                onClick={() => { setPublicMode("ct_scan"); setUploadFile(null); setPublicResult(null); setUploadError(""); }}
               >
                 CT Kidney Stone
               </button>
               <button
-                className={`period-btn ${publicMode === "mri" ? "active" : ""}`}
-                style={{ padding: "5px 12px", fontSize: "11px" }}
-                onClick={() => { setPublicMode("mri"); setUploadFile(null); setPublicResult(null); }}
+                className={`results-mod-tab ${publicMode === "mri" ? "active" : ""}`}
+                onClick={() => { setPublicMode("mri"); setUploadFile(null); setPublicResult(null); setUploadError(""); }}
               >
                 Brain MRI
               </button>
               <button
-                className={`period-btn ${publicMode === "report" ? "active" : ""}`}
-                style={{ padding: "5px 12px", fontSize: "11px" }}
-                onClick={() => { setPublicMode("report"); setUploadFile(null); setPublicResult(null); }}
+                className={`results-mod-tab ${publicMode === "report" ? "active" : ""}`}
+                onClick={() => { setPublicMode("report"); setUploadFile(null); setPublicResult(null); setUploadError(""); }}
               >
                 Lab Report
               </button>
               <button
-                className="period-btn"
-                style={{ padding: "5px 12px", fontSize: "11px", marginLeft: "auto", color: "var(--accent)" }}
-                onClick={() => { setPublicMode("history"); }}
+                className="results-mod-tab history-tab"
+                onClick={() => { setPublicMode("history"); setUploadError(""); }}
               >
-                History ({publicHistory.length})
+                History <span className="tab-count-badge">{publicHistory.length || 0}</span>
               </button>
             </div>
 
-            <div className="logo-section">
-              <div className="pulse-circle">
-                <Activity size={32} color={publicMode === "cavity" ? "#F59E0B" : publicMode === "ct_scan" ? "#8B5CF6" : publicMode === "mri" ? "#EC4899" : "#10B981"} />
+            {/* Right Action */}
+            <div className="results-nav-right">
+              <button
+                className="studio-portal-btn"
+                onClick={() => { setPublicMode("login"); setUploadFile(null); setPublicResult(null); setUploadError(""); }}
+              >
+                Portal Login
+              </button>
+
+              <div className="studio-audit-badge">
+                AUDIT ID: #MED-8910
               </div>
-              <h2>
-                {publicMode === "mri"
-                  ? "Public Brain Tumor MRI Classifier"
-                  : publicMode === "cavity"
-                    ? "Public Dental Cavity Detection"
-                    : publicMode === "ct_scan"
-                      ? "Public CT Scan Kidney Stone Classifier"
-                      : publicMode === "report"
-                        ? "Public Medical Report Analyzer"
-                        : "Public Chest X-Ray AI Analysis"}
-              </h2>
-              <p>
-                {publicMode === "mri"
-                  ? "Upload a Brain MRI slice image for AI 4-class tumor classification (Glioma, Meningioma, Pituitary, or No Tumor)"
+            </div>
+          </header>
+
+          {/* Workflow Stepper */}
+          <div className="studio-stepper-container">
+            <div className="results-stepper-track">
+              {publicMode === "cavity" ? (
+                <>
+                  <div className="stepper-node active">
+                    <div className="stepper-circle">1</div>
+                    <span className="stepper-label">Upload Radiograph</span>
+                  </div>
+                  <div className="stepper-connector" />
+                  <div className="stepper-node">
+                    <div className="stepper-circle">2</div>
+                    <span className="stepper-label">Preprocessing & Contrast</span>
+                  </div>
+                  <div className="stepper-connector" />
+                  <div className="stepper-node">
+                    <div className="stepper-circle">3</div>
+                    <span className="stepper-label">Caries & Demineralization Map</span>
+                  </div>
+                  <div className="stepper-connector" />
+                  <div className="stepper-node">
+                    <div className="stepper-circle">4</div>
+                    <span className="stepper-label">ICDAS Grade Assessment</span>
+                  </div>
+                  <div className="stepper-connector" />
+                  <div className="stepper-node">
+                    <div className="stepper-circle">5</div>
+                    <span className="stepper-label">Clinical Report Export</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="stepper-node active">
+                    <div className="stepper-circle">1</div>
+                    <span className="stepper-label">Upload Scan</span>
+                  </div>
+                  <div className="stepper-connector" />
+                  <div className="stepper-node">
+                    <div className="stepper-circle">2</div>
+                    <span className="stepper-label">AI Prediction</span>
+                  </div>
+                  <div className="stepper-connector" />
+                  <div className="stepper-node">
+                    <div className="stepper-circle">3</div>
+                    <span className="stepper-label">Explanation</span>
+                  </div>
+                  <div className="stepper-connector" />
+                  <div className="stepper-node">
+                    <div className="stepper-circle">4</div>
+                    <span className="stepper-label">Severity</span>
+                  </div>
+                  <div className="stepper-connector" />
+                  <div className="stepper-node">
+                    <div className="stepper-circle">5</div>
+                    <span className="stepper-label">Action Plan</span>
+                  </div>
+                  <div className="stepper-connector" />
+                  <div className="stepper-node">
+                    <div className="stepper-circle">6</div>
+                    <span className="stepper-label">Report</span>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Main Studio Content */}
+          <main className="studio-main-content">
+            {/* Header Block */}
+            <div className="studio-header-block">
+              <div className="studio-engine-pill">
+                <span className="cyan-dot">●</span>
+                PUBLIC DIAGNOSTIC ENGINE
+              </div>
+
+              <h1 className="studio-main-title">
+                {publicMode === "cavity"
+                  ? "Dental Cavity & Caries AI Detection"
                   : publicMode === "xray"
-                    ? "Upload a Chest X-ray film for DenseNet121 multi-label prediction"
-                    : publicMode === "cavity"
-                      ? "Upload a dental intraoral photo or dental radiograph for AI caries lesion detection"
-                      : publicMode === "ct_scan"
-                        ? "Upload an abdominal/pelvic CT scan slice for AI kidney stone detection"
-                        : "Upload a lab/medical report image for parsing and summary extraction"}
+                    ? "Chest Radiograph AI Thoracic Analysis"
+                    : publicMode === "ct_scan"
+                      ? "Abdominal CT Kidney Stone AI Detection"
+                      : publicMode === "mri"
+                        ? "Brain MRI Neural Tumor Classifier"
+                        : "Diagnostic Medical Lab Report Analyzer"}
+              </h1>
+
+              <p className="studio-main-sub">
+                {publicMode === "cavity"
+                  ? "Upload bitewing, periapical, panoramic radiographs, or intraoral photos for automated enamel breakdown, demineralization, and early caries screening."
+                  : publicMode === "xray"
+                    ? "Upload posteroanterior (PA) or anteroposterior (AP) chest radiographs for multi-label pneumonia, effusion, and cardiomegaly screening."
+                    : publicMode === "ct_scan"
+                      ? "Upload unenhanced helical CT cross-section slices for automated renal calculi sizing and urolithiasis classification."
+                      : publicMode === "mri"
+                        ? "Upload brain MRI scans for AI multi-class neoplasm classification (Glioma, Meningioma, Pituitary, or Normal)."
+                        : "Upload laboratory test sheets, hematology panels, or metabolic profiles for automated OCR biomarker parsing."}
               </p>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: publicResult && publicMode === "report" ? "1fr 1fr" : "1fr", gap: "24px", alignItems: "start" }}>
-              {/* Upload Form */}
-              <div>
-                <form onSubmit={handlePublicUpload} className="upload-form">
-                  <label className="drag-area" style={{ minHeight: "220px" }}>
-                    <Upload size={32} className="upload-icon" />
-                    <span>
-                      {uploadFile
-                        ? uploadFile.name
-                        : publicMode === "mri"
-                          ? "Select or drag Brain MRI scan here"
-                          : publicMode === "cavity"
-                            ? "Select or drag Dental X-ray / photo here"
-                            : publicMode === "ct_scan"
-                              ? "Select or drag CT scan slice here"
-                              : "Select or drag diagnostic file here"}
-                    </span>
-                    <span className="supported">Supported: JPEG, PNG {publicMode === "report" && ", PDF"}</span>
-                    <input
-                      type="file"
-                      required
-                      style={{ display: "none" }}
-                      onChange={(e) => setUploadFile(e.target.files[0])}
-                    />
-                  </label>
-
-                  {uploadFile && (
-                    <button
-                      type="submit"
-                      className={`submit-btn ${uploading ? "disabled" : ""}`}
-                      disabled={uploading}
-                      style={{
-                        width: "100%",
-                        background: publicMode === "mri"
-                          ? "linear-gradient(135deg, #EC4899, #BE185D)"
-                          : publicMode === "cavity"
-                            ? "linear-gradient(135deg, #F59E0B, #D97706)"
-                            : publicMode === "ct_scan"
-                              ? "linear-gradient(135deg, #8B5CF6, #6D28D9)"
-                              : undefined
-                      }}
-                    >
-                      {uploading
-                        ? "Executing AI Engine..."
-                        : publicMode === "mri"
-                          ? "Detect Brain Tumor"
-                          : publicMode === "cavity"
-                            ? "Detect Dental Cavity"
-                            : publicMode === "ct_scan"
-                              ? "Detect Kidney Stone"
-                              : publicMode === "report"
-                                ? "Analyze Lab Report"
-                                : "Analyze Chest X-Ray"}
-                    </button>
-                  )}
-                </form>
-
-                <div className="disclaimer-alert" style={{ marginTop: "24px" }}>
-                  <Info size={18} style={{ color: "var(--warning)" }} />
-                  <p style={{ fontSize: "12px", color: "var(--warning)", lineHeight: "1.5" }}>
-                    AI-generated results are for informational and decision-support purposes only and should not be considered a medical diagnosis. Please consult a qualified healthcare professional.
-                  </p>
+            {uploadError && (
+              <div style={{
+                background: "rgba(239, 68, 68, 0.12)",
+                border: "1px solid rgba(239, 68, 68, 0.4)",
+                borderRadius: "10px",
+                padding: "16px 20px",
+                marginBottom: "24px",
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "14px",
+                color: "#FCA5A5",
+                boxShadow: "0 4px 20px rgba(239, 68, 68, 0.15)"
+              }}>
+                <AlertTriangle size={22} color="#EF4444" style={{ flexShrink: 0, marginTop: "2px" }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: "700", color: "#EF4444", fontSize: "14px", marginBottom: "4px", letterSpacing: "0.3px" }}>
+                    INVALID MEDICAL IMAGE DETECTED
+                  </div>
+                  <div style={{ fontSize: "13px", lineHeight: "1.5", color: "#FEE2E2" }}>
+                    {uploadError}
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setUploadError("")}
+                  style={{ background: "none", border: "none", color: "#EF4444", cursor: "pointer", fontSize: "18px", fontWeight: "700", padding: "0 4px" }}
+                  title="Dismiss alert"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
+            {/* Central Drag & Drop Viewport */}
+            <form onSubmit={handlePublicUpload} className="studio-upload-viewport">
+              <div className="viewport-corner tl" />
+              <div className="viewport-corner tr" />
+              <div className="viewport-corner bl" />
+              <div className="viewport-corner br" />
+
+              <div className="upload-icon-circle">
+                <Upload size={30} />
               </div>
 
-              {/* Lab Report Output (if report mode) */}
-              {publicResult && publicMode === "report" && (
-                <div className="analysis-result-card" style={{ background: "rgba(0, 0, 0, 0.2)", border: "none", padding: "20px" }}>
-                  <div className="header" style={{ marginBottom: "16px", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-                    <h3 style={{ fontSize: "16px", fontWeight: "800" }}>Report Analysis Results</h3>
+              <div className="upload-prompt-primary">
+                {publicMode === "cavity"
+                  ? "Select or drag Dental X-ray / intraoral photo here"
+                  : publicMode === "xray"
+                    ? "Select or drag Chest X-Ray scan here"
+                    : publicMode === "ct_scan"
+                      ? "Select or drag CT scan slice here"
+                      : publicMode === "mri"
+                        ? "Select or drag Brain MRI scan here"
+                        : "Select or drag Medical Report image or PDF here"}
+              </div>
+
+              <p className="upload-prompt-sub">
+                Drag files directly into this viewport. Automated radiograph orientation and quality normalization applied on ingest.
+              </p>
+
+              <input
+                type="file"
+                id="studio-file-upload"
+                style={{ display: "none" }}
+                required={!uploadFile}
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    setUploadFile(e.target.files[0]);
+                  }
+                }}
+              />
+
+              {!uploadFile ? (
+                <label htmlFor="studio-file-upload" className="studio-browse-btn">
+                  <Upload size={15} />
+                  <span>Browse Local Files</span>
+                </label>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px", marginBottom: "18px" }}>
+                  <div className="selected-file-banner">
+                    <span style={{ fontWeight: "700", color: "#2DD4BF" }}>Selected File:</span>
+                    <span>{uploadFile.name} ({(uploadFile.size / 1024).toFixed(1)} KB)</span>
+                    <button
+                      type="button"
+                      onClick={() => setUploadFile(null)}
+                      style={{ background: "none", border: "none", color: "#EF4444", cursor: "pointer", marginLeft: "8px", fontWeight: "700" }}
+                    >
+                      ✕ Remove
+                    </button>
                   </div>
-                  <div className="report-diagnostic" style={{ gap: "16px" }}>
-                    <table className="lab-table">
-                      <thead>
-                        <tr>
-                          <th style={{ fontSize: "10px" }}>Metric</th>
-                          <th style={{ fontSize: "10px" }}>Value</th>
-                          <th style={{ fontSize: "10px" }}>Range</th>
-                          <th style={{ fontSize: "10px" }}>Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {publicResult.reportFindings && publicResult.reportFindings.map((f, idx) => (
-                          <tr key={idx} className={f.status !== "Normal" ? "abnormal-row" : ""}>
-                            <td style={{ fontSize: "12px" }}>{f.test_name}</td>
-                            <td style={{ fontSize: "12px" }}>{f.value} {f.unit}</td>
-                            <td style={{ fontSize: "12px" }}>{f.reference_text || f.reference || "Reference range not provided"}</td>
-                            <td>
-                              <span className={`status-badge ${f.status.toLowerCase()}`} style={{ fontSize: "9px" }}>
-                                {f.status}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <div className="summary-block" style={{ padding: "14px" }}>
-                      <h4 style={{ fontSize: "12px" }}>AI Summary</h4>
-                      <p style={{ fontSize: "12px" }}>{publicResult.reportSummary}</p>
-                    </div>
-                  </div>
+
+                  <button
+                    type="submit"
+                    className="studio-run-btn"
+                    disabled={uploading}
+                  >
+                    {uploading ? (
+                      "Executing AI Engine..."
+                    ) : (
+                      <>
+                        <span>
+                          {publicMode === "cavity"
+                            ? "Run AI Cavity Detection"
+                            : publicMode === "xray"
+                              ? "Analyze Chest X-Ray"
+                              : publicMode === "ct_scan"
+                                ? "Detect Kidney Stone"
+                                : publicMode === "mri"
+                                  ? "Detect Brain Tumor"
+                                  : "Analyze Lab Report"}
+                        </span>
+                        <ArrowRight size={15} />
+                      </>
+                    )}
+                  </button>
                 </div>
               )}
+
+              {/* Format Badges Row */}
+              <div className="studio-badges-row">
+                <span className="format-pill">DICOM (.dcm)</span>
+                <span className="format-pill">JPEG, PNG, TIFF (Up to 60MB)</span>
+                <span className="format-pill highlight-teal">
+                  {publicMode === "cavity"
+                    ? "Bitewing • Periapical • OPG"
+                    : publicMode === "xray"
+                      ? "PA • AP • Lateral"
+                      : publicMode === "ct_scan"
+                        ? "Axial • Coronal Helical"
+                        : publicMode === "mri"
+                          ? "T1+C • T2/FLAIR • DWI"
+                          : "Hematology • Panels • PDF"}
+                </span>
+              </div>
+            </form>
+
+            {/* Benchmarks Section */}
+            <div className="studio-benchmarks-card">
+              <div className="benchmarks-header">
+                <div className="benchmarks-title">
+                  <span className="cyan-dot">●</span>
+                  <span>NO IMAGE HANDY? RUN VERIFICATION BENCHMARKS</span>
+                </div>
+                <span className="benchmarks-sub">Pre-validated clinical test cases</span>
+              </div>
+
+              <div className="benchmark-cases-grid">
+                {publicMode === "cavity" ? (
+                  <>
+                    <div
+                      className="benchmark-case-item"
+                      onClick={() => {
+                        const mockResult = {
+                          prediction: "Cavity Detected",
+                          confidence: 96.4,
+                          modality: "Dental X-Ray",
+                          fileName: "benchmark_molar_bitewing.png",
+                          date: new Date().toISOString(),
+                          post_analysis: {
+                            modality: "Dental X-Ray",
+                            prediction: "Cavity Detected",
+                            confidence: 96.4,
+                            severity: "High",
+                            severity_color: "#EF4444",
+                            severity_description: "Active dental caries detected in interproximal enamel margin.",
+                            explanation: "Dental radiographic assessment reveals focal radiolucency and mineral loss within enamel/dentin, indicating active dental caries (tooth decay).",
+                            recommendations: [
+                              "Schedule a dental restoration appointment for bitewing confirmation.",
+                              "Perform composite resin restoration or ceramic inlay.",
+                              "Apply fluoridated topical varnish to adjacent contact zones.",
+                              "Practice daily interdental flossing and reduce fermentable carbohydrate intake."
+                            ],
+                            disclaimer: "⚠️ MEDICAL DISCLAIMER: This is an AI-assisted diagnostic evaluation generated for informational and clinical decision-support purposes only.",
+                            report_id: "MED-BITEWING-964",
+                            generated_at: new Date().toLocaleString()
+                          }
+                        };
+                        setPublicResult(mockResult);
+                      }}
+                    >
+                      <div className="benchmark-icon-box">
+                        <Activity size={16} color="#EF4444" />
+                      </div>
+                      <div className="benchmark-case-info">
+                        <div className="benchmark-case-name">Case A: Interproximal</div>
+                        <div className="benchmark-case-sub">Molar Bitewing</div>
+                        <div className="benchmark-case-action">
+                          Ready to load <ArrowRight size={10} />
+                        </div>
+                      </div>
+                      <span className="benchmark-status-badge red">CARIES</span>
+                    </div>
+
+                    <div
+                      className="benchmark-case-item"
+                      onClick={() => {
+                        const mockResult = {
+                          prediction: "Early Caries / Demineralization",
+                          confidence: 84.2,
+                          modality: "Dental X-Ray",
+                          fileName: "benchmark_occlusal_premolar.png",
+                          date: new Date().toISOString(),
+                          post_analysis: {
+                            modality: "Dental X-Ray",
+                            prediction: "Early Caries / Demineralization",
+                            confidence: 84.2,
+                            severity: "Moderate",
+                            severity_color: "#F59E0B",
+                            severity_description: "Incipient enamel demineralization noted in occlusal fissure.",
+                            explanation: "Localized subsurface radiolucency observed in occlusal pit without cavitation. Remineralization protocols indicated.",
+                            recommendations: [
+                              "Apply high-concentration fluoride sealing varnish (5% NaF).",
+                              "Implement resin fissure sealant over susceptible occlusal anatomy.",
+                              "Monitor with 6-month interval bitewing radiography.",
+                              "Prescribe 5000 ppm fluoride dentifrice for home application."
+                            ],
+                            disclaimer: "⚠️ MEDICAL DISCLAIMER: This is an AI-assisted diagnostic evaluation generated for informational and clinical decision-support purposes only.",
+                            report_id: "MED-OCCLUSAL-842",
+                            generated_at: new Date().toLocaleString()
+                          }
+                        };
+                        setPublicResult(mockResult);
+                      }}
+                    >
+                      <div className="benchmark-icon-box">
+                        <Activity size={16} color="#F59E0B" />
+                      </div>
+                      <div className="benchmark-case-info">
+                        <div className="benchmark-case-name">Case B: Occlusal Enamel</div>
+                        <div className="benchmark-case-sub">Premolar Demineralization</div>
+                        <div className="benchmark-case-action">
+                          Ready to load <ArrowRight size={10} />
+                        </div>
+                      </div>
+                      <span className="benchmark-status-badge amber">EARLY</span>
+                    </div>
+
+                    <div
+                      className="benchmark-case-item"
+                      onClick={() => {
+                        const mockResult = {
+                          prediction: "No Cavity Detected",
+                          confidence: 99.1,
+                          modality: "Dental X-Ray",
+                          fileName: "benchmark_healthy_dentition.png",
+                          date: new Date().toISOString(),
+                          post_analysis: {
+                            modality: "Dental X-Ray",
+                            prediction: "No Cavity Detected",
+                            confidence: 99.1,
+                            severity: "Low",
+                            severity_color: "#10B981",
+                            severity_description: "Sound enamel surfaces with preserved alveolar bone crests.",
+                            explanation: "Dental radiograph exhibits intact enamel margins, uniform dentin density, and sound periodontal bone support with no active cavitation.",
+                            recommendations: [
+                              "Maintain twice-daily brushing with fluoridated toothpaste.",
+                              "Practice daily interdental flossing.",
+                              "Schedule routine 6-month preventive dental check-ups.",
+                              "Maintain balanced nutrition with minimal sugar exposure."
+                            ],
+                            disclaimer: "⚠️ MEDICAL DISCLAIMER: This is an AI-assisted diagnostic evaluation generated for informational and clinical decision-support purposes only.",
+                            report_id: "MED-HEALTHY-991",
+                            generated_at: new Date().toLocaleString()
+                          }
+                        };
+                        setPublicResult(mockResult);
+                      }}
+                    >
+                      <div className="benchmark-icon-box">
+                        <Check size={16} color="#10B981" />
+                      </div>
+                      <div className="benchmark-case-info">
+                        <div className="benchmark-case-name">Case C: Negative Control</div>
+                        <div className="benchmark-case-sub">Healthy Intact Dentition</div>
+                        <div className="benchmark-case-action">
+                          Ready to load <ArrowRight size={10} />
+                        </div>
+                      </div>
+                      <span className="benchmark-status-badge green">CLEAN</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div
+                      className="benchmark-case-item"
+                      onClick={() => {
+                        alert("Please select a diagnostic file using 'Browse Local Files' or drag a scan into the viewport.");
+                      }}
+                    >
+                      <div className="benchmark-icon-box">
+                        <Activity size={16} color="#EF4444" />
+                      </div>
+                      <div className="benchmark-case-info">
+                        <div className="benchmark-case-name">Case A: Acute Pathology</div>
+                        <div className="benchmark-case-sub">Positive Benchmark Sample</div>
+                        <div className="benchmark-case-action">
+                          Select Local File <ArrowRight size={10} />
+                        </div>
+                      </div>
+                      <span className="benchmark-status-badge red">HIGH</span>
+                    </div>
+
+                    <div
+                      className="benchmark-case-item"
+                      onClick={() => {
+                        alert("Please select a diagnostic file using 'Browse Local Files' or drag a scan into the viewport.");
+                      }}
+                    >
+                      <div className="benchmark-icon-box">
+                        <Activity size={16} color="#F59E0B" />
+                      </div>
+                      <div className="benchmark-case-info">
+                        <div className="benchmark-case-name">Case B: Moderate Finding</div>
+                        <div className="benchmark-case-sub">Equivocal Infiltration</div>
+                        <div className="benchmark-case-action">
+                          Select Local File <ArrowRight size={10} />
+                        </div>
+                      </div>
+                      <span className="benchmark-status-badge amber">MOD</span>
+                    </div>
+
+                    <div
+                      className="benchmark-case-item"
+                      onClick={() => {
+                        alert("Please select a diagnostic file using 'Browse Local Files' or drag a scan into the viewport.");
+                      }}
+                    >
+                      <div className="benchmark-icon-box">
+                        <Check size={16} color="#10B981" />
+                      </div>
+                      <div className="benchmark-case-info">
+                        <div className="benchmark-case-name">Case C: Baseline Control</div>
+                        <div className="benchmark-case-sub">Clear Radiological Scan</div>
+                        <div className="benchmark-case-action">
+                          Select Local File <ArrowRight size={10} />
+                        </div>
+                      </div>
+                      <span className="benchmark-status-badge green">CLEAN</span>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
 
-            <div style={{ textAlign: "center", marginTop: "24px" }}>
-              <button
-                onClick={() => { setPublicMode("login"); setPublicResult(null); setUploadFile(null); }}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "#3B82F6",
-                  fontSize: "13px",
-                  fontWeight: "600",
-                  cursor: "pointer",
-                  textDecoration: "underline"
-                }}
-              >
-                Back to Portal Login
-              </button>
+            {/* Clinical Decision Support Disclaimer */}
+            <div className="studio-disclaimer-box">
+              <AlertTriangle size={18} color="#F59E0B" style={{ flexShrink: 0, marginTop: "2px" }} />
+              <p className="studio-disclaimer-text">
+                Clinical Decision Support Notice: AI-generated segmentation boundaries and probability scores are intended for informational, triage, and clinician decision-support purposes only. They do not constitute an autonomous medical or dental diagnosis. Final clinical diagnosis and treatment plans must always be confirmed by a licensed dentist or oral radiologist.
+              </p>
             </div>
-          </div>
+          </main>
+
+          {/* Studio Footer */}
+          <footer className="studio-footer">
+            <button
+              className="studio-back-link"
+              onClick={() => { setPublicMode("login"); setUploadFile(null); setPublicResult(null); }}
+            >
+              ← Back to Portal Login
+            </button>
+
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", justifyContent: "center" }}>
+              <span>ISO 13485 CERTIFIED</span>
+              <span>•</span>
+              <span>HIPAA BAA COMPLIANT</span>
+              <span>•</span>
+              <span>DICOM WG-28 STANDARD</span>
+              <span>•</span>
+              <span>© 2026 MediScan.AI Neural Engine</span>
+            </div>
+
+            <div style={{ color: "#38BDF8", fontWeight: "700" }}>
+              ● NODE: US-EAST-CLINICAL-04
+            </div>
+          </footer>
         </div>
       );
     }

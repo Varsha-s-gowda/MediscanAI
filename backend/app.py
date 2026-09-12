@@ -23,6 +23,7 @@ from cavity_engine import CavityInferenceEngine
 from ct_engine import CTInferenceEngine
 from mri_engine import MRIInferenceEngine
 from post_analysis import generate_post_analysis
+from validator import validate_medical_scan
 
 import database
 import report_analyzer
@@ -162,15 +163,34 @@ async def predict(image: UploadFile = File(...)):
             detail="Corrupted or invalid image file."
         )
 
-    # Chest X-Ray Check
-    if not is_xray(image_pil):
+    # Chest X-Ray Validation
+    is_valid, validation_msg = validate_medical_scan(image_pil, modality="chest")
+    if not is_valid:
         return {
-            "prediction": "Invalid image / Not an X-ray",
+            "success": False,
+            "is_valid": False,
+            "error": validation_msg,
+            "prediction": "Invalid Medical Image",
             "confidence": 0.0,
-            "severity": "Low",
+            "severity": "Invalid",
             "top_predictions": [],
             "heatmap": "",
-            "processing_time": "0.00 sec"
+            "heatmap_only": "",
+            "processing_time": "0.00 sec",
+            "post_analysis": {
+                "is_valid": False,
+                "modality": "Chest X-Ray",
+                "prediction": "Invalid Medical Image",
+                "confidence": 0.0,
+                "severity": "Invalid",
+                "severity_color": "#EF4444",
+                "severity_description": "Non-medical or invalid image detected.",
+                "explanation": validation_msg,
+                "recommendations": [
+                    "Please upload an authentic frontal or lateral Chest Radiograph (PA/AP X-ray).",
+                    "Ensure the image does not contain everyday photos, outdoor scenery, or portraits."
+                ]
+            }
         }
 
     # Run Prediction
@@ -264,6 +284,35 @@ async def predict_dental_cavity(image: UploadFile = File(...)):
     
     try:
         pil_img = Image.open(io.BytesIO(contents)).convert("RGB")
+
+        # Dental Validation
+        is_valid, validation_msg = validate_medical_scan(pil_img, modality="dental")
+        if not is_valid:
+            return {
+                "success": False,
+                "is_valid": False,
+                "error": validation_msg,
+                "prediction": "Invalid Medical Image",
+                "confidence": 0.0,
+                "severity": "Invalid",
+                "heatmap": "",
+                "is_cavity": False,
+                "post_analysis": {
+                    "is_valid": False,
+                    "modality": "Dental X-Ray",
+                    "prediction": "Invalid Medical Image",
+                    "confidence": 0.0,
+                    "severity": "Invalid",
+                    "severity_color": "#EF4444",
+                    "severity_description": "Non-medical or invalid image detected.",
+                    "explanation": validation_msg,
+                    "recommendations": [
+                        "Please upload a valid Dental bitewing, periapical, OPG radiograph or clinical intraoral tooth photograph.",
+                        "Ensure the image does not contain outdoor scenery, portraits, or non-dental subjects."
+                    ]
+                }
+            }
+
         res = cavity_engine.predict(pil_img)
         
         # Save images to static uploads for frontend retrieval
@@ -324,6 +373,35 @@ async def predict_ct_scan(image: UploadFile = File(...)):
     
     try:
         pil_img = Image.open(io.BytesIO(contents)).convert("RGB")
+
+        # CT Scan Validation
+        is_valid, validation_msg = validate_medical_scan(pil_img, modality="ct")
+        if not is_valid:
+            return {
+                "success": False,
+                "is_valid": False,
+                "error": validation_msg,
+                "prediction": "Invalid Medical Image",
+                "confidence": 0.0,
+                "severity": "Invalid",
+                "heatmap": "",
+                "is_stone": False,
+                "post_analysis": {
+                    "is_valid": False,
+                    "modality": "Kidney Stone CT",
+                    "prediction": "Invalid Medical Image",
+                    "confidence": 0.0,
+                    "severity": "Invalid",
+                    "severity_color": "#EF4444",
+                    "severity_description": "Non-medical or invalid image detected.",
+                    "explanation": validation_msg,
+                    "recommendations": [
+                        "Please upload an authentic abdominal/pelvic Helical CT cross-section slice (axial or coronal view).",
+                        "Ensure the image does not contain everyday photos, outdoor scenery, or portraits."
+                    ]
+                }
+            }
+
         res = ct_engine.predict(pil_img)
         
         # Save images to static uploads for frontend retrieval
@@ -384,6 +462,35 @@ async def predict_brain_mri(image: UploadFile = File(...)):
     
     try:
         pil_img = Image.open(io.BytesIO(contents)).convert("RGB")
+
+        # Brain MRI Validation
+        is_valid, validation_msg = validate_medical_scan(pil_img, modality="mri")
+        if not is_valid:
+            return {
+                "success": False,
+                "is_valid": False,
+                "error": validation_msg,
+                "prediction": "Invalid Medical Image",
+                "confidence": 0.0,
+                "severity": "Invalid",
+                "heatmap": "",
+                "is_tumor": False,
+                "post_analysis": {
+                    "is_valid": False,
+                    "modality": "Brain MRI",
+                    "prediction": "Invalid Medical Image",
+                    "confidence": 0.0,
+                    "severity": "Invalid",
+                    "severity_color": "#EF4444",
+                    "severity_description": "Non-medical or invalid image detected.",
+                    "explanation": validation_msg,
+                    "recommendations": [
+                        "Please upload an authentic Brain MRI scan slice (T1, T2, or FLAIR sequences).",
+                        "Ensure the image does not contain everyday photos, outdoor scenery, or portraits."
+                    ]
+                }
+            }
+
         res = mri_engine.predict(pil_img)
         
         # Save images to static uploads for frontend retrieval
@@ -816,6 +923,10 @@ async def upload_patient_file(patient_id: str, file: UploadFile = File(...), ana
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Brain MRI analysis requires a JPEG or PNG image.")
         try:
             img = Image.open(local_path).convert("RGB")
+            is_valid, validation_msg = validate_medical_scan(img, modality="mri")
+            if not is_valid:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=validation_msg)
+
             mri_result = mri_engine.predict(img)
             if mri_result.get("success"):
                 analysis_type = "Brain MRI"
@@ -835,6 +946,8 @@ async def upload_patient_file(patient_id: str, file: UploadFile = File(...), ana
                     gradcam_path = f"/static/uploads/{heatmap_filename}"
             else:
                 raise HTTPException(status_code=500, detail="Brain MRI model inference failed.")
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Brain MRI file analysis failed: {e}")
             raise HTTPException(status_code=500, detail=f"Brain MRI model inference failed: {str(e)}")
@@ -843,6 +956,10 @@ async def upload_patient_file(patient_id: str, file: UploadFile = File(...), ana
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CT Scan analysis requires a JPEG or PNG image.")
         try:
             img = Image.open(local_path).convert("RGB")
+            is_valid, validation_msg = validate_medical_scan(img, modality="ct")
+            if not is_valid:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=validation_msg)
+
             ct_result = ct_engine.predict(img)
             if ct_result.get("success"):
                 analysis_type = "CT Scan"
@@ -862,6 +979,8 @@ async def upload_patient_file(patient_id: str, file: UploadFile = File(...), ana
                     gradcam_path = f"/static/uploads/{heatmap_filename}"
             else:
                 raise HTTPException(status_code=500, detail="CT scan model inference failed.")
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"CT scan file analysis failed: {e}")
             raise HTTPException(status_code=500, detail=f"CT scan model inference failed: {str(e)}")
@@ -870,6 +989,10 @@ async def upload_patient_file(patient_id: str, file: UploadFile = File(...), ana
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Dental Cavity analysis requires a JPEG or PNG image.")
         try:
             img = Image.open(local_path).convert("RGB")
+            is_valid, validation_msg = validate_medical_scan(img, modality="dental")
+            if not is_valid:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=validation_msg)
+
             cavity_result = cavity_engine.predict(img)
             if cavity_result.get("success"):
                 analysis_type = "Dental Cavity"
@@ -889,6 +1012,8 @@ async def upload_patient_file(patient_id: str, file: UploadFile = File(...), ana
                     gradcam_path = f"/static/uploads/{heatmap_filename}"
             else:
                 raise HTTPException(status_code=500, detail="Cavity model inference failed.")
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Cavity file analysis failed: {e}")
             raise HTTPException(status_code=500, detail=f"Cavity model inference failed: {str(e)}")
@@ -897,6 +1022,10 @@ async def upload_patient_file(patient_id: str, file: UploadFile = File(...), ana
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Chest X-Ray must be a JPEG or PNG image.")
         try:
             img = Image.open(local_path).convert("RGB")
+            is_valid, validation_msg = validate_medical_scan(img, modality="chest")
+            if not is_valid:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=validation_msg)
+
             xray_result = inference_engine.predict(img)
             if xray_result.get("success"):
                 analysis_type = "Chest X-Ray"
@@ -1079,4 +1208,4 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 if __name__ == "__main__":
     import uvicorn
     from config import HOST, PORT
-    uvicorn.run("app:app", host=HOST, port=PORT, reload=False)
+    uvicorn.run("app:app", host=HOST, port=PORT, reload=True)
