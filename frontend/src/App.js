@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   Upload,
   Activity,
@@ -27,6 +28,9 @@ import PostAnalysisWorkflow from "./components/PostAnalysisWorkflow";
 const API_BASE = "http://localhost:5000";
 
 function App() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
   const [token, setToken] = useState(localStorage.getItem("doctor_token") || "");
   const [doctorName, setDoctorName] = useState(localStorage.getItem("doctor_name") || "");
   const [activeTab, setActiveTab] = useState("dashboard"); // dashboard, patients, patient-profile
@@ -53,6 +57,61 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [patientHistory, setPatientHistory] = useState([]);
+
+  // Helper: Get target URL path for current state
+  const getPathForState = (mode, tab, patient) => {
+    if (token) {
+      if (tab === "dashboard") return "/dashboard";
+      if (tab === "patients") return "/patients";
+      if (tab === "patient-profile") return `/patients/${patient?.patientId || patient?.id || "profile"}`;
+    }
+    if (mode === "xray") return "/analysis/chest-xray";
+    if (mode === "cavity") return "/analysis/dental-cavity";
+    if (mode === "ct_scan") return "/analysis/kidney-stone";
+    if (mode === "mri") return "/analysis/brain-mri";
+    if (mode === "report") return "/analysis/blood-report";
+    if (mode === "history") return "/history";
+    if (mode === "login") return "/login";
+    return "/";
+  };
+
+  // Sync state from URL location on direct page loads and browser Back/Forward
+  useEffect(() => {
+    const path = location.pathname;
+    if (path === "/dashboard") {
+      if (token) setActiveTab("dashboard");
+      else setPublicMode("login");
+    } else if (path === "/patients") {
+      if (token) setActiveTab("patients");
+      else setPublicMode("login");
+    } else if (path.startsWith("/patients/")) {
+      if (token) setActiveTab("patient-profile");
+      else setPublicMode("login");
+    } else if (path === "/analysis/chest-xray") {
+      setPublicMode("xray");
+    } else if (path === "/analysis/dental-cavity") {
+      setPublicMode("cavity");
+    } else if (path === "/analysis/kidney-stone") {
+      setPublicMode("ct_scan");
+    } else if (path === "/analysis/brain-mri") {
+      setPublicMode("mri");
+    } else if (path === "/analysis/blood-report") {
+      setPublicMode("report");
+    } else if (path === "/history") {
+      setPublicMode("history");
+    } else if (path === "/login" || path === "/") {
+      if (token) setActiveTab("dashboard");
+      else setPublicMode("login");
+    }
+  }, [location.pathname, token]);
+
+  // Keep browser URL bar in sync when publicMode or activeTab changes
+  useEffect(() => {
+    const targetPath = getPathForState(publicMode, activeTab, selectedPatient);
+    if (location.pathname !== targetPath) {
+      navigate(targetPath, { replace: false });
+    }
+  }, [publicMode, activeTab, selectedPatient, token]);
 
   const [newPatient, setNewPatient] = useState({ name: "", age: "", gender: "Male", contact: "" });
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -2390,8 +2449,25 @@ function App() {
             <section className="overall-analysis" style={{ background: "rgba(13, 19, 35, 0.6)", border: "1px solid var(--border-color)", borderRadius: "16px", padding: "20px", marginBottom: "24px" }}>
               <h2 style={{ fontSize: "16px", fontWeight: "800", color: "#fff", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Overall Patient Analysis</h2>
               <p style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "12px" }}>Summary of findings from the patient's available X-ray and medical report analyses.</p>
-              <div style={{ background: "rgba(0,0,0,0.2)", borderLeft: "4px solid var(--accent)", padding: "12px 16px", borderRadius: "0 8px 8px 0", fontSize: "14px", lineHeight: "1.6", color: "#fff" }}>
-                "{overallSummary}"
+              <div style={{ background: "rgba(0,0,0,0.2)", borderLeft: "4px solid var(--accent)", padding: "14px 18px", borderRadius: "0 10px 10px 0", fontSize: "14px", lineHeight: "1.6", color: "#fff" }}>
+                {(() => {
+                  if (!overallSummary) return <span style={{ color: "var(--text-muted)", fontSize: "13px" }}>No previous AI-assisted analysis is available.</span>;
+                  const raw = typeof overallSummary === "string" ? overallSummary : String(overallSummary);
+                  const points = raw
+                    .split(/(?:•|\n|\. (?=[A-Z]))/)
+                    .map(p => p.trim().replace(/^•\s*/, '').replace(/\.$/, ''))
+                    .filter(p => p.length > 0);
+                  if (points.length === 0) return <span>{raw}</span>;
+                  return (
+                    <ul style={{ margin: 0, paddingLeft: "18px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                      {points.map((pt, idx) => (
+                        <li key={idx} style={{ color: "#F8FAFC", fontSize: "13px", lineHeight: "1.6" }}>
+                          {pt.endsWith('.') ? pt : `${pt}.`}
+                        </li>
+                      ))}
+                    </ul>
+                  );
+                })()}
               </div>
             </section>
 

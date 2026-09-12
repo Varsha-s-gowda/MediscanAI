@@ -728,10 +728,35 @@ def get_longitudinal_summary(history: list) -> dict:
                 else:
                     report_part = "Recent report analysis showed all laboratory values within reference ranges."
                     
+    cavities = [h for h in history if h.get("analysisType") in ["Dental Cavity", "Dental X-Ray"] or h.get("fileType") in ["Dental Cavity", "Dental X-Ray"]]
+    cts = [h for h in history if h.get("analysisType") in ["CT Scan", "Kidney Stone CT"] or h.get("fileType") in ["CT Scan", "Kidney Stone CT"]]
+
+    # Cavity summary
+    cavity_part = None
+    if cavities:
+        latest_cav = next((c for c in cavities if c.get("prediction")), None)
+        if latest_cav:
+            pred_c = latest_cav.get("prediction")
+            if "no cavity" in str(pred_c).lower() or "normal" in str(pred_c).lower():
+                cavity_part = "Recent Dental X-Ray showed no active dental caries."
+            else:
+                cavity_part = f"Recent Dental X-Ray analysis identified {pred_c}."
+
+    # CT summary
+    ct_part = None
+    if cts:
+        latest_ct = next((ct for ct in cts if ct.get("prediction")), None)
+        if latest_ct:
+            pred_ct = latest_ct.get("prediction")
+            if "no stone" in str(pred_ct).lower() or "normal" in str(pred_ct).lower():
+                ct_part = "Recent CT Scan showed no renal calculi or kidney stone."
+            else:
+                ct_part = f"Recent CT Scan analysis identified {pred_ct}."
+
     # Combine
-    summary_parts = [p for p in [xray_part, mri_part, report_part] if p]
+    summary_parts = [p for p in [xray_part, mri_part, cavity_part, ct_part, report_part] if p]
     if summary_parts:
-        overall_summary = " ".join(summary_parts)
+        overall_summary = "• " + "\n• ".join(summary_parts)
     else:
         overall_summary = "No previous AI-assisted analysis is available."
         

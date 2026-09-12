@@ -14,6 +14,170 @@ import {
   Activity
 } from "lucide-react";
 
+export const formatExplanationPoints = (explanationStr) => {
+  if (!explanationStr) return [];
+  if (Array.isArray(explanationStr)) return explanationStr;
+  const points = explanationStr
+    .split(/(?<=\.|\;)\s+/)
+    .map(s => s.trim().replace(/^•\s*/, ''))
+    .filter(s => s.length > 5);
+  if (points.length === 0) return [explanationStr];
+  return points;
+};
+
+export const getDoctorConsultationGuidance = (pred, modality) => {
+  const p = (pred || "").toLowerCase();
+  const m = (modality || "").toLowerCase();
+
+  if (m.includes("dental") || m.includes("cavity") || p.includes("caries") || p.includes("cavity")) {
+    return "Schedule a consultation with a licensed Dentist or Endodontist for clinical bitewing inspection, pulp vitality testing, and restorative intervention.";
+  }
+  if (m.includes("mri") || m.includes("brain") || p.includes("glioma") || p.includes("meningioma") || p.includes("pituitary")) {
+    return "Urgent consultation with a Neurosurgeon, Neurologist, and Neuro-Oncology Multidisciplinary Case Board for surgical navigation and volumetric staging.";
+  }
+  if (m.includes("ct") || m.includes("kidney") || m.includes("stone")) {
+    return "Consult a Urologist promptly for non-contrast helical CT stone sizing (mm), outflow tract assessment, and therapeutic stone extraction planning.";
+  }
+  if (m.includes("report") || m.includes("medical") || m.includes("lab")) {
+    return "Consult your Primary Care Physician, Internist, or relevant Specialist (Hematologist / Endocrinologist) to correlate abnormal lab parameters with clinical history.";
+  }
+  if (p.includes("covid")) {
+    return "Consult a Pulmonologist or Infectious Disease Specialist immediately for COVID-19 protocol, inflammatory marker checks, and viral monitoring.";
+  }
+  if (p.includes("tuberculosis") || p.includes("tb")) {
+    return "Urgent consultation with an Infectious Disease Specialist or Pulmonologist for DOTS anti-tubercular therapy initiation and isolation protocols.";
+  }
+  if (p.includes("pneumonia")) {
+    return "Consult a Pulmonologist or General Physician promptly for chest auscultation, inflammatory blood work, and targeted antimicrobial therapy.";
+  }
+  return "Consult your attending General Physician or Specialist to review imaging findings in context of your personal health history.";
+};
+
+export const getTreatmentCureSteps = (pred, modality) => {
+  const p = (pred || "").toLowerCase();
+  const m = (modality || "").toLowerCase();
+
+  if (m.includes("dental") || m.includes("cavity") || p.includes("caries") || p.includes("cavity")) {
+    const isCavity = p.includes("cavity") || p.includes("caries");
+    return isCavity ? [
+      "Undergo dental restorative therapy (composite resin filling, ceramic inlay/onlay) to remove demineralized decay and seal structural margins.",
+      "Apply high-concentration topical sodium fluoride varnish (5% NaF) to arrest early enamel demineralization.",
+      "If deep dentin involvement is present, undergo endodontic root canal therapy followed by full-coverage crown placement.",
+      "Incorporate daily 5000 ppm prescription fluoridated toothpaste and daily interdental flossing into your home oral hygiene routine."
+    ] : [
+      "Maintain twice-daily brushing with fluoridated toothpaste for 2 minutes using proper circular technique.",
+      "Practice daily interdental flossing to prevent plaque accumulation in proximal contact areas.",
+      "Schedule routine 6-month preventive dental examinations and professional prophylaxis."
+    ];
+  }
+
+  if (m.includes("mri") || m.includes("brain") || p.includes("glioma") || p.includes("meningioma") || p.includes("pituitary")) {
+    if (p.includes("glioma")) {
+      return [
+        "Undergo image-guided volumetric neurosurgical resection (craniotomy) for maximum safe tumor cytoreduction.",
+        "Complete adjuvant concomitant chemoradiotherapy (Stupp protocol: Temozolomide + external beam radiation therapy).",
+        "Administer targeted anti-edema corticosteroid therapy (Dexamethasone) to mitigate peritumoral edema and intracranial pressure.",
+        "Perform serial multi-parametric contrast MRI tracking (T1+C, DWI, Perfusion) every 2-3 months."
+      ];
+    }
+    if (p.includes("meningioma")) {
+      return [
+        "Surgical excision (Simpson Grade I-III resection) for symptomatic mass effect or accessible cortical tumors.",
+        "Stereotactic Radiosurgery (Gamma Knife / CyberKnife) for deep skull-base or high-risk surgical candidates.",
+        "Perform 6-month interval contrast-enhanced MRI to monitor volumetric growth kinetics if managed conservatively."
+      ];
+    }
+    if (p.includes("pituitary")) {
+      return [
+        "Perform baseline endocrine hormone blood panel (Prolactin, ACTH, GH, IGF-1, TSH, Cortisol) and visual field perimetry.",
+        "For Prolactinomas: Initiate dopamine agonist medical therapy (Cabergoline / Bromocriptine) for tumor shrinkage.",
+        "For Non-functioning adenomas with mass effect: Undergo minimally invasive Transsphenoidal Endoscopic Resection."
+      ];
+    }
+    return [
+      "Maintain regular sleep hygiene, stress management, and routine cardiovascular health monitoring.",
+      "Review baseline imaging with your attending physician during annual neurological checkups."
+    ];
+  }
+
+  if (m.includes("ct") || m.includes("kidney") || m.includes("stone")) {
+    const isStone = p.includes("stone") || p.includes("calculi");
+    return isStone ? [
+      "For Calculi < 5mm: Initiate Medical Expulsive Therapy (MET) with Alpha-blockers (Tamsulosin) and aggressive fluid hydration (2.5–3.0 L/day).",
+      "For Calculi 5mm–15mm: Undergo Extracorporeal Shock Wave Lithotripsy (ESWL) or Retrograde Intrarenal Surgery (RIRS) with laser dusting.",
+      "For Large/Staghorn Calculi (>20mm): Undergo Percutaneous Nephrolithotomy (PCNL) surgical extraction.",
+      "Filter passed stone fragments and send for crystallographic laboratory analysis (calcium oxalate, uric acid, struvite) for long-term dietary prevention."
+    ] : [
+      "Maintain consistent daily fluid hydration aimed at producing pale or clear urine output throughout the day.",
+      "Adopt a balanced dietary plan with moderate sodium, adequate dietary calcium, and controlled animal protein."
+    ];
+  }
+
+  if (m.includes("report") || m.includes("medical") || m.includes("lab")) {
+    return [
+      "Anemia (Low Hb/RBC): Initiate physician-prescribed oral elemental iron (Ferrous Sulfate) + Vitamin C, and evaluate underlying blood loss sources.",
+      "Infection / Inflammation (High WBC): Complete targeted antimicrobial/antibiotic regimen as prescribed following blood/urine cultures.",
+      "Hyperglycemia (High Glucose): Implement dietary carbohydrate restriction, regular HbA1c testing, and physician-guided Metformin/insulin therapy.",
+      "Hyperlipidemia (High Cholesterol): Initiate Statin therapy, adopt a low-saturated-fat diet, and engage in 150 mins/week aerobic exercise.",
+      "Renal Impairment (High Creatinine): Ensure proper hydration, avoid nephrotoxic NSAIDs, and follow a kidney-friendly low-sodium diet."
+    ];
+  }
+
+  if (p.includes("covid")) {
+    return [
+      "Initiate physician-guided antiviral therapy (Paxlovid / Remdesivir / Molnupiravir) as early as possible within the therapeutic window.",
+      "Administer oral corticosteroid support (Dexamethasone) for systemic hyper-inflammation under strict medical supervision.",
+      "Practice interval prone positioning (lying on stomach for 30-120 minutes) to improve lower-lobe alveolar aeration.",
+      "Maintain continuous pulse oximetry monitoring (SpO2 > 94%) and stay well-hydrated throughout recovery.",
+      "Monitor key inflammatory markers (CRP, D-dimer, Ferritin) to track recovery trajectory."
+    ];
+  }
+  if (p.includes("tuberculosis") || p.includes("tb")) {
+    return [
+      "Initiate 4-drug Directly Observed Treatment Short-Course (DOTS) anti-tubercular therapy (Rifampicin, Isoniazid, Pyrazinamide, Ethambutol) for initial 2 months.",
+      "Continue continuation phase (Rifampicin + Isoniazid) for an additional 4 months without missing any doses to prevent drug resistance (MDR-TB).",
+      "Maintain strict airborne isolation (wear N95 respirator mask) until negative sputum AFB conversion is documented.",
+      "Undergo monthly liver function testing (LFT) and ophthalmological monitoring throughout treatment."
+    ];
+  }
+  if (p.includes("pneumonia")) {
+    return [
+      "Complete full course of targeted empirical oral/IV antibiotic therapy (Azithromycin, Amoxicillin-Clavulanate, or Ceftriaxone) as prescribed.",
+      "Use incentive spirometry 5-10 times hourly to promote alveolar expansion and clear bronchial exudate.",
+      "Take mucolytics and bronchodilators as advised to loosen thick sputum and relieve airway resistance.",
+      "Maintain high fluid intake (2.5L/day) and rest in a semi-Fowler's position (head elevated 30-45 degrees)."
+    ];
+  }
+
+  return [
+    "Maintain routine annual preventive health examinations and recommended vaccinations.",
+    "Engage in regular cardiovascular aerobic exercise and avoid tobacco smoke or respiratory pollutants.",
+    "Consult your healthcare provider if any new symptoms arise."
+  ];
+};
+
+export const getEmergencyRedFlags = (pred, modality) => {
+  const p = (pred || "").toLowerCase();
+  const m = (modality || "").toLowerCase();
+
+  if (m.includes("dental") || m.includes("cavity") || p.includes("caries") || p.includes("cavity")) {
+    return "Emergency Red Flags: Rapidly spreading facial or submandibular swelling, difficulty swallowing/breathing (Ludwig's angina risk), high fever (>38.5°C), or severe unmanageable pain.";
+  }
+  if (m.includes("mri") || m.includes("brain") || p.includes("glioma") || p.includes("meningioma") || p.includes("pituitary")) {
+    return "Emergency Red Flags: Sudden focal limb weakness, acute seizure activity, unremitting severe headache with projectile morning vomiting, visual field blackouts, or altered consciousness.";
+  }
+  if (m.includes("ct") || m.includes("kidney") || m.includes("stone")) {
+    return "Emergency Red Flags: Intractable severe flank pain unresponsive to medications, persistent vomiting, high fever with chills (indicator of urosepsis), or inability to urinate (anuria).";
+  }
+  if (m.includes("report") || m.includes("medical") || m.includes("lab")) {
+    return "Emergency Red Flags: Severe lightheadedness/syncope (extreme anemia), high fever with confusion (sepsis), blood glucose > 300 mg/dL with shortness of breath, or acute severe chest pain.";
+  }
+  if (p.includes("covid") || p.includes("pneumonia") || p.includes("tuberculosis") || p.includes("tb")) {
+    return "Emergency Red Flags: Blood oxygen saturation (SpO2) dropping below 92%, severe shortness of breath at rest, coughing up bright red blood (hemoptysis), confusion, or bluish discoloration of lips/face.";
+  }
+  return "Emergency Red Flags: Seek emergency care immediately if experiencing acute severe chest pain, extreme dyspnea, sudden weakness, or loss of consciousness.";
+};
+
 /**
  * Standard medical fallback post-analysis generator for frontend
  * to ensure robust rendering across all modalities and cached records.
@@ -707,9 +871,13 @@ ${postData.disclaimer}
             <h2 className="finding-title">{primaryFindingTitle}</h2>
 
             <div id="section-explanation" className={`finding-morphology-container ${highlightedSection === "explanation" ? "section-pipeline-highlight" : ""}`}>
-              <p className="finding-morphology-desc">
-                {postData.explanation}
-              </p>
+              <ul style={{ margin: 0, paddingLeft: "18px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                {formatExplanationPoints(postData.explanation).map((point, idx) => (
+                  <li key={idx} style={{ color: "#E2E8F0", fontSize: "13px", lineHeight: "1.6" }}>
+                    {point}
+                  </li>
+                ))}
+              </ul>
             </div>
 
             {result.reportFindings && Array.isArray(result.reportFindings) && result.reportFindings.length > 0 && (
@@ -792,13 +960,60 @@ ${postData.disclaimer}
             </div>
 
             <ul className="insights-bullets">
-              <li>
-                Grad-CAM saliency strongly concentrates over the localized {postData.prediction} zone; adjacent anatomical boundaries remain clearly delineated.
-              </li>
+              {postData.modality?.toLowerCase().includes("report") ? null : (
+                <li>
+                  Grad-CAM saliency strongly concentrates over the localized {postData.prediction} zone; adjacent anatomical boundaries remain clearly delineated.
+                </li>
+              )}
               {postData.recommendations.map((rec, i) => (
                 <li key={i}>{rec}</li>
               ))}
             </ul>
+          </div>
+
+          {/* Recommended Treatment & Cure Protocol */}
+          <div
+            className="xai-insights-card treatment-cure-card"
+            style={{ marginTop: "16px", border: "1px solid rgba(45, 212, 191, 0.4)", background: "rgba(13, 25, 45, 0.7)", borderRadius: "12px", padding: "16px" }}
+          >
+            <div className="insights-header" style={{ color: "#2DD4BF", fontWeight: "700", display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+              <Sparkles size={16} color="#2DD4BF" />
+              <span>RECOMMENDED TREATMENT & CURE PROTOCOL</span>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              {/* Doctor Consultation */}
+              <div>
+                <div style={{ fontSize: "12px", fontWeight: "700", color: "#38BDF8", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  👨‍⚕️ 1. Specialist Doctor Consultation
+                </div>
+                <div style={{ fontSize: "13px", color: "#F8FAFC", paddingLeft: "10px", borderLeft: "3px solid #38BDF8", lineHeight: "1.5" }}>
+                  {getDoctorConsultationGuidance(postData.prediction, postData.modality)}
+                </div>
+              </div>
+
+              {/* Treatment & Cure Steps */}
+              <div>
+                <div style={{ fontSize: "12px", fontWeight: "700", color: "#34D399", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  💊 2. Therapeutic Treatment & Cure Measures
+                </div>
+                <ul className="insights-bullets" style={{ margin: 0, paddingLeft: "18px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                  {getTreatmentCureSteps(postData.prediction, postData.modality).map((step, idx) => (
+                    <li key={idx} style={{ color: "#E2E8F0", fontSize: "13px", lineHeight: "1.5" }}>{step}</li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Emergency Red Flags */}
+              <div>
+                <div style={{ fontSize: "12px", fontWeight: "700", color: "#F59E0B", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  ⚠️ 3. Red Flags & Emergency Escalation
+                </div>
+                <div style={{ fontSize: "12px", color: "#FCD34D", paddingLeft: "10px", borderLeft: "3px solid #F59E0B", lineHeight: "1.5" }}>
+                  {getEmergencyRedFlags(postData.prediction, postData.modality)}
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Bottom Action CTA Buttons */}
@@ -870,7 +1085,6 @@ ${postData.disclaimer}
               <div className="rep-patient-strip">
                 <div><strong>Patient Name:</strong> {patientData?.name || "Anonymous Patient"}</div>
                 <div><strong>Patient ID:</strong> {patientData?.patientId || "N/A"}</div>
-                <div><strong>Age/Gender:</strong> {patientData?.age ? `${patientData.age}y` : "Adult"} / {patientData?.gender || "Unknown"}</div>
                 <div><strong>Status:</strong> Automated AI Triage Analysis</div>
               </div>
 
@@ -881,7 +1095,13 @@ ${postData.disclaimer}
                     <span className="f-title">{primaryFindingTitle}</span>
                     <span className="f-conf">Confidence: {postData.confidence}%</span>
                   </div>
-                  <div className="f-desc">{postData.explanation}</div>
+                  <div className="f-desc">
+                    <ul style={{ margin: 0, paddingLeft: "16px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                      {formatExplanationPoints(postData.explanation).map((p, i) => (
+                        <li key={i} style={{ fontSize: "11px", lineHeight: "1.4" }}>{p}</li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
 
                 {result.reportFindings && Array.isArray(result.reportFindings) && result.reportFindings.length > 0 && (
@@ -934,6 +1154,34 @@ ${postData.disclaimer}
                     <li key={idx}>{rec}</li>
                   ))}
                 </ol>
+              </div>
+
+              <div className="rep-section">
+                <h4>4. RECOMMENDED TREATMENT & CURE PROTOCOL</h4>
+                <div style={{ marginTop: "8px", background: "#F8FAFC", padding: "12px", borderRadius: "6px", border: "1px solid #E2E8F0" }}>
+                  <div style={{ fontSize: "11px", fontWeight: "700", color: "#0284C7", marginBottom: "4px" }}>
+                    SPECIALIST DOCTOR CONSULTATION:
+                  </div>
+                  <p style={{ fontSize: "11px", color: "#334155", marginBottom: "10px", lineHeight: "1.4" }}>
+                    {getDoctorConsultationGuidance(postData.prediction, postData.modality)}
+                  </p>
+
+                  <div style={{ fontSize: "11px", fontWeight: "700", color: "#16A34A", marginBottom: "4px" }}>
+                    THERAPEUTIC TREATMENT & CURE MEASURES:
+                  </div>
+                  <ol className="rep-recs-list" style={{ marginBottom: "10px", paddingLeft: "16px" }}>
+                    {getTreatmentCureSteps(postData.prediction, postData.modality).map((step, idx) => (
+                      <li key={idx} style={{ fontSize: "11px", color: "#334155" }}>{step}</li>
+                    ))}
+                  </ol>
+
+                  <div style={{ fontSize: "11px", fontWeight: "700", color: "#D97706", marginBottom: "4px" }}>
+                    RED FLAGS & EMERGENCY ESCALATION:
+                  </div>
+                  <p style={{ fontSize: "11px", color: "#92400E", margin: 0, lineHeight: "1.4" }}>
+                    {getEmergencyRedFlags(postData.prediction, postData.modality)}
+                  </p>
+                </div>
               </div>
 
               <div className="rep-disclaimer-box">
