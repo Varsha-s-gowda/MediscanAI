@@ -697,9 +697,7 @@ ${postData.disclaimer}
             Portal Login
           </button>
 
-          <div className="results-hipaa-badge" style={{ color: "#38BDF8", borderColor: "rgba(56, 189, 248, 0.3)" }}>
-            AUDIT ID: #{postData.report_id.slice(-8)}
-          </div>
+
         </div>
       </header>
 
@@ -1036,8 +1034,6 @@ ${postData.disclaimer}
         </div>
         <div className="footer-right">
           <span>FDA 510(k) REVIEW CODE: QSR-9</span>
-          <span>•</span>
-          <span>ISO 13485 CERTIFIED</span>
         </div>
       </footer>
 

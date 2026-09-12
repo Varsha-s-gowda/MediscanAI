@@ -608,14 +608,7 @@ function App() {
                 </div>
               </div>
 
-              <div className="results-system-badge">
-                <span className="glowing-green-dot"></span>
-                NEURAL ENGINE ONLINE
-              </div>
 
-              <div className="results-hipaa-badge">
-                DICOM 3.0 PACS READY
-              </div>
             </div>
 
             {/* Center Modality Tabs */}
@@ -667,9 +660,7 @@ function App() {
                 Portal Login
               </button>
 
-              <div className="studio-audit-badge">
-                AUDIT ID: #MED-8910
-              </div>
+
             </div>
           </header>
 
@@ -891,231 +882,10 @@ function App() {
                 </div>
               )}
 
-              {/* Format Badges Row */}
-              <div className="studio-badges-row">
-                <span className="format-pill">DICOM (.dcm)</span>
-                <span className="format-pill">JPEG, PNG, TIFF (Up to 60MB)</span>
-                <span className="format-pill highlight-teal">
-                  {publicMode === "cavity"
-                    ? "Bitewing • Periapical • OPG"
-                    : publicMode === "xray"
-                      ? "PA • AP • Lateral"
-                      : publicMode === "ct_scan"
-                        ? "Axial • Coronal Helical"
-                        : publicMode === "mri"
-                          ? "T1+C • T2/FLAIR • DWI"
-                          : "Hematology • Panels • PDF"}
-                </span>
-              </div>
+
             </form>
 
-            {/* Benchmarks Section */}
-            <div className="studio-benchmarks-card">
-              <div className="benchmarks-header">
-                <div className="benchmarks-title">
-                  <span className="cyan-dot">●</span>
-                  <span>NO IMAGE HANDY? RUN VERIFICATION BENCHMARKS</span>
-                </div>
-                <span className="benchmarks-sub">Pre-validated clinical test cases</span>
-              </div>
 
-              <div className="benchmark-cases-grid">
-                {publicMode === "cavity" ? (
-                  <>
-                    <div
-                      className="benchmark-case-item"
-                      onClick={() => {
-                        const mockResult = {
-                          prediction: "Cavity Detected",
-                          confidence: 96.4,
-                          modality: "Dental X-Ray",
-                          fileName: "benchmark_molar_bitewing.png",
-                          date: new Date().toISOString(),
-                          post_analysis: {
-                            modality: "Dental X-Ray",
-                            prediction: "Cavity Detected",
-                            confidence: 96.4,
-                            severity: "High",
-                            severity_color: "#EF4444",
-                            severity_description: "Active dental caries detected in interproximal enamel margin.",
-                            explanation: "Dental radiographic assessment reveals focal radiolucency and mineral loss within enamel/dentin, indicating active dental caries (tooth decay).",
-                            recommendations: [
-                              "Schedule a dental restoration appointment for bitewing confirmation.",
-                              "Perform composite resin restoration or ceramic inlay.",
-                              "Apply fluoridated topical varnish to adjacent contact zones.",
-                              "Practice daily interdental flossing and reduce fermentable carbohydrate intake."
-                            ],
-                            disclaimer: "⚠️ MEDICAL DISCLAIMER: This is an AI-assisted diagnostic evaluation generated for informational and clinical decision-support purposes only.",
-                            report_id: "MED-BITEWING-964",
-                            generated_at: new Date().toLocaleString()
-                          }
-                        };
-                        setPublicResult(mockResult);
-                      }}
-                    >
-                      <div className="benchmark-icon-box">
-                        <Activity size={16} color="#EF4444" />
-                      </div>
-                      <div className="benchmark-case-info">
-                        <div className="benchmark-case-name">Case A: Interproximal</div>
-                        <div className="benchmark-case-sub">Molar Bitewing</div>
-                        <div className="benchmark-case-action">
-                          Ready to load <ArrowRight size={10} />
-                        </div>
-                      </div>
-                      <span className="benchmark-status-badge red">CARIES</span>
-                    </div>
-
-                    <div
-                      className="benchmark-case-item"
-                      onClick={() => {
-                        const mockResult = {
-                          prediction: "Early Caries / Demineralization",
-                          confidence: 84.2,
-                          modality: "Dental X-Ray",
-                          fileName: "benchmark_occlusal_premolar.png",
-                          date: new Date().toISOString(),
-                          post_analysis: {
-                            modality: "Dental X-Ray",
-                            prediction: "Early Caries / Demineralization",
-                            confidence: 84.2,
-                            severity: "Moderate",
-                            severity_color: "#F59E0B",
-                            severity_description: "Incipient enamel demineralization noted in occlusal fissure.",
-                            explanation: "Localized subsurface radiolucency observed in occlusal pit without cavitation. Remineralization protocols indicated.",
-                            recommendations: [
-                              "Apply high-concentration fluoride sealing varnish (5% NaF).",
-                              "Implement resin fissure sealant over susceptible occlusal anatomy.",
-                              "Monitor with 6-month interval bitewing radiography.",
-                              "Prescribe 5000 ppm fluoride dentifrice for home application."
-                            ],
-                            disclaimer: "⚠️ MEDICAL DISCLAIMER: This is an AI-assisted diagnostic evaluation generated for informational and clinical decision-support purposes only.",
-                            report_id: "MED-OCCLUSAL-842",
-                            generated_at: new Date().toLocaleString()
-                          }
-                        };
-                        setPublicResult(mockResult);
-                      }}
-                    >
-                      <div className="benchmark-icon-box">
-                        <Activity size={16} color="#F59E0B" />
-                      </div>
-                      <div className="benchmark-case-info">
-                        <div className="benchmark-case-name">Case B: Occlusal Enamel</div>
-                        <div className="benchmark-case-sub">Premolar Demineralization</div>
-                        <div className="benchmark-case-action">
-                          Ready to load <ArrowRight size={10} />
-                        </div>
-                      </div>
-                      <span className="benchmark-status-badge amber">EARLY</span>
-                    </div>
-
-                    <div
-                      className="benchmark-case-item"
-                      onClick={() => {
-                        const mockResult = {
-                          prediction: "No Cavity Detected",
-                          confidence: 99.1,
-                          modality: "Dental X-Ray",
-                          fileName: "benchmark_healthy_dentition.png",
-                          date: new Date().toISOString(),
-                          post_analysis: {
-                            modality: "Dental X-Ray",
-                            prediction: "No Cavity Detected",
-                            confidence: 99.1,
-                            severity: "Low",
-                            severity_color: "#10B981",
-                            severity_description: "Sound enamel surfaces with preserved alveolar bone crests.",
-                            explanation: "Dental radiograph exhibits intact enamel margins, uniform dentin density, and sound periodontal bone support with no active cavitation.",
-                            recommendations: [
-                              "Maintain twice-daily brushing with fluoridated toothpaste.",
-                              "Practice daily interdental flossing.",
-                              "Schedule routine 6-month preventive dental check-ups.",
-                              "Maintain balanced nutrition with minimal sugar exposure."
-                            ],
-                            disclaimer: "⚠️ MEDICAL DISCLAIMER: This is an AI-assisted diagnostic evaluation generated for informational and clinical decision-support purposes only.",
-                            report_id: "MED-HEALTHY-991",
-                            generated_at: new Date().toLocaleString()
-                          }
-                        };
-                        setPublicResult(mockResult);
-                      }}
-                    >
-                      <div className="benchmark-icon-box">
-                        <Check size={16} color="#10B981" />
-                      </div>
-                      <div className="benchmark-case-info">
-                        <div className="benchmark-case-name">Case C: Negative Control</div>
-                        <div className="benchmark-case-sub">Healthy Intact Dentition</div>
-                        <div className="benchmark-case-action">
-                          Ready to load <ArrowRight size={10} />
-                        </div>
-                      </div>
-                      <span className="benchmark-status-badge green">CLEAN</span>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div
-                      className="benchmark-case-item"
-                      onClick={() => {
-                        alert("Please select a diagnostic file using 'Browse Local Files' or drag a scan into the viewport.");
-                      }}
-                    >
-                      <div className="benchmark-icon-box">
-                        <Activity size={16} color="#EF4444" />
-                      </div>
-                      <div className="benchmark-case-info">
-                        <div className="benchmark-case-name">Case A: Acute Pathology</div>
-                        <div className="benchmark-case-sub">Positive Benchmark Sample</div>
-                        <div className="benchmark-case-action">
-                          Select Local File <ArrowRight size={10} />
-                        </div>
-                      </div>
-                      <span className="benchmark-status-badge red">HIGH</span>
-                    </div>
-
-                    <div
-                      className="benchmark-case-item"
-                      onClick={() => {
-                        alert("Please select a diagnostic file using 'Browse Local Files' or drag a scan into the viewport.");
-                      }}
-                    >
-                      <div className="benchmark-icon-box">
-                        <Activity size={16} color="#F59E0B" />
-                      </div>
-                      <div className="benchmark-case-info">
-                        <div className="benchmark-case-name">Case B: Moderate Finding</div>
-                        <div className="benchmark-case-sub">Equivocal Infiltration</div>
-                        <div className="benchmark-case-action">
-                          Select Local File <ArrowRight size={10} />
-                        </div>
-                      </div>
-                      <span className="benchmark-status-badge amber">MOD</span>
-                    </div>
-
-                    <div
-                      className="benchmark-case-item"
-                      onClick={() => {
-                        alert("Please select a diagnostic file using 'Browse Local Files' or drag a scan into the viewport.");
-                      }}
-                    >
-                      <div className="benchmark-icon-box">
-                        <Check size={16} color="#10B981" />
-                      </div>
-                      <div className="benchmark-case-info">
-                        <div className="benchmark-case-name">Case C: Baseline Control</div>
-                        <div className="benchmark-case-sub">Clear Radiological Scan</div>
-                        <div className="benchmark-case-action">
-                          Select Local File <ArrowRight size={10} />
-                        </div>
-                      </div>
-                      <span className="benchmark-status-badge green">CLEAN</span>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
 
             {/* Clinical Decision Support Disclaimer */}
             <div className="studio-disclaimer-box">
@@ -1136,17 +906,7 @@ function App() {
             </button>
 
             <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", justifyContent: "center" }}>
-              <span>ISO 13485 CERTIFIED</span>
-              <span>•</span>
-              <span>HIPAA BAA COMPLIANT</span>
-              <span>•</span>
-              <span>DICOM WG-28 STANDARD</span>
-              <span>•</span>
               <span>© 2026 MediScan.AI Neural Engine</span>
-            </div>
-
-            <div style={{ color: "#38BDF8", fontWeight: "700" }}>
-              ● NODE: US-EAST-CLINICAL-04
             </div>
           </footer>
         </div>
@@ -1505,11 +1265,6 @@ function App() {
           </div>
 
           <div className="portal-footer-right">
-            <span>v2.8.4-PROD</span>
-            <span>•</span>
-            <span style={{ cursor: "pointer" }} onClick={() => alert("Security Protocol: AES-256 GCM encryption enabled with TLS 1.3 cryptographic transport.")}>Security Protocol</span>
-            <span>•</span>
-            <span style={{ cursor: "pointer" }} onClick={() => alert("Privacy Notice: MediScan AI strictly adheres to HIPAA and GDPR diagnostic telemetry standards.")}>Privacy Notice</span>
           </div>
         </footer>
       </div>
