@@ -10,9 +10,19 @@ import {
   User,
   LogOut,
   Layers,
-  Brain
+  Brain,
+  History,
+  Sparkles,
+  Eye,
+  EyeOff,
+  Lock,
+  Mail,
+  Zap,
+  Check,
+  HelpCircle
 } from "lucide-react";
 import "./App.css";
+import PostAnalysisWorkflow from "./components/PostAnalysisWorkflow";
 
 const API_BASE = "http://localhost:5000";
 
@@ -23,11 +33,21 @@ function App() {
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [keepSessionActive, setKeepSessionActive] = useState(true);
   const [authError, setAuthError] = useState("");
   const [isRegistering, setIsRegistering] = useState(false);
   const [regName, setRegName] = useState("");
-  const [publicMode, setPublicMode] = useState("login"); // login, xray, report
+  const [publicMode, setPublicMode] = useState("login"); // login, xray, cavity, ct_scan, mri, report, history
   const [publicResult, setPublicResult] = useState(null);
+  const [publicHistory, setPublicHistory] = useState(() => {
+    try {
+      const saved = localStorage.getItem("mediscan_public_history");
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
 
   const [patients, setPatients] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -73,7 +93,41 @@ function App() {
       });
       if (res.ok) {
         const data = await res.json();
-        setPublicResult(data);
+        const modalityName = publicMode === "mri"
+          ? "Brain MRI"
+          : publicMode === "cavity"
+            ? "Dental X-Ray"
+            : publicMode === "ct_scan"
+              ? "Kidney Stone CT"
+              : publicMode === "xray"
+                ? "Chest X-Ray"
+                : "Medical Report";
+
+        const enriched = {
+          ...data,
+          modality: modalityName,
+          fileType: modalityName,
+          fileName: uploadFile.name,
+          date: new Date().toISOString()
+        };
+
+        setPublicResult(enriched);
+
+        // Persist to public history if image modality
+        if (publicMode !== "report") {
+          setPublicHistory(prev => {
+            const reportId = enriched.report_id || enriched.post_analysis?.report_id || `MED-${Date.now()}`;
+            enriched.report_id = reportId;
+            const updated = [enriched, ...prev.filter(item => (item.report_id || item.analysisId) !== reportId)].slice(0, 50);
+            try {
+              localStorage.setItem("mediscan_public_history", JSON.stringify(updated));
+            } catch (e) {
+              console.warn("Could not save to localStorage:", e);
+            }
+            return updated;
+          });
+        }
+
         showToast("AI analysis completed successfully.");
         setUploadFile(null);
       } else {
@@ -299,10 +353,231 @@ function App() {
   };
 
   if (!token) {
+    if (publicResult && publicMode !== "report") {
+      return (
+        <div className="login-container" style={{ padding: "40px 20px", alignItems: "flex-start" }}>
+          <div className="login-card" style={{ maxWidth: "1100px", width: "100%", padding: "28px" }}>
+            <PostAnalysisWorkflow
+              result={publicResult}
+              modality={publicResult.modality || (
+                publicMode === "mri" ? "Brain MRI" :
+                  publicMode === "cavity" ? "Dental X-Ray" :
+                    publicMode === "ct_scan" ? "Kidney Stone CT" : "Chest X-Ray"
+              )}
+              apiBase={API_BASE}
+              historyList={publicHistory}
+              onSelectHistory={(item) => setPublicResult(item)}
+              onClearHistory={() => {
+                if (window.confirm("Clear all public analysis history?")) {
+                  setPublicHistory([]);
+                  localStorage.removeItem("mediscan_public_history");
+                }
+              }}
+              onDeleteHistoryItem={(id) => {
+                setPublicHistory(prev => {
+                  const filtered = prev.filter(h => (h.report_id || h.analysisId) !== id);
+                  localStorage.setItem("mediscan_public_history", JSON.stringify(filtered));
+                  return filtered;
+                });
+              }}
+              onBackToUpload={() => {
+                setPublicResult(null);
+                setUploadFile(null);
+              }}
+            />
+
+            <div style={{ textAlign: "center", marginTop: "24px", borderTop: "1px solid var(--border-color)", paddingTop: "16px" }}>
+              <button
+                onClick={() => { setPublicMode("login"); setPublicResult(null); setUploadFile(null); }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "var(--accent)",
+                  fontSize: "13px",
+                  fontWeight: "600",
+                  cursor: "pointer",
+                  textDecoration: "underline"
+                }}
+              >
+                Back to Portal Login
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (publicMode === "history") {
+      return (
+        <div className="login-container" style={{ padding: "40px 20px", alignItems: "flex-start" }}>
+          <div className="login-card" style={{ maxWidth: "1000px", width: "100%", padding: "32px" }}>
+            <div className="logo-section" style={{ marginBottom: "24px" }}>
+              <div className="pulse-circle">
+                <History size={32} color="#3B82F6" />
+              </div>
+              <h2>Public Scan History</h2>
+              <p>Chronological audit record of past AI-assisted diagnostic evaluations</p>
+            </div>
+
+            {publicHistory.length > 0 ? (
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                  <span style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+                    Total Saved Analyses: <strong>{publicHistory.length}</strong>
+                  </span>
+                  <button
+                    className="clear-history-btn"
+                    onClick={() => {
+                      if (window.confirm("Clear all public scan history?")) {
+                        setPublicHistory([]);
+                        localStorage.removeItem("mediscan_public_history");
+                      }
+                    }}
+                  >
+                    Clear All History
+                  </button>
+                </div>
+                <div className="history-grid-flow">
+                  {publicHistory.map((item, idx) => (
+                    <div
+                      key={item.report_id || idx}
+                      className="history-card-item"
+                      onClick={() => {
+                        setPublicResult(item);
+                        const modLower = (item.modality || item.fileType || "").toLowerCase();
+                        if (modLower.includes("cavity") || modLower.includes("dental")) setPublicMode("cavity");
+                        else if (modLower.includes("ct") || modLower.includes("kidney") || modLower.includes("stone")) setPublicMode("ct_scan");
+                        else if (modLower.includes("mri") || modLower.includes("brain")) setPublicMode("mri");
+                        else setPublicMode("xray");
+                      }}
+                    >
+                      <div className="h-card-top">
+                        <span className="h-modality-badge">{item.modality || "Diagnostic Scan"}</span>
+                        <span
+                          className="h-severity-pill"
+                          style={{
+                            backgroundColor: item.post_analysis?.severity === "High" ? "#EF4444" : item.post_analysis?.severity === "Moderate" ? "#F59E0B" : "#10B981",
+                            color: "#fff"
+                          }}
+                        >
+                          {item.post_analysis?.severity || "Analyzed"}
+                        </span>
+                      </div>
+                      <h4 className="h-pred-title" style={{ color: "#fff" }}>{item.prediction}</h4>
+                      <div className="h-meta-row">
+                        <span>Confidence: <strong>{item.confidence}%</strong></span>
+                        <span>{new Date(item.date).toLocaleDateString()}</span>
+                      </div>
+                      <p className="h-snippet">{item.post_analysis?.explanation || "View comprehensive medical explanation and structured clinical report."}</p>
+                      <div className="h-card-actions">
+                        <button className="h-view-btn">
+                          <Eye size={12} /> View Flow & Report
+                        </button>
+                        <button
+                          className="h-delete-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const idToDel = item.report_id || item.analysisId;
+                            setPublicHistory(prev => {
+                              const filtered = prev.filter(h => (h.report_id || h.analysisId) !== idToDel);
+                              localStorage.setItem("mediscan_public_history", JSON.stringify(filtered));
+                              return filtered;
+                            });
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="no-history-state" style={{ padding: "40px 0" }}>
+                <History size={40} color="var(--text-muted)" />
+                <p>No scans analyzed in this browser session yet.</p>
+                <span>Select any diagnostic module below to run an AI assessment.</span>
+              </div>
+            )}
+
+            <div style={{ textAlign: "center", marginTop: "28px", display: "flex", justifyContent: "center", gap: "16px", flexWrap: "wrap" }}>
+              <button
+                onClick={() => { setPublicMode("xray"); }}
+                className="outline-btn"
+                style={{ padding: "6px 14px", fontSize: "12px" }}
+              >
+                Start New Scan
+              </button>
+              <button
+                onClick={() => { setPublicMode("login"); }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#3B82F6",
+                  fontSize: "13px",
+                  fontWeight: "600",
+                  cursor: "pointer",
+                  textDecoration: "underline"
+                }}
+              >
+                Back to Portal Login
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     if (publicMode === "xray" || publicMode === "report" || publicMode === "cavity" || publicMode === "ct_scan" || publicMode === "mri") {
       return (
-        <div className="login-container" style={{ padding: "40px" }}>
+        <div className="login-container" style={{ padding: "40px 20px" }}>
           <div className="login-card" style={{ maxWidth: "800px", width: "100%" }}>
+            {/* Quick Switcher Module Tabs */}
+            <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "12px", marginBottom: "16px", borderBottom: "1px solid var(--border-color)" }}>
+              <button
+                className={`period-btn ${publicMode === "xray" ? "active" : ""}`}
+                style={{ padding: "5px 12px", fontSize: "11px" }}
+                onClick={() => { setPublicMode("xray"); setUploadFile(null); setPublicResult(null); }}
+              >
+                Chest X-Ray
+              </button>
+              <button
+                className={`period-btn ${publicMode === "cavity" ? "active" : ""}`}
+                style={{ padding: "5px 12px", fontSize: "11px" }}
+                onClick={() => { setPublicMode("cavity"); setUploadFile(null); setPublicResult(null); }}
+              >
+                Dental Cavity
+              </button>
+              <button
+                className={`period-btn ${publicMode === "ct_scan" ? "active" : ""}`}
+                style={{ padding: "5px 12px", fontSize: "11px" }}
+                onClick={() => { setPublicMode("ct_scan"); setUploadFile(null); setPublicResult(null); }}
+              >
+                CT Kidney Stone
+              </button>
+              <button
+                className={`period-btn ${publicMode === "mri" ? "active" : ""}`}
+                style={{ padding: "5px 12px", fontSize: "11px" }}
+                onClick={() => { setPublicMode("mri"); setUploadFile(null); setPublicResult(null); }}
+              >
+                Brain MRI
+              </button>
+              <button
+                className={`period-btn ${publicMode === "report" ? "active" : ""}`}
+                style={{ padding: "5px 12px", fontSize: "11px" }}
+                onClick={() => { setPublicMode("report"); setUploadFile(null); setPublicResult(null); }}
+              >
+                Lab Report
+              </button>
+              <button
+                className="period-btn"
+                style={{ padding: "5px 12px", fontSize: "11px", marginLeft: "auto", color: "var(--accent)" }}
+                onClick={() => { setPublicMode("history"); }}
+              >
+                History ({publicHistory.length})
+              </button>
+            </div>
+
             <div className="logo-section">
               <div className="pulse-circle">
                 <Activity size={32} color={publicMode === "cavity" ? "#F59E0B" : publicMode === "ct_scan" ? "#8B5CF6" : publicMode === "mri" ? "#EC4899" : "#10B981"} />
@@ -311,32 +586,44 @@ function App() {
                 {publicMode === "mri"
                   ? "Public Brain Tumor MRI Classifier"
                   : publicMode === "cavity"
-                  ? "Public Dental Cavity Detection"
-                  : publicMode === "ct_scan"
-                  ? "Public CT Scan Kidney Stone Classifier"
-                  : "Public AI Diagnostic Analysis"}
+                    ? "Public Dental Cavity Detection"
+                    : publicMode === "ct_scan"
+                      ? "Public CT Scan Kidney Stone Classifier"
+                      : publicMode === "report"
+                        ? "Public Medical Report Analyzer"
+                        : "Public Chest X-Ray AI Analysis"}
               </h2>
               <p>
                 {publicMode === "mri"
                   ? "Upload a Brain MRI slice image for AI 4-class tumor classification (Glioma, Meningioma, Pituitary, or No Tumor)"
                   : publicMode === "xray"
-                  ? "Upload a Chest X-ray film for DenseNet121 multi-label prediction"
-                  : publicMode === "cavity"
-                  ? "Upload a dental intraoral photo or dental radiograph for AI caries lesion detection"
-                  : publicMode === "ct_scan"
-                  ? "Upload an abdominal/pelvic CT scan slice for AI kidney stone detection"
-                  : "Upload a lab/medical report image for parsing and summary extraction"}
+                    ? "Upload a Chest X-ray film for DenseNet121 multi-label prediction"
+                    : publicMode === "cavity"
+                      ? "Upload a dental intraoral photo or dental radiograph for AI caries lesion detection"
+                      : publicMode === "ct_scan"
+                        ? "Upload an abdominal/pelvic CT scan slice for AI kidney stone detection"
+                        : "Upload a lab/medical report image for parsing and summary extraction"}
               </p>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: publicResult ? "1fr 1fr" : "1fr", gap: "24px", alignItems: "start" }}>
-              {/* Left Side: Upload Column */}
+            <div style={{ display: "grid", gridTemplateColumns: publicResult && publicMode === "report" ? "1fr 1fr" : "1fr", gap: "24px", alignItems: "start" }}>
+              {/* Upload Form */}
               <div>
                 <form onSubmit={handlePublicUpload} className="upload-form">
                   <label className="drag-area" style={{ minHeight: "220px" }}>
                     <Upload size={32} className="upload-icon" />
-                    <span>{uploadFile ? uploadFile.name : (publicMode === "mri" ? "Select or drag Brain MRI scan here" : "Select or drag diagnostic file here")}</span>
-                    <span className="supported">Supported: JPEG, PNG</span>
+                    <span>
+                      {uploadFile
+                        ? uploadFile.name
+                        : publicMode === "mri"
+                          ? "Select or drag Brain MRI scan here"
+                          : publicMode === "cavity"
+                            ? "Select or drag Dental X-ray / photo here"
+                            : publicMode === "ct_scan"
+                              ? "Select or drag CT scan slice here"
+                              : "Select or drag diagnostic file here"}
+                    </span>
+                    <span className="supported">Supported: JPEG, PNG {publicMode === "report" && ", PDF"}</span>
                     <input
                       type="file"
                       required
@@ -355,21 +642,23 @@ function App() {
                         background: publicMode === "mri"
                           ? "linear-gradient(135deg, #EC4899, #BE185D)"
                           : publicMode === "cavity"
-                          ? "linear-gradient(135deg, #F59E0B, #D97706)"
-                          : publicMode === "ct_scan"
-                          ? "linear-gradient(135deg, #8B5CF6, #6D28D9)"
-                          : undefined
+                            ? "linear-gradient(135deg, #F59E0B, #D97706)"
+                            : publicMode === "ct_scan"
+                              ? "linear-gradient(135deg, #8B5CF6, #6D28D9)"
+                              : undefined
                       }}
                     >
                       {uploading
                         ? "Executing AI Engine..."
                         : publicMode === "mri"
-                        ? "Detect Brain Tumor"
-                        : publicMode === "cavity"
-                        ? "Detect Dental Cavity"
-                        : publicMode === "ct_scan"
-                        ? "Detect Kidney Stone"
-                        : "Analyze Diagnostic File"}
+                          ? "Detect Brain Tumor"
+                          : publicMode === "cavity"
+                            ? "Detect Dental Cavity"
+                            : publicMode === "ct_scan"
+                              ? "Detect Kidney Stone"
+                              : publicMode === "report"
+                                ? "Analyze Lab Report"
+                                : "Analyze Chest X-Ray"}
                     </button>
                   )}
                 </form>
@@ -382,259 +671,42 @@ function App() {
                 </div>
               </div>
 
-              {/* Right Side: Analysis Output */}
-              {publicResult && (
+              {/* Lab Report Output (if report mode) */}
+              {publicResult && publicMode === "report" && (
                 <div className="analysis-result-card" style={{ background: "rgba(0, 0, 0, 0.2)", border: "none", padding: "20px" }}>
                   <div className="header" style={{ marginBottom: "16px", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-                    <h3 style={{ fontSize: "16px", fontWeight: "800" }}>Analysis Results</h3>
+                    <h3 style={{ fontSize: "16px", fontWeight: "800" }}>Report Analysis Results</h3>
                   </div>
-
-                  {publicMode === "mri" ? (
-                    <div className="xray-diagnostic" style={{ gap: "16px" }}>
-                      <div className="metric-row" style={{ gap: "16px" }}>
-                        <div className="metric">
-                          <span className="label" style={{ fontSize: "10px" }}>Brain MRI Diagnosis</span>
-                          <span className="value" style={{ fontSize: "18px", color: publicResult.is_tumor ? "#EF4444" : "#10B981" }}>
-                            {publicResult.prediction}
-                          </span>
-                        </div>
-                        <div className="metric">
-                          <span className="label" style={{ fontSize: "10px" }}>Confidence</span>
-                          <span className="value" style={{ fontSize: "18px", color: "#EC4899" }}>{publicResult.confidence}%</span>
-                        </div>
-                      </div>
-
-                      {publicResult.class_probabilities && (
-                        <div style={{ background: "rgba(236, 72, 153, 0.08)", border: "1px solid rgba(236, 72, 153, 0.2)", borderRadius: "8px", padding: "10px 14px", marginTop: "12px" }}>
-                          <span style={{ fontSize: "10px", fontWeight: "700", textTransform: "uppercase", color: "#F472B6" }}>
-                            Class Probabilities Distribution:
-                          </span>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 12px", marginTop: "8px" }}>
-                            {Object.entries(publicResult.class_probabilities).map(([cls, prob]) => (
-                              <div key={cls} style={{ display: "flex", justifyContent: "space-between", fontSize: "11px" }}>
-                                <span style={{ color: "#E5E7EB", textTransform: "capitalize" }}>{cls === "notumor" ? "No Tumor" : cls}:</span>
-                                <strong style={{ color: cls === publicResult.raw_class ? "#EC4899" : "#9CA3AF" }}>{prob}%</strong>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {publicResult.recommendation && (
-                        <div style={{ background: "rgba(236, 72, 153, 0.1)", border: "1px solid rgba(236, 72, 153, 0.25)", borderRadius: "8px", padding: "10px 14px", marginTop: "12px" }}>
-                          <span style={{ fontSize: "10px", fontWeight: "700", textTransform: "uppercase", color: "#F472B6" }}>
-                            Clinical Guidance:
-                          </span>
-                          <p style={{ fontSize: "12px", color: "#F3F4F6", margin: "4px 0 0 0", lineHeight: "1.4" }}>
-                            {publicResult.recommendation}
-                          </p>
-                        </div>
-                      )}
-
-                      <div style={{ marginTop: "16px", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "16px" }}>
-                        <h4 style={{ fontSize: "13px", fontWeight: "700", marginBottom: "12px", color: "#F472B6", display: "flex", alignItems: "center", gap: "6px" }}>
-                          <Brain size={16} /> Explainable AI — Brain MRI Heatmap
-                        </h4>
-
-                        <div className="visuals-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                          <div className="img-holder">
-                            <span style={{ fontSize: "10px", color: "var(--muted)" }}>Original MRI Slice</span>
-                            <img
-                              src={publicResult.original_image ? `${API_BASE}${publicResult.original_image}` : (publicResult.heatmap ? publicResult.heatmap : "")}
-                              alt="Original Brain MRI"
-                              style={{ borderRadius: "8px", marginTop: "4px", width: "100%", border: "1px solid rgba(255,255,255,0.05)" }}
-                            />
-                          </div>
-                          <div className="img-holder">
-                            <span style={{ fontSize: "10px", color: "var(--muted)" }}>Grad-CAM Overlay</span>
-                            <img
-                              src={publicResult.gradcam_image ? `${API_BASE}${publicResult.gradcam_image}` : (publicResult.heatmap ? publicResult.heatmap : "")}
-                              alt="Grad-CAM Overlay"
-                              style={{ borderRadius: "8px", marginTop: "4px", width: "100%", border: "1px solid rgba(255,255,255,0.05)" }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ) : publicMode === "ct_scan" ? (
-                    <div className="xray-diagnostic" style={{ gap: "16px" }}>
-                      <div className="metric-row" style={{ gap: "16px" }}>
-                        <div className="metric">
-                          <span className="label" style={{ fontSize: "10px" }}>Kidney Status</span>
-                          <span className="value" style={{ fontSize: "18px", color: publicResult.is_stone ? "#EF4444" : "#10B981" }}>
-                            {publicResult.prediction}
-                          </span>
-                        </div>
-                        <div className="metric">
-                          <span className="label" style={{ fontSize: "10px" }}>Confidence</span>
-                          <span className="value" style={{ fontSize: "18px", color: "#8B5CF6" }}>{publicResult.confidence}%</span>
-                        </div>
-                      </div>
-
-                      {publicResult.recommendation && (
-                        <div style={{ background: "rgba(139, 92, 246, 0.1)", border: "1px solid rgba(139, 92, 246, 0.25)", borderRadius: "8px", padding: "10px 14px", marginTop: "12px" }}>
-                          <span style={{ fontSize: "10px", fontWeight: "700", textTransform: "uppercase", color: "#A78BFA" }}>
-                            Clinical Guidance:
-                          </span>
-                          <p style={{ fontSize: "12px", color: "#F3F4F6", margin: "4px 0 0 0", lineHeight: "1.4" }}>
-                            {publicResult.recommendation}
-                          </p>
-                        </div>
-                      )}
-
-                      <div style={{ marginTop: "16px", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "16px" }}>
-                        <h4 style={{ fontSize: "13px", fontWeight: "700", marginBottom: "12px", color: "#A78BFA", display: "flex", alignItems: "center", gap: "6px" }}>
-                          <Brain size={16} /> Explainable AI — CT Heatmap
-                        </h4>
-
-                        <div className="visuals-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                          <div className="img-holder">
-                            <span style={{ fontSize: "10px", color: "var(--muted)" }}>Original CT Slice</span>
-                            <img
-                              src={publicResult.original_image ? `${API_BASE}${publicResult.original_image}` : (publicResult.heatmap ? publicResult.heatmap : "")}
-                              alt="Original CT Scan"
-                              style={{ borderRadius: "8px", marginTop: "4px", width: "100%", border: "1px solid rgba(255,255,255,0.05)" }}
-                            />
-                          </div>
-                          <div className="img-holder">
-                            <span style={{ fontSize: "10px", color: "var(--muted)" }}>Grad-CAM Overlay</span>
-                            <img
-                              src={publicResult.gradcam_image ? `${API_BASE}${publicResult.gradcam_image}` : (publicResult.heatmap ? publicResult.heatmap : "")}
-                              alt="Grad-CAM Overlay"
-                              style={{ borderRadius: "8px", marginTop: "4px", width: "100%", border: "1px solid rgba(255,255,255,0.05)" }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ) : publicMode === "cavity" ? (
-                    <div className="xray-diagnostic" style={{ gap: "16px" }}>
-                      <div className="metric-row" style={{ gap: "16px" }}>
-                        <div className="metric">
-                          <span className="label" style={{ fontSize: "10px" }}>Dental Status</span>
-                          <span className="value" style={{ fontSize: "18px", color: publicResult.is_cavity ? "#EF4444" : "#10B981" }}>
-                            {publicResult.prediction}
-                          </span>
-                        </div>
-                        <div className="metric">
-                          <span className="label" style={{ fontSize: "10px" }}>Confidence</span>
-                          <span className="value" style={{ fontSize: "18px" }}>{publicResult.confidence}%</span>
-                        </div>
-                      </div>
-
-                      {publicResult.recommendation && (
-                        <div style={{ background: "rgba(245, 158, 11, 0.1)", border: "1px solid rgba(245, 158, 11, 0.2)", borderRadius: "8px", padding: "10px 14px", marginTop: "12px" }}>
-                          <span style={{ fontSize: "10px", fontWeight: "700", textTransform: "uppercase", color: "var(--warning)" }}>
-                            Clinical Recommendation:
-                          </span>
-                          <p style={{ fontSize: "12px", color: "#F3F4F6", margin: "4px 0 0 0", lineHeight: "1.4" }}>
-                            {publicResult.recommendation}
-                          </p>
-                        </div>
-                      )}
-
-                      <div style={{ marginTop: "16px", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "16px" }}>
-                        <h4 style={{ fontSize: "13px", fontWeight: "700", marginBottom: "12px", color: "var(--primary)", display: "flex", alignItems: "center", gap: "6px" }}>
-                          <Brain size={16} /> Explainable AI — Caries Heatmap
-                        </h4>
-
-                        <div className="visuals-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                          <div className="img-holder">
-                            <span style={{ fontSize: "10px", color: "var(--muted)" }}>Original Image</span>
-                            <img
-                              src={publicResult.original_image ? `${API_BASE}${publicResult.original_image}` : (publicResult.heatmap ? publicResult.heatmap : "")}
-                              alt="Original Dental"
-                              style={{ borderRadius: "8px", marginTop: "4px", width: "100%", border: "1px solid rgba(255,255,255,0.05)" }}
-                            />
-                          </div>
-                          <div className="img-holder">
-                            <span style={{ fontSize: "10px", color: "var(--muted)" }}>Grad-CAM Overlay</span>
-                            <img
-                              src={publicResult.gradcam_image ? `${API_BASE}${publicResult.gradcam_image}` : (publicResult.heatmap ? publicResult.heatmap : "")}
-                              alt="Grad-CAM Overlay"
-                              style={{ borderRadius: "8px", marginTop: "4px", width: "100%", border: "1px solid rgba(255,255,255,0.05)" }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ) : publicMode === "xray" ? (
-                    <div className="xray-diagnostic" style={{ gap: "16px" }}>
-                      <div className="metric-row" style={{ gap: "16px" }}>
-                        <div className="metric">
-                          <span className="label" style={{ fontSize: "10px" }}>Finding</span>
-                          <span className="value red" style={{ fontSize: "20px" }}>{publicResult.prediction}</span>
-                        </div>
-                        <div className="metric">
-                          <span className="label" style={{ fontSize: "10px" }}>Confidence</span>
-                          <span className="value" style={{ fontSize: "20px" }}>{publicResult.confidence}%</span>
-                        </div>
-                      </div>
-
-                      <div style={{ marginTop: "16px", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "16px" }}>
-                        <h4 style={{ fontSize: "13px", fontWeight: "700", marginBottom: "12px", color: "var(--primary)", display: "flex", alignItems: "center", gap: "6px" }}>
-                          <Brain size={16} /> Explainable AI — Grad-CAM
-                        </h4>
-
-                        <div className="visuals-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                          <div className="img-holder">
-                            <span style={{ fontSize: "10px", color: "var(--muted)" }}>Original X-ray</span>
-                            <img
-                              src={publicResult.original_image ? `${API_BASE}${publicResult.original_image}` : (publicResult.heatmap ? publicResult.heatmap : "")}
-                              alt="Original Xray"
-                              style={{ borderRadius: "8px", marginTop: "4px", width: "100%", border: "1px solid rgba(255,255,255,0.05)" }}
-                            />
-                          </div>
-                          <div className="img-holder">
-                            <span style={{ fontSize: "10px", color: "var(--muted)" }}>Grad-CAM Overlay</span>
-                            <img
-                              src={publicResult.gradcam_image ? `${API_BASE}${publicResult.gradcam_image}` : (publicResult.heatmap ? publicResult.heatmap : "")}
-                              alt="Grad-CAM Overlay"
-                              style={{ borderRadius: "8px", marginTop: "4px", width: "100%", border: "1px solid rgba(255,255,255,0.05)" }}
-                            />
-                          </div>
-                        </div>
-
-                        <div className="info-alert" style={{ display: "flex", gap: "8px", alignItems: "center", background: "rgba(59, 130, 246, 0.05)", padding: "10px", borderRadius: "6px", marginTop: "12px", border: "1px solid rgba(59, 130, 246, 0.1)" }}>
-                          <Info size={16} color="#3B82F6" />
-                          <span style={{ fontSize: "11px", color: "#93C5FD", lineHeight: "1.4" }}>
-                            Highlighted regions indicate areas of the X-ray that contributed most strongly to the model's prediction.
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="report-diagnostic" style={{ gap: "16px" }}>
-                      <table className="lab-table">
-                        <thead>
-                          <tr>
-                            <th style={{ fontSize: "10px" }}>Metric</th>
-                            <th style={{ fontSize: "10px" }}>Value</th>
-                            <th style={{ fontSize: "10px" }}>Range</th>
-                            <th style={{ fontSize: "10px" }}>Status</th>
+                  <div className="report-diagnostic" style={{ gap: "16px" }}>
+                    <table className="lab-table">
+                      <thead>
+                        <tr>
+                          <th style={{ fontSize: "10px" }}>Metric</th>
+                          <th style={{ fontSize: "10px" }}>Value</th>
+                          <th style={{ fontSize: "10px" }}>Range</th>
+                          <th style={{ fontSize: "10px" }}>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {publicResult.reportFindings && publicResult.reportFindings.map((f, idx) => (
+                          <tr key={idx} className={f.status !== "Normal" ? "abnormal-row" : ""}>
+                            <td style={{ fontSize: "12px" }}>{f.test_name}</td>
+                            <td style={{ fontSize: "12px" }}>{f.value} {f.unit}</td>
+                            <td style={{ fontSize: "12px" }}>{f.reference_text || f.reference || "Reference range not provided"}</td>
+                            <td>
+                              <span className={`status-badge ${f.status.toLowerCase()}`} style={{ fontSize: "9px" }}>
+                                {f.status}
+                              </span>
+                            </td>
                           </tr>
-                        </thead>
-                        <tbody>
-                          {publicResult.reportFindings && publicResult.reportFindings.map((f, idx) => (
-                            <tr key={idx} className={f.status !== "Normal" ? "abnormal-row" : ""}>
-                              <td style={{ fontSize: "12px" }}>{f.test_name}</td>
-                              <td style={{ fontSize: "12px" }}>{f.value} {f.unit}</td>
-                              <td style={{ fontSize: "12px" }}>{f.reference_text || f.reference || "Reference range not provided"}</td>
-                              <td>
-                                <span className={`status-badge ${f.status.toLowerCase()}`} style={{ fontSize: "9px" }}>
-                                  {f.status}
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      <div className="summary-block" style={{ padding: "14px" }}>
-                        <h4 style={{ fontSize: "12px" }}>AI Summary</h4>
-                        <p style={{ fontSize: "12px" }}>{publicResult.reportSummary}</p>
-                      </div>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div className="summary-block" style={{ padding: "14px" }}>
+                      <h4 style={{ fontSize: "12px" }}>AI Summary</h4>
+                      <p style={{ fontSize: "12px" }}>{publicResult.reportSummary}</p>
                     </div>
-                  )}
+                  </div>
                 </div>
               )}
             </div>
@@ -652,7 +724,7 @@ function App() {
                   textDecoration: "underline"
                 }}
               >
-                Back to Portal Landing
+                Back to Portal Login
               </button>
             </div>
           </div>
@@ -661,150 +733,364 @@ function App() {
     }
 
     return (
-      <div className="login-container">
-        <div className="login-card">
-          <div className="logo-section">
-            <div className="pulse-circle">
-              <Activity size={32} color="#10B981" />
+      <div className="portal-landing-bg">
+        {/* Top Navbar */}
+        <header className="portal-navbar">
+          <div className="portal-nav-brand">
+            <div className="portal-logo-orb">
+              <Sparkles size={20} color="#2DD4BF" />
             </div>
-            <h2>{isRegistering ? "Register Doctor Account" : "MediScan AI Portal"}</h2>
-            <p>{isRegistering ? "Create your practitioner credentials" : "Clinical Decision Support & Patient Management System"}</p>
+            <div>
+              <div className="portal-brand-title">
+                MediScan <span className="brand-ai">AI</span>
+                <span className="portal-system-badge">
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#10B981", display: "inline-block", boxShadow: "0 0 6px #10B981" }}></span>
+                  SYSTEM ONLINE
+                </span>
+              </div>
+              <div className="portal-brand-sub">Clinical Decision Support & Patient Management System</div>
+            </div>
           </div>
 
-          <form onSubmit={isRegistering ? handleRegister : handleLogin}>
-            {authError && <div className="error-alert">{authError}</div>}
-
-            {isRegistering && (
-              <div className="input-group">
-                <label>Practitioner Full Name</label>
-                <input
-                  type="text"
-                  required
-                  value={regName}
-                  onChange={(e) => setRegName(e.target.value)}
-                  placeholder="e.g. Dr. Varsha Gowda"
-                />
-              </div>
-            )}
-
-            <div className="input-group">
-              <label>Username / Email</label>
-              <input
-                type="text"
-                required
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter credentials"
-              />
+          <div className="portal-nav-right">
+            <div className="portal-hipaa-badge">
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#0EA5E9", display: "inline-block" }}></span>
+              HIPAA COMPLIANT &nbsp;|&nbsp; DICOM v3.0 READY
             </div>
-
-            <div className="input-group">
-              <label>Password</label>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-              />
-            </div>
-
-            <button type="submit" className="login-btn">
-              {isRegistering ? "Register Account" : "Authenticate Portal"} <ArrowRight size={16} />
-            </button>
-          </form>
-
-          <div style={{ textAlign: "center", marginTop: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
             <button
-              onClick={() => { setIsRegistering(!isRegistering); setAuthError(""); }}
-              style={{
-                background: "none",
-                border: "none",
-                color: "#3B82F6",
-                fontSize: "13px",
-                fontWeight: "600",
-                cursor: "pointer",
-                textDecoration: "underline"
-              }}
+              className="portal-support-link"
+              onClick={() => alert("MediScan Clinical Support Portal\n24/7 Hotline: +1 (800) 555-MEDI\nEmail: clinical.support@mediscan.ai\nStatus: All neural inference engines operating nominal.")}
             >
-              {isRegistering ? "Already have an account? Sign In" : "Need an account? Sign Up"}
+              <HelpCircle size={14} /> Clinical Support
             </button>
+          </div>
+        </header>
 
-            {!isRegistering && (
-              <div style={{ borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "12px", display: "flex", justifyContent: "space-around", gap: "8px", flexWrap: "wrap" }}>
-                <button
-                  onClick={() => { setPublicMode("xray"); setAuthError(""); }}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "#10B981",
-                    fontSize: "12px",
-                    fontWeight: "700",
-                    cursor: "pointer"
-                  }}
+        {/* Main 2-Column Split */}
+        <main className="portal-main-grid">
+          {/* Left Column: Hero Typography + Feature Badges + 5 Diagnostic Modules + Pipeline */}
+          <div className="portal-hero-left">
+            <div className="portal-top-pill">
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2DD4BF", display: "inline-block", boxShadow: "0 0 6px #2DD4BF" }}></span>
+              NEXT-GEN NEURAL DIAGNOSTIC SUITE
+            </div>
+
+            <h1 className="portal-hero-title">
+              Intelligent Medical <br />
+              Imaging. <br />
+              <span className="highlight-cyan">Smarter Clinical</span>
+              <span className="highlight-cyan">Decisions.</span>
+            </h1>
+
+            <p className="portal-hero-desc">
+              MediScan AI ingests multi-modal radiological scans, synthesizes contextual
+              patient records, and delivers instant, explainable deep learning decision
+              support directly to your clinical workflow.
+            </p>
+
+            {/* Feature Pills */}
+            <div className="portal-feature-pills">
+              <div className="portal-feature-pill cyan-border">
+                <Check size={13} color="#2DD4BF" />
+                <span>AI-Powered Clinical Analysis</span>
+              </div>
+              <div className="portal-feature-pill">
+                <Layers size={13} color="#38BDF8" />
+                <span>Multimodal Medical Imaging</span>
+              </div>
+              <div className="portal-feature-pill">
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#34D399", display: "inline-block", boxShadow: "0 0 6px #34D399" }}></span>
+                <span>99.4% Model Confidence</span>
+              </div>
+            </div>
+
+            {/* AI Diagnostic Modules Card */}
+            <div className="portal-modules-card">
+              <div className="portal-modules-header">
+                <div className="portal-modules-title">
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2DD4BF", display: "inline-block", boxShadow: "0 0 6px #2DD4BF" }}></span>
+                  AI Diagnostic Modules <span className="sub">| Multimodal medical imaging analysis</span>
+                </div>
+                <div className="portal-types-badge">5 ANALYSIS TYPES</div>
+              </div>
+
+              {/* 2x2 + 1 Grid */}
+              <div className="portal-modules-grid">
+                {/* 1. Chest X-Ray */}
+                <div
+                  className="portal-module-item"
+                  onClick={() => { setPublicMode("xray"); setAuthError(""); setPublicResult(null); }}
+                  title="Launch Public Chest X-Ray AI Analysis"
                 >
-                  Public X-ray Analysis
-                </button>
-                <button
-                  onClick={() => { setPublicMode("cavity"); setAuthError(""); }}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "#F59E0B",
-                    fontSize: "12px",
-                    fontWeight: "700",
-                    cursor: "pointer"
-                  }}
+                  <div className="portal-mod-top">
+                    <div className="portal-mod-icon-box">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 4v16" />
+                        <path d="M7 6a5 5 0 0 0-4 4.5c0 3.5 2.5 6.5 5 7.5" />
+                        <path d="M17 6a5 5 0 0 1 4 4.5c0 3.5-2.5 6.5-5 7.5" />
+                        <path d="M8 10h8" />
+                        <path d="M8 14h8" />
+                      </svg>
+                    </div>
+                    <span className="portal-mod-ready-badge">
+                      <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#34D399", display: "inline-block" }}></span>
+                      Ready to Analyze
+                    </span>
+                  </div>
+                  <div className="portal-mod-name">Chest X-Ray</div>
+                  <div className="portal-mod-sub">AI-powered chest abnormality analysis</div>
+                </div>
+
+                {/* 2. Dental Analysis */}
+                <div
+                  className="portal-module-item"
+                  onClick={() => { setPublicMode("cavity"); setAuthError(""); setPublicResult(null); }}
+                  title="Launch Public Dental Cavity Detection"
                 >
-                  Public Dental Cavity
-                </button>
-                <button
-                  onClick={() => { setPublicMode("ct_scan"); setAuthError(""); }}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "#8B5CF6",
-                    fontSize: "12px",
-                    fontWeight: "700",
-                    cursor: "pointer"
-                  }}
+                  <div className="portal-mod-top">
+                    <div className="portal-mod-icon-box">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M7 3C4.2 3 2 8 2 10.5c0 3.8 2 7 4 10.5 1 1.8 2 1.8 3 0 .8-1.5 1.5-3.5 2.5-3.5s1.7 2 2.5 3.5c1 1.8 2 1.8 3 0 2-3.5 4-6.7 4-10.5C20.5 8 18.3 3 15.5 3c-2 0-3 1-4.2 2-1.2-1-2.2-2-4.3-2z" />
+                      </svg>
+                    </div>
+                    <span className="portal-mod-ready-badge">
+                      <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#34D399", display: "inline-block" }}></span>
+                      Ready to Analyze
+                    </span>
+                  </div>
+                  <div className="portal-mod-name">Dental Analysis</div>
+                  <div className="portal-mod-sub">AI cavity and dental condition analysis</div>
+                </div>
+
+                {/* 3. Brain MRI */}
+                <div
+                  className="portal-module-item"
+                  onClick={() => { setPublicMode("mri"); setAuthError(""); setPublicResult(null); }}
+                  title="Launch Public Brain MRI Classifier"
                 >
-                  Public CT Scan (Kidney)
-                </button>
-                <button
-                  onClick={() => { setPublicMode("mri"); setAuthError(""); }}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "#EC4899",
-                    fontSize: "12px",
-                    fontWeight: "700",
-                    cursor: "pointer"
-                  }}
+                  <div className="portal-mod-top">
+                    <div className="portal-mod-icon-box">
+                      <Brain size={18} />
+                    </div>
+                    <span className="portal-mod-ready-badge">
+                      <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#34D399", display: "inline-block" }}></span>
+                      Ready to Analyze
+                    </span>
+                  </div>
+                  <div className="portal-mod-name">Brain MRI</div>
+                  <div className="portal-mod-sub">AI-assisted brain imaging analysis</div>
+                </div>
+
+                {/* 4. Kidney Stone CT */}
+                <div
+                  className="portal-module-item"
+                  onClick={() => { setPublicMode("ct_scan"); setAuthError(""); setPublicResult(null); }}
+                  title="Launch Public CT Kidney Stone Classifier"
                 >
-                  Public Brain MRI
-                </button>
-                <button
-                  onClick={() => { setPublicMode("report"); setAuthError(""); }}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "#22D3EE",
-                    fontSize: "12px",
-                    fontWeight: "700",
-                    cursor: "pointer"
-                  }}
+                  <div className="portal-mod-top">
+                    <div className="portal-mod-icon-box">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="9" />
+                        <circle cx="12" cy="12" r="5" />
+                        <circle cx="12" cy="2" r="1.5" />
+                      </svg>
+                    </div>
+                    <span className="portal-mod-ready-badge">
+                      <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#34D399", display: "inline-block" }}></span>
+                      Ready to Analyze
+                    </span>
+                  </div>
+                  <div className="portal-mod-name">Kidney Stone CT</div>
+                  <div className="portal-mod-sub">Kidney stone detection and analysis</div>
+                </div>
+
+                {/* 5. Blood Report Analysis */}
+                <div
+                  className="portal-module-item"
+                  style={{ gridColumn: "1 / -1", maxWidth: "48.5%" }}
+                  onClick={() => { setPublicMode("report"); setAuthError(""); setPublicResult(null); }}
+                  title="Launch Public Lab Report Analyzer"
                 >
-                  Public Report Analysis
+                  <div className="portal-mod-top">
+                    <div className="portal-mod-icon-box">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" />
+                      </svg>
+                    </div>
+                    <span className="portal-mod-ready-badge">
+                      <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#34D399", display: "inline-block" }}></span>
+                      Ready to Analyze
+                    </span>
+                  </div>
+                  <div className="portal-mod-name">Blood Report Analysis</div>
+                  <div className="portal-mod-sub">AI hematology & biomarker lab report analysis</div>
+                </div>
+              </div>
+
+              {/* Pipeline Footer Bar */}
+              <div className="portal-pipeline-bar">
+                <div className="portal-pipeline-steps">
+                  <span style={{ color: "#64748B", fontSize: "10px", letterSpacing: "0.5px" }}>PIPELINE:</span>
+                  <span className="portal-pipe-chip active">Prediction</span>
+                  <span className="portal-pipe-arrow">→</span>
+                  <span className="portal-pipe-chip">Explanation</span>
+                  <span className="portal-pipe-arrow">→</span>
+                  <span className="portal-pipe-chip">Severity</span>
+                  <span className="portal-pipe-arrow">→</span>
+                  <span className="portal-pipe-chip">Recommendation</span>
+                  <span className="portal-pipe-arrow">→</span>
+                  <span className="portal-pipe-chip">Report</span>
+                </div>
+
+                <button
+                  className="portal-history-btn"
+                  onClick={() => { setPublicMode("history"); setAuthError(""); }}
+                  title="View Public Analysis History Audit Record"
+                >
+                  <History size={13} />
+                  <span>Analysis History</span>
                 </button>
               </div>
-            )}
+            </div>
           </div>
 
-          <div className="login-footer">
-            <span>Powered by DenseNet121 Model & Medical OCR Parser</span>
+          {/* Right Column: Sleek Glowing Portal Login Card */}
+          <div className="portal-auth-card">
+            <div className="portal-auth-header">
+              <div className="portal-auth-icon-orb">
+                <Zap size={22} color="#2DD4BF" />
+              </div>
+              <div className="portal-auth-title">
+                {isRegistering ? "Register Doctor Account" : "MediScan AI Portal"}
+              </div>
+              <div className="portal-auth-sub">
+                {isRegistering
+                  ? "Create your practitioner credentials"
+                  : "Clinical Decision Support & Patient Management System"}
+              </div>
+              <div className="portal-gateway-tag">• SECURE PRACTITIONER GATEWAY •</div>
+            </div>
+
+            <form onSubmit={isRegistering ? handleRegister : handleLogin}>
+              {authError && <div className="error-alert">{authError}</div>}
+
+              {isRegistering && (
+                <div className="portal-input-group">
+                  <label className="portal-input-label">Practitioner Full Name</label>
+                  <div className="portal-input-wrap">
+                    <User size={15} className="portal-input-icon" />
+                    <input
+                      type="text"
+                      required
+                      className="portal-input"
+                      value={regName}
+                      onChange={(e) => setRegName(e.target.value)}
+                      placeholder="e.g. Dr. Varsha Gowda"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="portal-input-group">
+                <label className="portal-input-label">Username / Clinical Email</label>
+                <div className="portal-input-wrap">
+                  <Mail size={15} className="portal-input-icon" />
+                  <input
+                    type="text"
+                    required
+                    className="portal-input"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="doctor.id@hospital-network.org"
+                  />
+                </div>
+              </div>
+
+              <div className="portal-input-group">
+                <label className="portal-input-label">Security Passcode</label>
+                <div className="portal-input-wrap">
+                  <Lock size={15} className="portal-input-icon" />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    className="portal-input"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••••••"
+                  />
+                  <button
+                    type="button"
+                    className="portal-pass-toggle"
+                    onClick={() => setShowPassword(!showPassword)}
+                    tabIndex="-1"
+                  >
+                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="portal-form-options">
+                <label className="portal-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={keepSessionActive}
+                    onChange={(e) => setKeepSessionActive(e.target.checked)}
+                  />
+                  <span>Keep session active (24h)</span>
+                </label>
+
+                <div className="portal-ssl-link">
+                  <span
+                    className="link"
+                    onClick={() => alert("Institutional password recovery: Please contact IT security at security@hospital-network.org")}
+                  >
+                    Forgot password?
+                  </span>
+                  &nbsp;• 256-Bit SSL
+                </div>
+              </div>
+
+              <button type="submit" className="portal-submit-btn">
+                {isRegistering ? "Register Account" : "Authenticate Portal"}
+                <ArrowRight size={15} />
+              </button>
+            </form>
+
+            <div className="portal-mode-toggle">
+              {isRegistering ? (
+                <span>
+                  Already have an account?
+                  <button onClick={() => { setIsRegistering(false); setAuthError(""); }}>
+                    Sign In
+                  </button>
+                </span>
+              ) : (
+                <span>
+                  Need an account?
+                  <button onClick={() => { setIsRegistering(true); setAuthError(""); }}>
+                    Sign Up
+                  </button>
+                </span>
+              )}
+            </div>
           </div>
-        </div>
+        </main>
+
+        {/* Bottom Footer */}
+        <footer className="portal-footer">
+          <div className="portal-footer-left">
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2DD4BF", display: "inline-block" }}></span>
+            <span>Powered by Multi-Modal Deep Neural Networks & Medical Decision Support Engine</span>
+          </div>
+
+          <div className="portal-footer-right">
+            <span>v2.8.4-PROD</span>
+            <span>•</span>
+            <span style={{ cursor: "pointer" }} onClick={() => alert("Security Protocol: AES-256 GCM encryption enabled with TLS 1.3 cryptographic transport.")}>Security Protocol</span>
+            <span>•</span>
+            <span style={{ cursor: "pointer" }} onClick={() => alert("Privacy Notice: MediScan AI strictly adheres to HIPAA and GDPR diagnostic telemetry standards.")}>Privacy Notice</span>
+          </div>
+        </footer>
       </div>
     );
   }
@@ -1901,12 +2187,12 @@ function App() {
                     {publicMode === "login"
                       ? "Upload a Chest X-ray image film for immediate AI model classification."
                       : publicMode === "cavity_patient"
-                      ? "Upload a dental intraoral photo or radiograph for AI caries lesion detection."
-                      : publicMode === "ct_patient"
-                      ? "Upload an abdominal/pelvic CT scan slice for AI kidney stone detection."
-                      : publicMode === "mri_patient"
-                      ? "Upload a Brain MRI slice image for AI 4-class brain tumor classification (Glioma, Meningioma, Pituitary, Normal)."
-                      : "Upload a structured medical/hematology laboratory report document (PNG/JPG/PDF)."}
+                        ? "Upload a dental intraoral photo or radiograph for AI caries lesion detection."
+                        : publicMode === "ct_patient"
+                          ? "Upload an abdominal/pelvic CT scan slice for AI kidney stone detection."
+                          : publicMode === "mri_patient"
+                            ? "Upload a Brain MRI slice image for AI 4-class brain tumor classification (Glioma, Meningioma, Pituitary, Normal)."
+                            : "Upload a structured medical/hematology laboratory report document (PNG/JPG/PDF)."}
                   </p>
 
                   <div className="upload-form">
@@ -1938,12 +2224,12 @@ function App() {
                           const chosenType = publicMode === "login"
                             ? "Chest X-Ray"
                             : publicMode === "cavity_patient"
-                            ? "Dental Cavity"
-                            : publicMode === "ct_patient"
-                            ? "CT Scan"
-                            : publicMode === "mri_patient"
-                            ? "Brain MRI"
-                            : "Medical Report";
+                              ? "Dental Cavity"
+                              : publicMode === "ct_patient"
+                                ? "CT Scan"
+                                : publicMode === "mri_patient"
+                                  ? "Brain MRI"
+                                  : "Medical Report";
                           try {
                             const res = await fetch(`${API_BASE}/api/patients/${selectedPatient.patientId}/files?analysis_type=${encodeURIComponent(chosenType)}`, {
                               method: "POST",
@@ -1987,21 +2273,21 @@ function App() {
                           background: analysisResult.fileType === "Chest X-Ray"
                             ? "rgba(245,158,11,0.15)"
                             : analysisResult.fileType === "Dental Cavity"
-                            ? "rgba(245,158,11,0.15)"
-                            : analysisResult.fileType === "CT Scan"
-                            ? "rgba(139,92,246,0.15)"
-                            : analysisResult.fileType === "Brain MRI"
-                            ? "rgba(236,72,153,0.15)"
-                            : "rgba(6,182,212,0.15)",
+                              ? "rgba(245,158,11,0.15)"
+                              : analysisResult.fileType === "CT Scan"
+                                ? "rgba(139,92,246,0.15)"
+                                : analysisResult.fileType === "Brain MRI"
+                                  ? "rgba(236,72,153,0.15)"
+                                  : "rgba(6,182,212,0.15)",
                           color: analysisResult.fileType === "Chest X-Ray"
                             ? "var(--warning)"
                             : analysisResult.fileType === "Dental Cavity"
-                            ? "#F59E0B"
-                            : analysisResult.fileType === "CT Scan"
-                            ? "#8B5CF6"
-                            : analysisResult.fileType === "Brain MRI"
-                            ? "#EC4899"
-                            : "var(--cyan)",
+                              ? "#F59E0B"
+                              : analysisResult.fileType === "CT Scan"
+                                ? "#8B5CF6"
+                                : analysisResult.fileType === "Brain MRI"
+                                  ? "#EC4899"
+                                  : "var(--cyan)",
                           fontSize: "11px",
                           fontWeight: "700",
                           textTransform: "uppercase",
@@ -2037,223 +2323,17 @@ function App() {
                     </div>
 
                     <div style={{ flex: 1 }}>
-                      {analysisResult.fileType === "Brain MRI" ? (
-                        <div>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", marginBottom: "20px" }}>
-                            <div>
-                              <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Brain Tumor AI Prediction</span>
-                              <div style={{ fontSize: "20px", fontWeight: "800", color: (analysisResult.prediction?.toLowerCase().includes("normal") || analysisResult.prediction?.toLowerCase().includes("no tumor")) ? "#10B981" : "#EF4444", marginTop: "4px" }}>
-                                {analysisResult.prediction}
-                              </div>
-                            </div>
-                            <div>
-                              <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Model Confidence</span>
-                              <div style={{ fontSize: "20px", fontWeight: "800", color: "#EC4899", marginTop: "4px" }}>
-                                {analysisResult.confidence}%
-                              </div>
-                            </div>
-                          </div>
-
-                          {analysisResult.reportSummary && (
-                            <div style={{ background: "rgba(236, 72, 153, 0.08)", border: "1px solid rgba(236, 72, 153, 0.25)", borderRadius: "12px", padding: "12px 16px", marginBottom: "16px" }}>
-                              <h4 style={{ fontSize: "11px", fontWeight: "700", textTransform: "uppercase", color: "#F472B6", margin: "0 0 6px 0", letterSpacing: "0.05em" }}>Clinical Guidance</h4>
-                              <p style={{ fontSize: "13px", lineHeight: "1.5", color: "#fff", margin: 0 }}>{analysisResult.reportSummary}</p>
-                            </div>
-                          )}
-
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginTop: "16px" }}>
-                            <div>
-                              <h4 style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>Original Brain MRI Scan</h4>
-                              <div style={{ position: "relative", paddingBottom: "100%", background: "#000", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", overflow: "hidden" }}>
-                                <img
-                                  src={analysisResult.filePath.startsWith("http") ? analysisResult.filePath : `${API_BASE}${analysisResult.filePath}`}
-                                  alt="Original Brain MRI"
-                                  style={{ position: "absolute", width: "100%", height: "100%", objectFit: "contain" }}
-                                />
-                              </div>
-                            </div>
-                            <div>
-                              <h4 style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>Explainable AI Heatmap</h4>
-                              {analysisResult.gradcamPath ? (
-                                <div style={{ position: "relative", paddingBottom: "100%", background: "#000", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", overflow: "hidden" }}>
-                                  <img
-                                    src={analysisResult.gradcamPath.startsWith("http") ? analysisResult.gradcamPath : `${API_BASE}${analysisResult.gradcamPath}`}
-                                    alt="MRI heatmap"
-                                    style={{ position: "absolute", width: "100%", height: "100%", objectFit: "contain" }}
-                                  />
-                                </div>
-                              ) : (
-                                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", background: "rgba(0,0,0,0.1)" }}>
-                                  <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Heatmap overlay not generated.</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "12px", fontStyle: "italic", textAlign: "center" }}>
-                            "Grad-CAM highlighting identifies spatial intracranial activation features indicating neoplastic tissue characteristics."
-                          </p>
-                        </div>
-                      ) : analysisResult.fileType === "CT Scan" ? (
-                        <div>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", marginBottom: "20px" }}>
-                            <div>
-                              <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Kidney AI Prediction</span>
-                              <div style={{ fontSize: "20px", fontWeight: "800", color: analysisResult.prediction?.includes("Stone") ? "#EF4444" : "#10B981", marginTop: "4px" }}>
-                                {analysisResult.prediction}
-                              </div>
-                            </div>
-                            <div>
-                              <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Model Confidence</span>
-                              <div style={{ fontSize: "20px", fontWeight: "800", color: "#8B5CF6", marginTop: "4px" }}>
-                                {analysisResult.confidence}%
-                              </div>
-                            </div>
-                          </div>
-
-                          {analysisResult.reportSummary && (
-                            <div style={{ background: "rgba(139, 92, 246, 0.08)", border: "1px solid rgba(139, 92, 246, 0.25)", borderRadius: "12px", padding: "12px 16px", marginBottom: "16px" }}>
-                              <h4 style={{ fontSize: "11px", fontWeight: "700", textTransform: "uppercase", color: "#A78BFA", margin: "0 0 6px 0", letterSpacing: "0.05em" }}>Clinical Guidance</h4>
-                              <p style={{ fontSize: "13px", lineHeight: "1.5", color: "#fff", margin: 0 }}>{analysisResult.reportSummary}</p>
-                            </div>
-                          )}
-
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginTop: "16px" }}>
-                            <div>
-                              <h4 style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>Original CT Scan</h4>
-                              <div style={{ position: "relative", paddingBottom: "100%", background: "#000", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", overflow: "hidden" }}>
-                                <img
-                                  src={analysisResult.filePath.startsWith("http") ? analysisResult.filePath : `${API_BASE}${analysisResult.filePath}`}
-                                  alt="Original CT Scan"
-                                  style={{ position: "absolute", width: "100%", height: "100%", objectFit: "contain" }}
-                                />
-                              </div>
-                            </div>
-                            <div>
-                              <h4 style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>Explainable AI Heatmap</h4>
-                              {analysisResult.gradcamPath ? (
-                                <div style={{ position: "relative", paddingBottom: "100%", background: "#000", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", overflow: "hidden" }}>
-                                  <img
-                                    src={analysisResult.gradcamPath.startsWith("http") ? analysisResult.gradcamPath : `${API_BASE}${analysisResult.gradcamPath}`}
-                                    alt="CT heatmap"
-                                    style={{ position: "absolute", width: "100%", height: "100%", objectFit: "contain" }}
-                                  />
-                                </div>
-                              ) : (
-                                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", background: "rgba(0,0,0,0.1)" }}>
-                                  <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Heatmap overlay not generated.</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "12px", fontStyle: "italic", textAlign: "center" }}>
-                            "Highlighted regions identify radiographic attenuation areas associated with renal calculi."
-                          </p>
-                        </div>
-                      ) : analysisResult.fileType === "Dental Cavity" ? (
-                        <div>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", marginBottom: "20px" }}>
-                            <div>
-                              <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Dental AI Prediction</span>
-                              <div style={{ fontSize: "20px", fontWeight: "800", color: analysisResult.prediction?.includes("Cavity") ? "#EF4444" : "#10B981", marginTop: "4px" }}>
-                                {analysisResult.prediction}
-                              </div>
-                            </div>
-                            <div>
-                              <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Model Confidence</span>
-                              <div style={{ fontSize: "20px", fontWeight: "800", color: "#F59E0B", marginTop: "4px" }}>
-                                {analysisResult.confidence}%
-                              </div>
-                            </div>
-                          </div>
-
-                          {analysisResult.reportSummary && (
-                            <div style={{ background: "rgba(245, 158, 11, 0.08)", border: "1px solid rgba(245, 158, 11, 0.2)", borderRadius: "12px", padding: "12px 16px", marginBottom: "16px" }}>
-                              <h4 style={{ fontSize: "11px", fontWeight: "700", textTransform: "uppercase", color: "#F59E0B", margin: "0 0 6px 0", letterSpacing: "0.05em" }}>Clinical Guidance</h4>
-                              <p style={{ fontSize: "13px", lineHeight: "1.5", color: "#fff", margin: 0 }}>{analysisResult.reportSummary}</p>
-                            </div>
-                          )}
-
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginTop: "16px" }}>
-                            <div>
-                              <h4 style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>Original Dental Image</h4>
-                              <div style={{ position: "relative", paddingBottom: "100%", background: "#000", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", overflow: "hidden" }}>
-                                <img
-                                  src={analysisResult.filePath.startsWith("http") ? analysisResult.filePath : `${API_BASE}${analysisResult.filePath}`}
-                                  alt="Original Dental"
-                                  style={{ position: "absolute", width: "100%", height: "100%", objectFit: "contain" }}
-                                />
-                              </div>
-                            </div>
-                            <div>
-                              <h4 style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>Caries Heatmap Overlay</h4>
-                              {analysisResult.gradcamPath ? (
-                                <div style={{ position: "relative", paddingBottom: "100%", background: "#000", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", overflow: "hidden" }}>
-                                  <img
-                                    src={analysisResult.gradcamPath.startsWith("http") ? analysisResult.gradcamPath : `${API_BASE}${analysisResult.gradcamPath}`}
-                                    alt="Caries heatmap"
-                                    style={{ position: "absolute", width: "100%", height: "100%", objectFit: "contain" }}
-                                  />
-                                </div>
-                              ) : (
-                                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", background: "rgba(0,0,0,0.1)" }}>
-                                  <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Heatmap overlay not generated.</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "12px", fontStyle: "italic", textAlign: "center" }}>
-                            "Highlighted regions identify enamel/dentin areas associated with caries formation."
-                          </p>
-                        </div>
-                      ) : analysisResult.fileType === "Chest X-Ray" ? (
-                        <div>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", marginBottom: "20px" }}>
-                            <div>
-                              <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>AI Prediction</span>
-                              <div style={{ fontSize: "20px", fontWeight: "800", color: "#fff", marginTop: "4px" }}>
-                                {analysisResult.prediction}
-                              </div>
-                            </div>
-                            <div>
-                              <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Model Confidence</span>
-                              <div style={{ fontSize: "20px", fontWeight: "800", color: "var(--warning)", marginTop: "4px" }}>
-                                {analysisResult.confidence}%
-                              </div>
-                            </div>
-                          </div>
-
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginTop: "16px" }}>
-                            <div>
-                              <h4 style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>Original X-Ray</h4>
-                              <div style={{ position: "relative", paddingBottom: "100%", background: "#000", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", overflow: "hidden" }}>
-                                <img
-                                  src={analysisResult.filePath.startsWith("http") ? analysisResult.filePath : `${API_BASE}${analysisResult.filePath}`}
-                                  alt="Original X-ray"
-                                  style={{ position: "absolute", width: "100%", height: "100%", objectFit: "contain" }}
-                                />
-                              </div>
-                            </div>
-                            <div>
-                              <h4 style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>Grad-CAM Visualization</h4>
-                              {analysisResult.gradcamPath ? (
-                                <div style={{ position: "relative", paddingBottom: "100%", background: "#000", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", overflow: "hidden" }}>
-                                  <img
-                                    src={analysisResult.gradcamPath.startsWith("http") ? analysisResult.gradcamPath : `${API_BASE}${analysisResult.gradcamPath}`}
-                                    alt="Gradcam heatmap"
-                                    style={{ position: "absolute", width: "100%", height: "100%", objectFit: "contain" }}
-                                  />
-                                </div>
-                              ) : (
-                                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", background: "rgba(0,0,0,0.1)" }}>
-                                  <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Heatmap overlay not available.</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "12px", fontStyle: "italic", textAlign: "center" }}>
-                            "Highlighted regions indicate areas of the X-ray that contributed most strongly to the model's prediction."
-                          </p>
-                        </div>
+                      {analysisResult.fileType !== "Medical Report" ? (
+                        <PostAnalysisWorkflow
+                          result={analysisResult}
+                          modality={analysisResult.fileType || analysisResult.modality || "Chest X-Ray"}
+                          apiBase={API_BASE}
+                          isPatientMode={true}
+                          patientData={selectedPatient}
+                          historyList={patientHistory}
+                          onSelectHistory={(item) => setAnalysisResult(item)}
+                          onDeleteHistoryItem={(id) => handleDeleteAnalysis(id)}
+                        />
                       ) : (
                         <div>
                           <div style={{ background: "rgba(0,0,0,0.15)", padding: "12px 16px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.05)", marginBottom: "20px" }}>

@@ -22,6 +22,7 @@ from report_analysis.report_analyzer import MedicalReportAnalyzer
 from cavity_engine import CavityInferenceEngine
 from ct_engine import CTInferenceEngine
 from mri_engine import MRIInferenceEngine
+from post_analysis import generate_post_analysis
 
 import database
 import report_analyzer
@@ -237,6 +238,17 @@ async def predict(image: UploadFile = File(...)):
         if gradcam_error:
             prediction_result["gradcam_error"] = gradcam_error
             
+        prediction_result["post_analysis"] = generate_post_analysis(
+            modality="Chest X-Ray",
+            prediction=prediction_result.get("prediction", "Normal"),
+            confidence=float(prediction_result.get("confidence", 0.0)),
+            additional_info={
+                "original_image": original_image_url,
+                "gradcam_image": gradcam_image_url,
+                "scan_quality": prediction_result.get("scan_quality", "Diagnostic Grade")
+            }
+        )
+            
         return prediction_result
     except Exception as e:
         logger.error(f"Inference error: {e}")
@@ -284,6 +296,17 @@ async def predict_dental_cavity(image: UploadFile = File(...)):
                 res["gradcam_image"] = res.get("heatmap")
         else:
             res["gradcam_image"] = None
+
+        res["post_analysis"] = generate_post_analysis(
+            modality="Dental X-Ray",
+            prediction=res.get("prediction", "Normal"),
+            confidence=float(res.get("confidence", 0.0)),
+            additional_info={
+                "is_cavity": res.get("is_cavity", False),
+                "original_image": res.get("original_image"),
+                "gradcam_image": res.get("gradcam_image")
+            }
+        )
 
         return res
     except Exception as e:
@@ -334,6 +357,17 @@ async def predict_ct_scan(image: UploadFile = File(...)):
         else:
             res["gradcam_image"] = None
 
+        res["post_analysis"] = generate_post_analysis(
+            modality="Kidney Stone CT",
+            prediction=res.get("prediction", "Normal / No Stone Detected"),
+            confidence=float(res.get("confidence", 0.0)),
+            additional_info={
+                "is_stone": res.get("is_stone", False),
+                "original_image": res.get("original_image"),
+                "gradcam_image": res.get("gradcam_image")
+            }
+        )
+
         return res
     except Exception as e:
         logger.error(f"CT scan prediction error: {e}")
@@ -382,6 +416,18 @@ async def predict_brain_mri(image: UploadFile = File(...)):
                 res["gradcam_image"] = res.get("heatmap")
         else:
             res["gradcam_image"] = None
+
+        res["post_analysis"] = generate_post_analysis(
+            modality="Brain MRI",
+            prediction=res.get("prediction", "No Tumor Detected (Normal)"),
+            confidence=float(res.get("confidence", 0.0)),
+            additional_info={
+                "raw_class": res.get("raw_class"),
+                "is_tumor": res.get("is_tumor", False),
+                "original_image": res.get("original_image"),
+                "gradcam_image": res.get("gradcam_image")
+            }
+        )
 
         return res
     except Exception as e:
@@ -941,6 +987,20 @@ async def upload_patient_file(patient_id: str, file: UploadFile = File(...), ana
         report_summary=report_summary
     )
     
+    post_analysis_data = None
+    if prediction and analysis_type in ["Chest X-Ray", "Dental Cavity", "CT Scan", "Brain MRI"]:
+        post_analysis_data = generate_post_analysis(
+            modality=analysis_type,
+            prediction=prediction,
+            confidence=float(confidence or 0.0),
+            additional_info={
+                "original_image": web_file_path,
+                "gradcam_image": gradcam_path,
+                "patient_name": p.get("name", "Patient"),
+                "patient_id": patient_id
+            }
+        )
+
     return {
         "success": True,
         "fileId": db_result["file_id"],
@@ -951,7 +1011,8 @@ async def upload_patient_file(patient_id: str, file: UploadFile = File(...), ana
         "gradcamPath": gradcam_path,
         "reportFindings": report_findings,
         "reportSummary": report_summary,
-        "filePath": web_file_path
+        "filePath": web_file_path,
+        "post_analysis": post_analysis_data
     }
 
 class UpdateNoteRequest(BaseModel):
