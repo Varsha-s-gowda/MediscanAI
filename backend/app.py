@@ -644,36 +644,66 @@ class RegisterRequest(BaseModel):
 
 @app.post("/api/auth/login", tags=["Auth"])
 async def login(req: LoginRequest):
-    valid = database.verify_doctor(req.username, req.password)
+    username = (req.username or "").strip().lower()
+    password = (req.password or "").strip()
+    if not username or not password:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username and password are required")
+    
+    valid = database.verify_doctor(username, password)
     if not valid:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
-    doc_name = database.get_doctor_name(req.username)
-    return {"token": f"mock-jwt-token-{req.username}", "name": doc_name}
+    
+    doc_name = database.get_doctor_name(username)
+    return {"token": f"mock-jwt-token-{username}", "name": doc_name}
 
 @app.post("/api/auth/register", tags=["Auth"])
 async def register(req: RegisterRequest):
-    success = database.register_doctor(req.username, req.password, req.name)
+    username = (req.username or "").strip().lower()
+    password = (req.password or "").strip()
+    name = (req.name or "").strip()
+    
+    if not username or not password or not name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username, password, and full name are required")
+    
+    success = database.register_doctor(username, password, name)
     if not success:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already exists")
+    
     return {"message": "Doctor registered successfully"}
 
 # --------------------------------------------
 # Patient Management Endpoints
 # --------------------------------------------
+def extract_doctor_username(request: Request) -> Optional[str]:
+    auth_header = request.headers.get("authorization") or request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+        if token.startswith("mock-jwt-token-"):
+            return token.replace("mock-jwt-token-", "").strip().lower()
+        if token and token != "undefined" and token != "null":
+            return token.strip().lower()
+    doc_header = request.headers.get("x-doctor-username")
+    if doc_header:
+        return doc_header.strip().lower()
+    return None
+
 class PatientCreateRequest(BaseModel):
     name: str
     age: int
     gender: str
     contact: Optional[str] = None
+    doctor_username: Optional[str] = None
 
 @app.get("/api/patients", tags=["Patients"])
-async def get_patients():
-    return database.get_all_patients()
+async def get_patients(request: Request, doctor_username: Optional[str] = None):
+    doc_user = doctor_username or extract_doctor_username(request)
+    return database.get_all_patients(doc_user)
 
 @app.post("/api/patients", tags=["Patients"])
-async def create_patient(patient: PatientCreateRequest):
+async def create_patient(request: Request, patient: PatientCreateRequest):
     try:
-        return database.create_patient(patient.name, patient.age, patient.gender, patient.contact)
+        doc_user = patient.doctor_username or extract_doctor_username(request) or "admin"
+        return database.create_patient(patient.name, patient.age, patient.gender, patient.contact, doc_user)
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
@@ -842,10 +872,11 @@ class PatientUpdateRequest(BaseModel):
     contact: Optional[str] = None
 
 @app.get("/api/patients/registry/data", tags=["Patients"])
-async def get_patients_registry_data():
+async def get_patients_registry_data(request: Request):
     try:
-        stats = database.get_patients_registry_stats()
-        patients = database.get_patients_registry()
+        doc_user = extract_doctor_username(request)
+        stats = database.get_patients_registry_stats(doc_user)
+        patients = database.get_patients_registry(doc_user)
         return {"stats": stats, "patients": patients}
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
@@ -862,7 +893,7 @@ async def get_analyses_stats():
     return database.get_all_analyses_stats()
 
 @app.get("/api/dashboard/summary", tags=["Dashboard"])
-async def get_dashboard_summary(period: str = "30d"):
+async def get_dashboard_summary(request: Request, period: str = "30d"):
     try:
         # Check system health status
         xray_online = "Online" if (inference_engine.model is not None or os.path.exists(MODEL_PATH)) else "Unavailable"
@@ -885,7 +916,8 @@ async def get_dashboard_summary(period: str = "30d"):
         if inference_engine.device is not None:
             device_name = str(inference_engine.device).upper()
             
-        db_data = database.get_dashboard_data(period)
+        doc_user = extract_doctor_username(request)
+        db_data = database.get_dashboard_data(period, doc_user)
         db_data["system_health"] = {
             "xray_model": xray_online,
             "mri_model": "Online",

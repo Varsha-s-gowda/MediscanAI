@@ -256,10 +256,20 @@ function App() {
   const [editNoteText, setEditNoteText] = useState("");
   const [compareIds, setCompareIds] = useState([]);
 
+  const getAuthHeaders = () => {
+    const headers = { "Content-Type": "application/json" };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    return headers;
+  };
+
   const fetchRegistryData = async () => {
     setLoadingRegistry(true);
     try {
-      const res = await fetch(`${API_BASE}/api/patients/registry/data`);
+      const res = await fetch(`${API_BASE}/api/patients/registry/data`, {
+        headers: getAuthHeaders()
+      });
       if (res.ok) {
         const data = await res.json();
         setRegistryPatients(data.patients || []);
@@ -276,7 +286,9 @@ function App() {
     setDashboardLoading(true);
     setDashboardError("");
     try {
-      const res = await fetch(`${API_BASE}/api/dashboard/summary?period=${filterPeriod}`);
+      const res = await fetch(`${API_BASE}/api/dashboard/summary?period=${filterPeriod}`, {
+        headers: getAuthHeaders()
+      });
       if (res.ok) {
         const data = await res.json();
         setDashboardData(data);
@@ -294,7 +306,9 @@ function App() {
     setLoadingPatients(true);
     setLoadingError("");
     try {
-      const res = await fetch(`${API_BASE}/api/patients`);
+      const res = await fetch(`${API_BASE}/api/patients`, {
+        headers: getAuthHeaders()
+      });
       if (res.ok) {
         const data = await res.json();
         setPatients(data);
@@ -320,16 +334,39 @@ function App() {
   const handleRegister = async (e) => {
     e.preventDefault();
     setAuthError("");
+    const cleanUsername = username.trim();
+    const cleanName = regName.trim();
+    if (!cleanUsername || !password || !cleanName) {
+      setAuthError("Please fill in all registration fields.");
+      return;
+    }
     try {
       const res = await fetch(`${API_BASE}/api/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, name: regName })
+        body: JSON.stringify({ username: cleanUsername, password, name: cleanName })
       });
       if (res.ok) {
-        showToast("Registration successful. Please log in.");
-        setIsRegistering(false);
-        setRegName("");
+        // Auto log in newly registered doctor
+        const loginRes = await fetch(`${API_BASE}/api/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: cleanUsername, password })
+        });
+        if (loginRes.ok) {
+          const data = await loginRes.json();
+          localStorage.setItem("doctor_token", data.token);
+          localStorage.setItem("doctor_name", data.name);
+          setToken(data.token);
+          setDoctorName(data.name);
+          setIsRegistering(false);
+          setRegName("");
+          showToast(`Welcome, ${data.name}. Account created and authenticated.`);
+        } else {
+          showToast("Registration successful. Please sign in.");
+          setIsRegistering(false);
+          setRegName("");
+        }
       } else {
         const err = await res.json();
         setAuthError(err.detail || "Registration failed.");
@@ -342,11 +379,16 @@ function App() {
   const handleLogin = async (e) => {
     e.preventDefault();
     setAuthError("");
+    const cleanUsername = username.trim();
+    if (!cleanUsername || !password) {
+      setAuthError("Please enter both username and password.");
+      return;
+    }
     try {
       const res = await fetch(`${API_BASE}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ username: cleanUsername, password })
       });
       if (res.ok) {
         const data = await res.json();
@@ -380,7 +422,7 @@ function App() {
     try {
       const res = await fetch(`${API_BASE}/api/patients`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           name: newPatient.name,
           age: parseInt(newPatient.age),

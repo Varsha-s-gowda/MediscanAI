@@ -104,6 +104,12 @@ def init_db():
     except sqlite3.OperationalError:
         pass
 
+    try:
+        cursor.execute("ALTER TABLE patients ADD COLUMN doctor_username TEXT")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
+
     conn.close()
     print("[DB] SQLite database initialized and migrated successfully.")
 
@@ -129,47 +135,51 @@ def seed_default_doctor():
 
 # --- Auth Helpers ---
 def verify_doctor(username: str, password_plain: str) -> bool:
+    clean_username = (username or "").strip().lower()
     hashed = hashlib.sha256(password_plain.encode()).hexdigest()
     if USE_MONGO:
-        doc = db["doctors"].find_one({"username": username, "password_hash": hashed})
+        doc = db["doctors"].find_one({"username": clean_username, "password_hash": hashed})
         return doc is not None
     else:
         conn = get_sqlite_conn()
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM doctors WHERE username = ? AND password_hash = ?", (username, hashed))
+        cursor.execute("SELECT 1 FROM doctors WHERE LOWER(username) = ? AND password_hash = ?", (clean_username, hashed))
         res = cursor.fetchone()
         conn.close()
         return res is not None
 
 def get_doctor_name(username: str) -> str:
+    clean_username = (username or "").strip().lower()
     if USE_MONGO:
-        doc = db["doctors"].find_one({"username": username})
+        doc = db["doctors"].find_one({"username": clean_username})
         return doc.get("name", "Doctor") if doc else "Doctor"
     else:
         conn = get_sqlite_conn()
         cursor = conn.cursor()
-        cursor.execute("SELECT name FROM doctors WHERE username = ?", (username,))
+        cursor.execute("SELECT name FROM doctors WHERE LOWER(username) = ?", (clean_username,))
         row = cursor.fetchone()
         conn.close()
         return row["name"] if row else "Doctor"
 
 
 def register_doctor(username: str, password_plain: str, name: str) -> bool:
+    clean_username = (username or "").strip().lower()
+    clean_name = (name or "").strip()
     hashed = hashlib.sha256(password_plain.encode()).hexdigest()
     if USE_MONGO:
-        if db["doctors"].find_one({"username": username}):
+        if db["doctors"].find_one({"username": clean_username}):
             return False
         db["doctors"].insert_one({
-            "username": username,
+            "username": clean_username,
             "password_hash": hashed,
-            "name": name
+            "name": clean_name
         })
         return True
     else:
         conn = get_sqlite_conn()
         cursor = conn.cursor()
         try:
-            cursor.execute("INSERT INTO doctors (username, password_hash, name) VALUES (?, ?, ?)", (username, hashed, name))
+            cursor.execute("INSERT INTO doctors (username, password_hash, name) VALUES (?, ?, ?)", (clean_username, hashed, clean_name))
             conn.commit()
             return True
         except sqlite3.IntegrityError:
@@ -178,8 +188,9 @@ def register_doctor(username: str, password_plain: str, name: str) -> bool:
             conn.close()
 
 # --- Patient Management ---
-def create_patient(name: str, age: int, gender: str, contact: Optional[str] = None) -> Dict[str, Any]:
+def create_patient(name: str, age: int, gender: str, contact: Optional[str] = None, doctor_username: Optional[str] = None) -> Dict[str, Any]:
     now_str = datetime.datetime.now().isoformat()
+    clean_doc = (doctor_username or "admin").strip().lower()
     if USE_MONGO:
         count = db["patients"].count_documents({})
         patient_id = f"P{1001 + count}"
@@ -189,6 +200,8 @@ def create_patient(name: str, age: int, gender: str, contact: Optional[str] = No
             "age": age,
             "gender": gender,
             "contact": contact,
+            "doctorUsername": clean_doc,
+            "doctor_username": clean_doc,
             "createdAt": now_str
         }
         db["patients"].insert_one(patient_data)
@@ -201,8 +214,8 @@ def create_patient(name: str, age: int, gender: str, contact: Optional[str] = No
         count = cursor.fetchone()[0]
         patient_id = f"P{1001 + count}"
         cursor.execute(
-            "INSERT INTO patients (patient_id, name, age, gender, contact, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (patient_id, name, age, gender, contact, now_str)
+            "INSERT INTO patients (patient_id, name, age, gender, contact, created_at, doctor_username) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (patient_id, name, age, gender, contact, now_str, clean_doc)
         )
         conn.commit()
         conn.close()
@@ -212,17 +225,31 @@ def create_patient(name: str, age: int, gender: str, contact: Optional[str] = No
             "age": age,
             "gender": gender,
             "contact": contact,
+            "doctorUsername": clean_doc,
             "createdAt": now_str
         }
 
-def get_all_patients() -> List[Dict[str, Any]]:
+def get_all_patients(doctor_username: Optional[str] = None) -> List[Dict[str, Any]]:
+    clean_doc = doctor_username.strip().lower() if doctor_username else None
     if USE_MONGO:
-        patients = list(db["patients"].find({}, {"_id": 0}))
+        query = {}
+        if clean_doc:
+            if clean_doc == "admin":
+                query = {"$or": [{"doctorUsername": clean_doc}, {"doctor_username": clean_doc}, {"doctorUsername": {"$exists": False}}, {"doctor_username": None}]}
+            else:
+                query = {"$or": [{"doctorUsername": clean_doc}, {"doctor_username": clean_doc}]}
+        patients = list(db["patients"].find(query, {"_id": 0}))
         return patients
     else:
         conn = get_sqlite_conn()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM patients ORDER BY created_at DESC")
+        if clean_doc:
+            if clean_doc == "admin":
+                cursor.execute("SELECT * FROM patients WHERE LOWER(doctor_username) = ? OR doctor_username IS NULL OR doctor_username = '' ORDER BY created_at DESC", (clean_doc,))
+            else:
+                cursor.execute("SELECT * FROM patients WHERE LOWER(doctor_username) = ? ORDER BY created_at DESC", (clean_doc,))
+        else:
+            cursor.execute("SELECT * FROM patients ORDER BY created_at DESC")
         rows = cursor.fetchall()
         conn.close()
         return [{
@@ -231,6 +258,7 @@ def get_all_patients() -> List[Dict[str, Any]]:
             "age": r["age"],
             "gender": r["gender"],
             "contact": r["contact"],
+            "doctorUsername": r["doctor_username"] if "doctor_username" in r.keys() and r["doctor_username"] else "admin",
             "createdAt": r["created_at"]
         } for r in rows]
 
@@ -414,8 +442,9 @@ def get_all_analyses_stats() -> Dict[str, Any]:
             "recent_type": recent_type
         }
 
-def get_dashboard_data(period: str = "30d") -> Dict[str, Any]:
+def get_dashboard_data(period: str = "30d", doctor_username: Optional[str] = None) -> Dict[str, Any]:
     """Retrieves dynamic, real-time statistics, trends, disease distribution, and activities for the Doctor Dashboard."""
+    clean_doc = doctor_username.strip().lower() if doctor_username else None
     days = 30
     if period == "7d":
         days = 7
@@ -465,8 +494,18 @@ def get_dashboard_data(period: str = "30d") -> Dict[str, Any]:
         conn = get_sqlite_conn()
         cursor = conn.cursor()
         
+        where_clause = ""
+        params = []
+        if clean_doc:
+            if clean_doc == "admin":
+                where_clause = " WHERE (LOWER(doctor_username) = ? OR doctor_username IS NULL OR doctor_username = '')"
+                params.append(clean_doc)
+            else:
+                where_clause = " WHERE LOWER(doctor_username) = ?"
+                params.append(clean_doc)
+
         # 1. Total Patients
-        cursor.execute("SELECT COUNT(*) FROM patients")
+        cursor.execute(f"SELECT COUNT(*) FROM patients{where_clause}", tuple(params))
         total_patients = cursor.fetchone()[0]
         
         # Delta patients registered in last 7 days
@@ -630,16 +669,26 @@ def update_patient(patient_id: str, name: str, age: int, gender: str, contact: O
         conn.close()
         return success
 
-def get_patients_registry_stats() -> Dict[str, Any]:
-    """Calculates Patient Registry summary metrics directly from database records."""
+def get_patients_registry_stats(doctor_username: Optional[str] = None) -> Dict[str, Any]:
+    """Calculates Patient Registry summary metrics directly from database records for a doctor."""
+    clean_doc = doctor_username.strip().lower() if doctor_username else None
     if USE_MONGO:
         try:
-            total = db["patients"].count_documents({})
-            active = len(db["analysis_results"].distinct("patientId"))
+            pat_filter = {}
+            if clean_doc:
+                if clean_doc == "admin":
+                    pat_filter = {"$or": [{"doctorUsername": clean_doc}, {"doctor_username": clean_doc}, {"doctorUsername": {"$exists": False}}, {"doctor_username": None}]}
+                else:
+                    pat_filter = {"$or": [{"doctorUsername": clean_doc}, {"doctor_username": clean_doc}]}
+            total = db["patients"].count_documents(pat_filter)
+            pids = [p["patientId"] for p in db["patients"].find(pat_filter, {"patientId": 1})]
+            active = len(db["analysis_results"].distinct("patientId", {"patientId": {"$in": pids}}))
             this_month_start = datetime.datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
-            this_month_cnt = db["analysis_results"].count_documents({"createdAt": {"$gte": this_month_start}})
+            this_month_cnt = db["analysis_results"].count_documents({"patientId": {"$in": pids}, "createdAt": {"$gte": this_month_start}})
             recent_cutoff = (datetime.datetime.now() - datetime.timedelta(days=30)).isoformat()
-            recent_pat = db["patients"].count_documents({"createdAt": {"$gte": recent_cutoff}})
+            recent_pat_filter = dict(pat_filter)
+            recent_pat_filter["createdAt"] = {"$gte": recent_cutoff}
+            recent_pat = db["patients"].count_documents(recent_pat_filter)
         except Exception:
             total = active = this_month_cnt = recent_pat = 0
             
@@ -653,22 +702,38 @@ def get_patients_registry_stats() -> Dict[str, Any]:
         conn = get_sqlite_conn()
         cursor = conn.cursor()
         
+        where_clause = ""
+        params = []
+        if clean_doc:
+            if clean_doc == "admin":
+                where_clause = " WHERE (LOWER(doctor_username) = ? OR doctor_username IS NULL OR doctor_username = '')"
+                params.append(clean_doc)
+            else:
+                where_clause = " WHERE LOWER(doctor_username) = ?"
+                params.append(clean_doc)
+        
         # 1. Total patients
-        cursor.execute("SELECT COUNT(*) FROM patients")
+        cursor.execute(f"SELECT COUNT(*) FROM patients{where_clause}", tuple(params))
         total = cursor.fetchone()[0]
         
-        # 2. Active cases (any patient with an analysis record)
-        cursor.execute("SELECT COUNT(DISTINCT patient_id) FROM analysis_results")
+        # 2. Active cases (any patient belonging to doctor with an analysis record)
+        cursor.execute(f"SELECT COUNT(DISTINCT a.patient_id) FROM analysis_results a JOIN patients p ON a.patient_id = p.patient_id{where_clause}", tuple(params))
         active = cursor.fetchone()[0]
         
-        # 3. Analyses this month (first of current month cutoff)
+        # 3. Analyses this month
         month_start = datetime.datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
-        cursor.execute("SELECT COUNT(*) FROM analysis_results WHERE created_at >= ?", (month_start,))
+        if where_clause:
+            cursor.execute(f"SELECT COUNT(*) FROM analysis_results a JOIN patients p ON a.patient_id = p.patient_id{where_clause} AND a.created_at >= ?", tuple(params + [month_start]))
+        else:
+            cursor.execute("SELECT COUNT(*) FROM analysis_results WHERE created_at >= ?", (month_start,))
         this_month_cnt = cursor.fetchone()[0]
         
-        # 4. Recently added (patients registered in last 30 days)
+        # 4. Recently added
         recent_cutoff = (datetime.datetime.now() - datetime.timedelta(days=30)).isoformat()
-        cursor.execute("SELECT COUNT(*) FROM patients WHERE created_at >= ?", (recent_cutoff,))
+        if where_clause:
+            cursor.execute(f"SELECT COUNT(*) FROM patients{where_clause} AND created_at >= ?", tuple(params + [recent_cutoff]))
+        else:
+            cursor.execute("SELECT COUNT(*) FROM patients WHERE created_at >= ?", (recent_cutoff,))
         recent_pat = cursor.fetchone()[0]
         
         conn.close()
@@ -679,11 +744,18 @@ def get_patients_registry_stats() -> Dict[str, Any]:
             "recently_added": recent_pat
         }
 
-def get_patients_registry() -> List[Dict[str, Any]]:
-    """Fetches the directory of patients combined with their latest analysis metrics."""
+def get_patients_registry(doctor_username: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Fetches the directory of patients combined with their latest analysis metrics for a doctor."""
+    clean_doc = doctor_username.strip().lower() if doctor_username else None
     if USE_MONGO:
         try:
-            patients = list(db["patients"].find())
+            pat_filter = {}
+            if clean_doc:
+                if clean_doc == "admin":
+                    pat_filter = {"$or": [{"doctorUsername": clean_doc}, {"doctor_username": clean_doc}, {"doctorUsername": {"$exists": False}}, {"doctor_username": None}]}
+                else:
+                    pat_filter = {"$or": [{"doctorUsername": clean_doc}, {"doctor_username": clean_doc}]}
+            patients = list(db["patients"].find(pat_filter))
         except Exception:
             patients = []
         result = []
@@ -715,7 +787,17 @@ def get_patients_registry() -> List[Dict[str, Any]]:
     else:
         conn = get_sqlite_conn()
         cursor = conn.cursor()
-        cursor.execute("""
+        where_clause = ""
+        params = []
+        if clean_doc:
+            if clean_doc == "admin":
+                where_clause = " WHERE (LOWER(p.doctor_username) = ? OR p.doctor_username IS NULL OR p.doctor_username = '')"
+                params.append(clean_doc)
+            else:
+                where_clause = " WHERE LOWER(p.doctor_username) = ?"
+                params.append(clean_doc)
+
+        query_sql = f"""
             SELECT p.patient_id, p.name, p.age, p.gender, p.contact, p.created_at,
                    a.analysis_type, a.prediction, a.confidence, a.report_findings, a.created_at as last_analysis_date
             FROM patients p
@@ -724,7 +806,10 @@ def get_patients_registry() -> List[Dict[str, Any]]:
                        ROW_NUMBER() OVER (PARTITION BY patient_id ORDER BY created_at DESC) as rn
                 FROM analysis_results
             ) a ON p.patient_id = a.patient_id AND a.rn = 1
-        """)
+            {where_clause}
+            ORDER BY p.created_at DESC
+        """
+        cursor.execute(query_sql, tuple(params))
         rows = cursor.fetchall()
         conn.close()
         
