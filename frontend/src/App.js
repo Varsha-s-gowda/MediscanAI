@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Upload,
@@ -59,7 +59,7 @@ function App() {
   const [patientHistory, setPatientHistory] = useState([]);
 
   // Helper: Get target URL path for current state
-  const getPathForState = (mode, tab, patient) => {
+  const getPathForState = useCallback((mode, tab, patient) => {
     if (token) {
       if (tab === "dashboard") return "/dashboard";
       if (tab === "patients") return "/patients";
@@ -73,7 +73,7 @@ function App() {
     if (mode === "history") return "/history";
     if (mode === "login") return "/login";
     return "/";
-  };
+  }, [token]);
 
   // Sync state from URL location on direct page loads and browser Back/Forward
   useEffect(() => {
@@ -111,7 +111,7 @@ function App() {
     if (location.pathname !== targetPath) {
       navigate(targetPath, { replace: false });
     }
-  }, [publicMode, activeTab, selectedPatient, token]);
+  }, [publicMode, activeTab, selectedPatient, token, getPathForState, location.pathname, navigate]);
 
   const [newPatient, setNewPatient] = useState({ name: "", age: "", gender: "Male", contact: "" });
   const [showCreateModal, setShowCreateModal] = useState(false);

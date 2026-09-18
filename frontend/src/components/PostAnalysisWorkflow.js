@@ -18,7 +18,7 @@ export const formatExplanationPoints = (explanationStr) => {
   if (!explanationStr) return [];
   if (Array.isArray(explanationStr)) return explanationStr;
   const points = explanationStr
-    .split(/(?<=\.|\;)\s+/)
+    .split(/(?<=\.|;)\s+/)
     .map(s => s.trim().replace(/^•\s*/, ''))
     .filter(s => s.length > 5);
   if (points.length === 0) return [explanationStr];
