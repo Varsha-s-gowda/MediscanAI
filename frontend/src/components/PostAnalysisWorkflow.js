@@ -409,7 +409,7 @@ export function ensurePostAnalysis(analysis, modalityHint = "Chest X-Ray") {
 export default function PostAnalysisWorkflow({
   result,
   modality = "Chest X-Ray",
-  apiBase = "http://localhost:5000",
+  apiBase = process.env.REACT_APP_API_URL || "https://mediscan-ai-backend.onrender.com",
   historyList = [],
   onSelectHistory = null,
   onClearHistory = null,

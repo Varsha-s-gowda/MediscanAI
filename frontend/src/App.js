@@ -25,7 +25,7 @@ import {
 import "./App.css";
 import PostAnalysisWorkflow from "./components/PostAnalysisWorkflow";
 
-const API_BASE = "http://localhost:5000";
+const API_BASE = process.env.REACT_APP_API_URL || "https://mediscan-ai-backend.onrender.com";
 
 function App() {
   const location = useLocation();
