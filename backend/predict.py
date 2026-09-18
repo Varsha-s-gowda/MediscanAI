@@ -242,7 +242,7 @@ class InferenceEngine:
                         }
                     }
 
-                    res = requests.post(url, headers=headers, json=payload, timeout=45)
+                    res = requests.post(url, headers=headers, json=payload, timeout=5)
                     if res.status_code != 200:
                         logger.error(f"Direct {model_name} API error {res.status_code}: {res.text[:500]}")
                     else:

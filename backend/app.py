@@ -140,11 +140,19 @@ async def get_metrics():
     return {"message": "No historical evaluation metrics found. Please run evaluate.py first."}
 
 @app.post("/predict", tags=["Inference"])
-async def predict(image: UploadFile = File(...)):
-    validate_image_file(image)
+async def predict(image: Optional[UploadFile] = File(None), file: Optional[UploadFile] = File(None)):
+    logger.info("[PREDICT] Request received")
+    upload_file = image or file
+    if not upload_file:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="An image file is required (form field 'image' or 'file')."
+        )
+    validate_image_file(upload_file)
     
     # Read file
-    contents = await image.read()
+    contents = await upload_file.read()
+    logger.info(f"[PREDICT] File read: {upload_file.filename}, size: {len(contents)} bytes")
     if len(contents) > MAX_FILE_SIZE:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
@@ -153,6 +161,7 @@ async def predict(image: UploadFile = File(...)):
         
     try:
         image_pil = Image.open(io.BytesIO(contents)).convert("RGB")
+        logger.info("[PREDICT] Image successfully opened with PIL")
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -161,6 +170,7 @@ async def predict(image: UploadFile = File(...)):
 
     # Chest X-Ray Validation
     is_valid, validation_msg = validate_medical_scan(image_pil, modality="chest")
+    logger.info(f"[PREDICT] Image validation completed: is_valid={is_valid}")
     if not is_valid:
         return {
             "success": False,
@@ -274,9 +284,12 @@ async def predict(image: UploadFile = File(...)):
         )
 
 @app.post("/predict/cavity", tags=["Dental Diagnostics"])
-async def predict_dental_cavity(image: UploadFile = File(...)):
-    validate_image_file(image)
-    contents = await image.read()
+async def predict_dental_cavity(image: Optional[UploadFile] = File(None), file: Optional[UploadFile] = File(None)):
+    upload_file = image or file
+    if not upload_file:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="An image file is required.")
+    validate_image_file(upload_file)
+    contents = await upload_file.read()
     
     try:
         pil_img = Image.open(io.BytesIO(contents)).convert("RGB")
@@ -363,9 +376,12 @@ async def predict_dental_cavity(image: UploadFile = File(...)):
 
 @app.post("/predict/ct", tags=["CT Scan Diagnostics"])
 @app.post("/predict/ct-scan", tags=["CT Scan Diagnostics"])
-async def predict_ct_scan(image: UploadFile = File(...)):
-    validate_image_file(image)
-    contents = await image.read()
+async def predict_ct_scan(image: Optional[UploadFile] = File(None), file: Optional[UploadFile] = File(None)):
+    upload_file = image or file
+    if not upload_file:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="An image file is required.")
+    validate_image_file(upload_file)
+    contents = await upload_file.read()
     
     try:
         pil_img = Image.open(io.BytesIO(contents)).convert("RGB")
@@ -452,9 +468,12 @@ async def predict_ct_scan(image: UploadFile = File(...)):
 
 @app.post("/predict/mri", tags=["Brain MRI Diagnostics"])
 @app.post("/predict/brain-mri", tags=["Brain MRI Diagnostics"])
-async def predict_brain_mri(image: UploadFile = File(...)):
-    validate_image_file(image)
-    contents = await image.read()
+async def predict_brain_mri(image: Optional[UploadFile] = File(None), file: Optional[UploadFile] = File(None)):
+    upload_file = image or file
+    if not upload_file:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="An image file is required.")
+    validate_image_file(upload_file)
+    contents = await upload_file.read()
     
     try:
         pil_img = Image.open(io.BytesIO(contents)).convert("RGB")

@@ -116,21 +116,31 @@ def init_db():
 # Create default doctor if not exists
 def seed_default_doctor():
     init_db()
-    hashed = hashlib.sha256("admin123".encode()).hexdigest()
+    hashed_admin = hashlib.sha256("admin123".encode()).hexdigest()
+    hashed_doc = hashlib.sha256("Password123!".encode()).hexdigest()
+    
+    defaults = [
+        ("admin", hashed_admin, "Dr. Varsha Gowda"),
+        ("doctor@hospital-network.org", hashed_doc, "Dr. Clinical Specialist"),
+        ("doctor@hospital.org", hashed_doc, "Dr. Clinical Specialist")
+    ]
+    
     if USE_MONGO:
-        if not db["doctors"].find_one({"username": "admin"}):
-            db["doctors"].insert_one({
-                "username": "admin",
-                "password_hash": hashed,
-                "name": "Dr. Varsha Gowda"
-            })
+        for username, pwd_hash, name in defaults:
+            if not db["doctors"].find_one({"username": username}):
+                db["doctors"].insert_one({
+                    "username": username,
+                    "password_hash": pwd_hash,
+                    "name": name
+                })
     else:
         conn = get_sqlite_conn()
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM doctors WHERE username = ?", ("admin",))
-        if not cursor.fetchone():
-            cursor.execute("INSERT INTO doctors (username, password_hash, name) VALUES (?, ?, ?)", ("admin", hashed, "Dr. Varsha Gowda"))
-            conn.commit()
+        for username, pwd_hash, name in defaults:
+            cursor.execute("SELECT 1 FROM doctors WHERE username = ?", (username,))
+            if not cursor.fetchone():
+                cursor.execute("INSERT INTO doctors (username, password_hash, name) VALUES (?, ?, ?)", (username, pwd_hash, name))
+        conn.commit()
         conn.close()
 
 # --- Auth Helpers ---
