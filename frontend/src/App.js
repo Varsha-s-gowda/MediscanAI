@@ -1580,7 +1580,6 @@ function App() {
           </div>
           <div className="info">
             <span className="name">{doctorName}</span>
-            <span className="role">Primary Physician</span>
           </div>
         </div>
 
@@ -1618,7 +1617,7 @@ function App() {
           <div className="dashboard-view">
             <header className="view-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "32px" }}>
               <div>
-                <h1>Doctor Command Dashboard</h1>
+                <h1>Healthcare Dashboard</h1>
                 <p>AI-assisted medical analysis and patient monitoring. Review the latest diagnostic insights below.</p>
               </div>
               <div className="system-status-pill">
