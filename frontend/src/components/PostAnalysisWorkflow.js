@@ -8,10 +8,11 @@ import {
   Download,
   Copy,
   ZoomIn,
-  Maximize2,
   Check,
   X,
-  Activity
+  Activity,
+  ArrowRight,
+  ArrowLeft
 } from "lucide-react";
 
 export const formatExplanationPoints = (explanationStr) => {
@@ -31,9 +32,6 @@ export const getDoctorConsultationGuidance = (pred, modality) => {
 
   if (m.includes("dental") || m.includes("cavity") || p.includes("caries") || p.includes("cavity")) {
     return "Schedule a consultation with a licensed Dentist or Endodontist for clinical bitewing inspection, pulp vitality testing, and restorative intervention.";
-  }
-  if (m.includes("mri") || m.includes("brain") || p.includes("glioma") || p.includes("meningioma") || p.includes("pituitary")) {
-    return "Urgent consultation with a Neurosurgeon, Neurologist, and Neuro-Oncology Multidisciplinary Case Board for surgical navigation and volumetric staging.";
   }
   if (m.includes("ct") || m.includes("kidney") || m.includes("stone")) {
     return "Consult a Urologist promptly for non-contrast helical CT stone sizing (mm), outflow tract assessment, and therapeutic stone extraction planning.";
@@ -58,101 +56,72 @@ export const getTreatmentCureSteps = (pred, modality) => {
   const m = (modality || "").toLowerCase();
 
   if (m.includes("dental") || m.includes("cavity") || p.includes("caries") || p.includes("cavity")) {
-    const isCavity = p.includes("cavity") || p.includes("caries");
-    return isCavity ? [
-      "Undergo dental restorative therapy (composite resin filling, ceramic inlay/onlay) to remove demineralized decay and seal structural margins.",
-      "Apply high-concentration topical sodium fluoride varnish (5% NaF) to arrest early enamel demineralization.",
-      "If deep dentin involvement is present, undergo endodontic root canal therapy followed by full-coverage crown placement.",
-      "Incorporate daily 5000 ppm prescription fluoridated toothpaste and daily interdental flossing into your home oral hygiene routine."
-    ] : [
-      "Maintain twice-daily brushing with fluoridated toothpaste for 2 minutes using proper circular technique.",
-      "Practice daily interdental flossing to prevent plaque accumulation in proximal contact areas.",
-      "Schedule routine 6-month preventive dental examinations and professional prophylaxis."
-    ];
-  }
-
-  if (m.includes("mri") || m.includes("brain") || p.includes("glioma") || p.includes("meningioma") || p.includes("pituitary")) {
-    if (p.includes("glioma")) {
-      return [
-        "Undergo image-guided volumetric neurosurgical resection (craniotomy) for maximum safe tumor cytoreduction.",
-        "Complete adjuvant concomitant chemoradiotherapy (Stupp protocol: Temozolomide + external beam radiation therapy).",
-        "Administer targeted anti-edema corticosteroid therapy (Dexamethasone) to mitigate peritumoral edema and intracranial pressure.",
-        "Perform serial multi-parametric contrast MRI tracking (T1+C, DWI, Perfusion) every 2-3 months."
-      ];
-    }
-    if (p.includes("meningioma")) {
-      return [
-        "Surgical excision (Simpson Grade I-III resection) for symptomatic mass effect or accessible cortical tumors.",
-        "Stereotactic Radiosurgery (Gamma Knife / CyberKnife) for deep skull-base or high-risk surgical candidates.",
-        "Perform 6-month interval contrast-enhanced MRI to monitor volumetric growth kinetics if managed conservatively."
-      ];
-    }
-    if (p.includes("pituitary")) {
-      return [
-        "Perform baseline endocrine hormone blood panel (Prolactin, ACTH, GH, IGF-1, TSH, Cortisol) and visual field perimetry.",
-        "For Prolactinomas: Initiate dopamine agonist medical therapy (Cabergoline / Bromocriptine) for tumor shrinkage.",
-        "For Non-functioning adenomas with mass effect: Undergo minimally invasive Transsphenoidal Endoscopic Resection."
-      ];
-    }
     return [
-      "Maintain regular sleep hygiene, stress management, and routine cardiovascular health monitoring.",
-      "Review baseline imaging with your attending physician during annual neurological checkups."
+      "Fluoride Varnish & Remineralization Therapy: For early incipient white-spot enamel lesions, apply high-concentration 5% sodium fluoride varnish.",
+      "Composite Resin Restoration (Filling): For cavitated caries in dentin, undergo minimally invasive excavation followed by biocompatible composite bonding.",
+      "Root Canal Treatment (Endodontics): If deep carious decay extends to dental pulp causing pulpitis/necrosis, complete pulp extirpation and obturation.",
+      "Full Ceramic/Zirconia Crown: Indicated for teeth with extensive coronal structural tooth loss to restore functional masticatory anatomy.",
+      "Preventive Hygiene Protocol: Brush twice daily with fluoridated dentifrice (1450 ppm F), clean interdentally daily, and minimize refined sugars."
     ];
   }
 
   if (m.includes("ct") || m.includes("kidney") || m.includes("stone")) {
     const isStone = p.includes("stone") || p.includes("calculi");
     return isStone ? [
-      "For Calculi < 5mm: Initiate Medical Expulsive Therapy (MET) with Alpha-blockers (Tamsulosin) and aggressive fluid hydration (2.5–3.0 L/day).",
-      "For Calculi 5mm–15mm: Undergo Extracorporeal Shock Wave Lithotripsy (ESWL) or Retrograde Intrarenal Surgery (RIRS) with laser dusting.",
-      "For Large/Staghorn Calculi (>20mm): Undergo Percutaneous Nephrolithotomy (PCNL) surgical extraction.",
-      "Filter passed stone fragments and send for crystallographic laboratory analysis (calcium oxalate, uric acid, struvite) for long-term dietary prevention."
+      "Medical Expulsive Therapy (MET): Alpha-blockers (e.g. Tamsulosin 0.4 mg) to relax ureteral smooth muscle for stones ≤5mm.",
+      "High Volume Hydration: Maintain 2.5–3.0 L/day oral fluid intake to achieve minimum 2 L/day clear urinary output.",
+      "Analgesic Protocol: First-line NSAIDs (Ketorolac / Ibuprofen) combined with antispasmodics for acute ureteric colic pain management.",
+      "Extracorporeal Shock Wave Lithotripsy (ESWL): Acoustic shockwave fragmentation for non-obstructing renal pelvic stones <15mm.",
+      "Ureteroscopy & Holmium Laser Lithotripsy (URS): Direct endoscopic visualization and laser dusting for ureteral or obstructing calculi."
     ] : [
-      "Maintain consistent daily fluid hydration aimed at producing pale or clear urine output throughout the day.",
-      "Adopt a balanced dietary plan with moderate sodium, adequate dietary calcium, and controlled animal protein."
+      "Maintain adequate daily hydration of 2.0–2.5 L/day to preserve optimal glomerular filtration.",
+      "Follow a balanced low-sodium dietary pattern to maintain normal calcium oxalate excretion.",
+      "Schedule routine annual metabolic urine chemistry and abdominal ultrasound check-ups."
     ];
   }
 
   if (m.includes("report") || m.includes("medical") || m.includes("lab")) {
     return [
-      "Anemia (Low Hb/RBC): Initiate physician-prescribed oral elemental iron (Ferrous Sulfate) + Vitamin C, and evaluate underlying blood loss sources.",
-      "Infection / Inflammation (High WBC): Complete targeted antimicrobial/antibiotic regimen as prescribed following blood/urine cultures.",
-      "Hyperglycemia (High Glucose): Implement dietary carbohydrate restriction, regular HbA1c testing, and physician-guided Metformin/insulin therapy.",
-      "Hyperlipidemia (High Cholesterol): Initiate Statin therapy, adopt a low-saturated-fat diet, and engage in 150 mins/week aerobic exercise.",
-      "Renal Impairment (High Creatinine): Ensure proper hydration, avoid nephrotoxic NSAIDs, and follow a kidney-friendly low-sodium diet."
+      "Correlate Extracted Abnormal Markers: Cross-reference out-of-range biomarkers (CBC, lipid, glucose, or renal parameters) with clinical presentation.",
+      "Follow-up Confirmatory Testing: Repeat targeted biomarker assay in 2–4 weeks to establish baseline vs. acute transient fluctuation.",
+      "Dietary & Lifestyle Modification: Tailor nutritional intake, physical exercise, and sleep patterns based on metabolic panel indicators.",
+      "Targeted Pharmacotherapy: Initiate medication adjustments (e.g. lipid-lowering, antihypertensive, glycemic control) under specialist supervision.",
+      "Preventive Health Surveillance: Routine quarterly or biannual blood panel screening to monitor biomarker progression."
+    ];
+  }
+
+  if (p.includes("pneumonia")) {
+    return [
+      "Targeted Antimicrobial Regimen: Complete empirical oral or IV antibiotic course (e.g. Amoxicillin-Clavulanate, Azithromycin, or Ceftriaxone) as prescribed by attending physician.",
+      "Incentive Spirometry: Perform 5–10 deep respiratory volume repetitions hourly to promote alveolar expansion and clear bronchial exudate.",
+      "Bronchial Clearance & Hydration: Maintain oral fluid intake of 2.0–2.5 L/day and consider prescribed expectorants to thin pulmonary secretions.",
+      "Supportive Rest Protocol: Rest in a semi-upright (semi-Fowler's, 30–45°) position to maximize diaphragmatic excursion and oxygenation.",
+      "Follow-up Imaging: Repeat chest radiograph in 4–6 weeks to document radiographic resolution and rule out underlying parenchymal disease."
+    ];
+  }
+
+  if (p.includes("tuberculosis") || p.includes("tb")) {
+    return [
+      "Directly Observed First-Line RHEZ Therapy: Initiate 2-month intensive phase (Rifampicin, Isoniazid, Pyrazinamide, Ethambutol).",
+      "Continuation Phase: 4-month maintenance phase (Rifampicin + Isoniazid) under strict clinical DOTS compliance monitoring.",
+      "Baseline & Interval Hepatic Function Monitoring: Periodic liver enzymes (ALT/AST/Bilirubin) to prevent drug-induced hepatotoxicity.",
+      "Nutritional & Airborne Precautions: High-protein diet and respiratory hygiene until consecutive sputum smear negativity is verified."
     ];
   }
 
   if (p.includes("covid")) {
     return [
-      "Initiate physician-guided antiviral therapy (Paxlovid / Remdesivir / Molnupiravir) as early as possible within the therapeutic window.",
-      "Administer oral corticosteroid support (Dexamethasone) for systemic hyper-inflammation under strict medical supervision.",
-      "Practice interval prone positioning (lying on stomach for 30-120 minutes) to improve lower-lobe alveolar aeration.",
-      "Maintain continuous pulse oximetry monitoring (SpO2 > 94%) and stay well-hydrated throughout recovery.",
-      "Monitor key inflammatory markers (CRP, D-dimer, Ferritin) to track recovery trajectory."
-    ];
-  }
-  if (p.includes("tuberculosis") || p.includes("tb")) {
-    return [
-      "Initiate 4-drug Directly Observed Treatment Short-Course (DOTS) anti-tubercular therapy (Rifampicin, Isoniazid, Pyrazinamide, Ethambutol) for initial 2 months.",
-      "Continue continuation phase (Rifampicin + Isoniazid) for an additional 4 months without missing any doses to prevent drug resistance (MDR-TB).",
-      "Maintain strict airborne isolation (wear N95 respirator mask) until negative sputum AFB conversion is documented.",
-      "Undergo monthly liver function testing (LFT) and ophthalmological monitoring throughout treatment."
-    ];
-  }
-  if (p.includes("pneumonia")) {
-    return [
-      "Complete full course of targeted empirical oral/IV antibiotic therapy (Azithromycin, Amoxicillin-Clavulanate, or Ceftriaxone) as prescribed.",
-      "Use incentive spirometry 5-10 times hourly to promote alveolar expansion and clear bronchial exudate.",
-      "Take mucolytics and bronchodilators as advised to loosen thick sputum and relieve airway resistance.",
-      "Maintain high fluid intake (2.5L/day) and rest in a semi-Fowler's position (head elevated 30-45 degrees)."
+      "Pulse Oximetry Surveillance: Monitor resting SpO2 every 4–6 hours; seek immediate care if SpO2 drops below 94%.",
+      "Prone Positioning Protocol: Alternate awake prone positioning (30–120 min intervals) to improve ventilation-perfusion matching.",
+      "Hydration & Symptomatic Management: Antipyretics (Paracetamol) for fever, adequate oral rehydration, and avoidance of exertion.",
+      "Anti-inflammatory / Antiviral Evaluation: Consult clinical specialist for oral antivirals (Paxlovid) or corticosteroids if oxygen-dependent."
     ];
   }
 
   return [
-    "Maintain routine annual preventive health examinations and recommended vaccinations.",
-    "Engage in regular cardiovascular aerobic exercise and avoid tobacco smoke or respiratory pollutants.",
-    "Consult your healthcare provider if any new symptoms arise."
+    "Continue standard age-appropriate preventative health maintenance.",
+    "Maintain balanced nutrition, regular aerobic exercise, and healthy sleep hygiene.",
+    "Schedule annual routine primary care physical examination."
   ];
 };
 
@@ -163,246 +132,137 @@ export const getEmergencyRedFlags = (pred, modality) => {
   if (m.includes("dental") || m.includes("cavity") || p.includes("caries") || p.includes("cavity")) {
     return "Emergency Red Flags: Rapidly spreading facial or submandibular swelling, difficulty swallowing/breathing (Ludwig's angina risk), high fever (>38.5°C), or severe unmanageable pain.";
   }
-  if (m.includes("mri") || m.includes("brain") || p.includes("glioma") || p.includes("meningioma") || p.includes("pituitary")) {
-    return "Emergency Red Flags: Sudden focal limb weakness, acute seizure activity, unremitting severe headache with projectile morning vomiting, visual field blackouts, or altered consciousness.";
-  }
   if (m.includes("ct") || m.includes("kidney") || m.includes("stone")) {
     return "Emergency Red Flags: Intractable severe flank pain unresponsive to medications, persistent vomiting, high fever with chills (indicator of urosepsis), or inability to urinate (anuria).";
   }
   if (m.includes("report") || m.includes("medical") || m.includes("lab")) {
-    return "Emergency Red Flags: Severe lightheadedness/syncope (extreme anemia), high fever with confusion (sepsis), blood glucose > 300 mg/dL with shortness of breath, or acute severe chest pain.";
+    return "Emergency Red Flags: Critical lab values (severe thrombocytopenia <20k, severe anemia Hb <7 g/dL, severe hypoglycemia <50 mg/dL, or acute electrolyte crises).";
   }
-  if (p.includes("covid") || p.includes("pneumonia") || p.includes("tuberculosis") || p.includes("tb")) {
-    return "Emergency Red Flags: Blood oxygen saturation (SpO2) dropping below 92%, severe shortness of breath at rest, coughing up bright red blood (hemoptysis), confusion, or bluish discoloration of lips/face.";
-  }
-  return "Emergency Red Flags: Seek emergency care immediately if experiencing acute severe chest pain, extreme dyspnea, sudden weakness, or loss of consciousness.";
+  return "Emergency Red Flags: Resting blood oxygen saturation (SpO2) dropping below 92%, acute respiratory distress, severe persistent chest pain, coughing up blood (hemoptysis), confusion, or cyanosis (bluish lips/face).";
 };
 
-/**
- * Standard medical fallback post-analysis generator for frontend
- * to ensure robust rendering across all modalities and cached records.
- */
 export function ensurePostAnalysis(analysis, modalityHint = "Chest X-Ray") {
   if (!analysis) return null;
-  if (analysis.post_analysis) return analysis.post_analysis;
 
-  const pred = analysis.prediction || "Normal";
-  const conf = typeof analysis.confidence === "number" ? analysis.confidence : parseFloat(analysis.confidence || "0") || 0;
-  const modality = analysis.modality || analysis.analysisType || analysis.fileType || modalityHint;
-  const modLower = modality.toLowerCase();
+  if (analysis.post_analysis && analysis.post_analysis.explanation && analysis.post_analysis.recommendations) {
+    return analysis.post_analysis;
+  }
 
-  let explanation = "";
+  const pred = analysis.prediction || analysis.class || "Normal";
+  const conf = Math.round(Number(analysis.confidence || 0.95) <= 1 ? Number(analysis.confidence || 0.95) * 100 : Number(analysis.confidence || 95));
+  const mod = analysis.modality || analysis.fileType || modalityHint || "Chest X-Ray";
+  const modLower = mod.toLowerCase();
+
   let severity = "Moderate";
   let severity_color = "#F59E0B";
-  let severity_description = "Clinical finding requiring correlation with patient history.";
-  let recommendations = [];
-
-  const disclaimer = (
-    "⚠️ MEDICAL DISCLAIMER: This is an AI-assisted diagnostic evaluation generated for informational " +
-    "and clinical decision-support purposes only. It is NOT a final medical diagnosis. Please consult a licensed " +
-    "physician or specialist for clinical examination and formal treatment planning."
-  );
+  let severity_description = "Clinical correlation recommended.";
+  let explanation = `The deep neural engine identified radiographical patterns consistent with ${pred} with an estimated confidence of ${conf}%.`;
+  let recommendations = [
+    "Schedule a comprehensive clinical evaluation with an attending physician.",
+    "Perform confirmatory diagnostic testing and correlate with presenting symptoms.",
+    "Monitor vital signs and seek immediate emergency care if acute distress develops."
+  ];
 
   if (modLower.includes("dental") || modLower.includes("cavity")) {
     const isCavity = pred.toLowerCase().includes("cavity") || pred.toLowerCase().includes("caries");
-    severity = isCavity ? (conf > 75 ? "High" : "Moderate") : "Low";
-    severity_color = severity === "High" ? "#EF4444" : (severity === "Moderate" ? "#F59E0B" : "#10B981");
+    severity = isCavity ? "High" : "Low";
+    severity_color = isCavity ? "#EF4444" : "#10B981";
     explanation = isCavity
-      ? "Dental radiographic assessment reveals focal radiolucency and mineral loss within the enamel margin and coronal dentin structure, confirming active dental caries. Subsurface enamel demineralization has progressed across the dentinoenamel junction, indicating bacterial acid dissolution of crystalline hydroxyapatite. The lesion exhibits characteristic radiolucent shadow progression approaching the outer third of the dentinal tubules without evident pulpal exposure. Periapical bone architecture and periodontal ligament spaces appear preserved with no signs of periapical granuloma or osteolytic rarefaction. Prompt restorative intervention via composite resin or ceramic inlay is advised to prevent pulpitis and irreversible structural breakdown."
-      : "Dental radiographic inspection demonstrates intact, well-mineralized enamel crowns with smooth, continuous proximal surface contours across all visual teeth. The dentinoenamel junction exhibits uniform radiographic density with no focal radiolucency, fissure caries, or interproximal demineralization shadows. Alveolar bone crests maintain normal physiological height and density with sharp cortical margins and intact periodontal ligament spaces. There is no evidence of periapical pathosis, root resorption, or defective margin leakage in adjacent dentition. Overall imaging reflects healthy, robust oral dentition with intact protective enamel architecture.";
+      ? "Radiographic assessment shows localized radiolucency within the coronal hard tissue indicative of active demineralization and enamel breakdown. The lesion penetrates beyond the enamel-dentin junction (EDJ), displaying characteristic morphological loss of radiopaque dental mineral density. Adjacent periodontal ligament spaces and alveolar bone crests appear preserved without evidence of periapical radiolucency."
+      : "The evaluated dental radiograph demonstrates intact, continuous enamel contours across all visualized interproximal surfaces. No pathological radiolucencies, demineralization fronts, or caries-associated structural deficits are identified along the crowns or cervical margins. Periodontal bone levels and pulp chamber morphology appear within normal radiographic limits.";
     severity_description = isCavity
-      ? "Active dental caries detected. Timely restoration recommended to prevent pulp involvement."
-      : "Healthy dentition with no active caries detected.";
+      ? "Active dental caries detected requiring prompt restorative intervention."
+      : "No radiographic evidence of dental caries or acute coronal lesions.";
     recommendations = isCavity ? [
-      "Schedule a dental appointment for bitewing confirmation and clinical evaluation.",
-      "Undergo restorative composite filling, ceramic inlay, or fluoride sealing as appropriate.",
-      "Brush twice daily with fluoridated toothpaste and floss daily between teeth.",
-      "Reduce frequent consumption of sugary and acidic foods or beverages."
+      "Schedule restorative clinical evaluation (operative excavation and composite restoration).",
+      "Perform intraoral bitewing radiographs to evaluate depth relative to the dental pulp.",
+      "Implement topical 5000 ppm high-fluoride toothpaste and interdental plaque control."
     ] : [
-      "Continue brushing twice daily with fluoride toothpaste for 2 minutes.",
-      "Practice daily interdental flossing to maintain plaque-free proximal surfaces.",
+      "Continue daily brushing with fluoride dentifrice twice daily and daily flossing.",
       "Schedule routine 6-month dental check-ups and professional prophylaxis.",
       "Maintain a balanced diet rich in calcium and enamel-protecting minerals."
     ];
-  } else if (modLower.includes("mri") || modLower.includes("brain")) {
-    if (pred.toLowerCase().includes("glioma")) {
-      severity = "High";
-      severity_color = "#EF4444";
-      explanation = "Brain MRI demonstrates an expansive intra-axial mass lesion within the cerebral parenchyma characterized by heterogeneous T1 hypointensity and prominent T2/FLAIR hyperintensity. The lesion exhibits irregular margins with extensive surrounding vasogenic edema extending along adjacent white matter tracts. Local mass effect is identified with partial effacement of adjacent sulci, regional cortical displacement, and ipsilateral ventricular compression. Diffusion-weighted imaging reveals restricted water diffusion within the hypercellular neoplastic core, characteristic of high-grade glial proliferation. Urgent multidisciplinary neurosurgical and neuro-oncological evaluation is indicated for volumetric navigation and surgical resection planning.";
-      severity_description = "Intra-axial brain tumor finding requiring urgent neurosurgical evaluation.";
-      recommendations = [
-        "Urgent neurosurgical and neuro-oncology multidisciplinary case review.",
-        "Obtain multi-parametric contrast-enhanced MRI (T1+C, T2/FLAIR, DWI, Perfusion) for surgical planning.",
-        "Evaluate need for medical management of peritumoral edema or seizure prophylaxis.",
-        "Seek emergency care if acute headache, focal deficit, or altered consciousness occurs."
-      ];
-    } else if (pred.toLowerCase().includes("meningioma")) {
-      severity = conf > 80 ? "High" : "Moderate";
-      severity_color = severity === "High" ? "#EF4444" : "#F59E0B";
-      explanation = "Brain MRI demonstrates a well-circumscribed, extra-axial dural-based mass lesion exhibiting homogeneous signal enhancement and prominent adjacent dural tail thickening. The lesion exerts localized mechanical compression upon the adjacent cerebral cortex with a thin rim of cerebrospinal fluid cleft and surrounding vasogenic white matter edema. Underlying bony structures show localized hyperostosis without evidence of frank osseous invasion or parenchymal destruction. Ventricular geometry and midline positioning are preserved with no acute obstructive hydrocephalus. Specialist neurosurgical evaluation is advised to determine surgical resection margins versus serial stereotactic radiosurgical surveillance.";
-      severity_description = "Extra-axial dural mass lesion requiring specialist consultation to determine surveillance or surgical resection.";
-      recommendations = [
-        "Consult a neurosurgeon for precise tumor volumetric analysis and mass effect staging.",
-        "Schedule serial contrast MRI imaging to assess growth kinetics and vascular relations.",
-        "Report any emerging neurological symptoms such as headaches, visual changes, or motor weakness."
-      ];
-    } else if (pred.toLowerCase().includes("pituitary")) {
-      severity = "Moderate";
-      severity_color = "#F59E0B";
-      explanation = "Brain MRI exhibits focal tissue enlargement and lesion expansion within the sella turcica and pituitary fossa region, consistent with a pituitary micro/macroadenoma. The lesion causes mild upward convexity of the sellar diaphragm and remodeling of the sellar floor without frank suprasellar extension into the optic chiasm. Bilateral cavernous sinuses and internal carotid arteries maintain normal flow voids with no evidence of cavernous invasion. Surrounding brain parenchyma and the third ventricle demonstrate normal morphology without obstructive signs. Comprehensive endocrinological hormone profiling and formal visual field perimetry are recommended for staging.";
-      severity_description = "Sellar neoplasm requiring comprehensive endocrine profiling and visual pathway evaluation.";
-      recommendations = [
-        "Consult an endocrinologist and neurosurgeon for dedicated pituitary protocol MRI.",
-        "Perform baseline pituitary hormone blood tests (Prolactin, ACTH, GH, IGF-1, TSH, Cortisol).",
-        "Undergo formal automated visual field testing with an ophthalmologist."
-      ];
-    } else {
-      severity = "Low";
-      severity_color = "#10B981";
-      explanation = "Brain MRI scan demonstrates symmetric cerebral and cerebellar hemispheres with normal, well-defined grey-white matter differentiation throughout all cortical regions. The lateral, third, and fourth ventricles exhibit normal symmetric caliber and configuration without hydrocephalus or midline shift. No abnormal focal parenchymal signal alterations, pathological mass lesions, restricted diffusion, or abnormal contrast enhancement are identified. Basal cisterns, sulcal patterns, and major intracranial vascular flow voids appear entirely physiological. The radiographic examination reveals no intracranial mass effect, acute infarction, or neoplastic pathology.";
-      severity_description = "Normal brain MRI scan with no radiographic evidence of tumor.";
-      recommendations = [
-        "Continue routine neurological health maintenance.",
-        "Review findings with your attending physician in context of any presenting symptoms.",
-        "Maintain regular sleep patterns, cardiovascular fitness, and stress management."
-      ];
-    }
   } else if (modLower.includes("ct") || modLower.includes("kidney") || modLower.includes("stone")) {
     const isStone = pred.toLowerCase().includes("stone") || pred.toLowerCase().includes("calculi");
     severity = isStone ? (conf > 80 ? "High" : "Moderate") : "Low";
-    severity_color = severity === "High" ? "#EF4444" : (severity === "Moderate" ? "#F59E0B" : "#10B981");
+    severity_color = isStone ? "#EF4444" : "#10B981";
     explanation = isStone
-      ? "CT scan cross-section demonstrates high-attenuation radiopaque calcifications within the renal parenchyma and collecting system, confirming kidney stone (nephrolithiasis). The dense mineral nidus is situated within the renal pelvicalyceal junction, causing focal parenchymal compression and early upstream urinary stasis. Perirenal soft tissues demonstrate mild localized inflammatory hyperdensity with preserved perinephric fat planes. Associated ureteral caliber assessment indicates intermittent outflow resistance with potential risk for acute hydronephrosis. Urgent clinical correlation with non-contrast helical CT volumetry and specialist urological consultation is recommended to guide therapeutic extraction."
-      : "CT scan cross-section exhibits homogenous renal parenchyma, bilateral symmetric parenchymal thickness, and a completely unobstructed renal collecting system. No radiopaque calculi, calcified crystalline deposits, or hyperdense mineral foci are identified within the renal calyces, pelvis, or proximal ureters. The corticomedullary differentiation remains well-demarcated with clear perinephric and paranephric spaces. Renal vascular architecture and retroperitoneal structures appear unremarkable with no signs of hydronephrosis or inflammatory perinephric stranding. Findings are indicative of healthy, non-obstructive renal anatomy with baseline physiological filtration.";
+      ? "Helical abdominal CT slice demonstrates a well-defined hyperdense focus consistent with nephrolithiasis within the renal collecting system. The high attenuation value (>400 HU) is characteristic of a calcified renal calculus. Perinephric fat stranding and mild pelvicalyceal prominence are visible, indicating focal mechanical irritation and potential early outflow impedance."
+      : "Axial abdominal CT demonstrates symmetric renal morphology and parenchymal thickness bilaterally. Renal parenchyma shows homogeneous attenuation without focal hypo- or hyperdense lesions. No radiopaque calculi, hydronephrosis, or pelvicalyceal ectasia are identified within either renal collecting system. Perirenal fat planes are clean and unremarkable.";
     severity_description = isStone
-      ? "Renal calculi detected. Requires urological sizing to assess passage potential and obstruction risk."
-      : "Normal renal CT appearance without evidence of calculi or hydronephrosis.";
+      ? "Renal calculus identified with localized parenchymal irritation."
+      : "No radiographic evidence of nephrolithiasis or obstructive uropathy.";
     recommendations = isStone ? [
-      "Consult a urologist for non-contrast helical CT stone sizing (mm) and intervention planning (medical expulsive therapy, ESWL, or ureteroscopy).",
-      "Increase daily fluid intake to 2.5–3.0 liters of water daily to promote urine dilution unless medically contraindicated.",
-      "Collect any passed stone fragments for laboratory chemical composition analysis.",
-      "Seek emergency medical attention if severe intractable flank pain, persistent vomiting, high fever, or blood in urine occurs."
+      "Consult a urologist for definitive calculus sizing and therapeutic extraction planning.",
+      "Increase oral hydration to 2.5–3.0 liters per day to promote spontaneous stone passage.",
+      "Undergo serum metabolic workup (calcium, uric acid, creatinine) and urinalysis."
     ] : [
-      "Maintain consistent daily hydration (aim for pale/clear urine output).",
-      "Adopt a balanced diet with moderate sodium, adequate calcium, and controlled animal protein.",
-      "Consult a physician if urinary discomfort or recurrent flank symptoms develop."
+      "Maintain optimal daily fluid intake (2.0–2.5 liters) to support renal filtration.",
+      "Follow a low-sodium, balanced calcium diet to prevent future crystal precipitation.",
+      "Schedule annual preventive wellness screenings including renal function testing."
     ];
   } else if (modLower.includes("report") || modLower.includes("medical") || modLower.includes("lab")) {
-    const findings = analysis.reportFindings || [];
-    const abnormals = findings.filter(f => ["HIGH", "LOW", "ABNORMAL"].includes(String(f.status).toUpperCase()));
-    const hasAbnormal = abnormals.length > 0;
-    const predName = hasAbnormal ? `${abnormals.length} Out-of-Range Parameter(s)` : "Normal Lab Report";
-    severity = hasAbnormal ? (abnormals.length > 2 ? "High" : "Moderate") : "Low";
-    severity_color = severity === "High" ? "#EF4444" : (severity === "Moderate" ? "#F59E0B" : "#10B981");
-    explanation = analysis.reportSummary || (
-      hasAbnormal
-        ? `Laboratory report analysis identified ${abnormals.length} out-of-range biomarker(s): ${abnormals.map(a => `${a.test_name} (${a.value} ${a.unit || ''} - ${a.status})`).join(", ")}.`
-        : "Laboratory test report analyzed. All extracted biomarker values are within normal standard reference ranges."
-    );
-    severity_description = hasAbnormal
-      ? `${abnormals.length} out-of-range biomarker parameter(s) identified requiring clinical correlation.`
-      : "All extracted laboratory parameters are within normal physiological reference ranges.";
-    recommendations = hasAbnormal ? [
-      "Review flagged out-of-range biomarker values with your primary attending physician.",
-      "Correlate laboratory findings with clinical symptoms and medication history.",
-      "Schedule follow-up laboratory testing as recommended by your physician.",
-      "Maintain a comprehensive record of longitudinal lab test trends."
-    ] : [
-      "Maintain regular healthy lifestyle, nutrition, and routine wellness checkups.",
-      "Schedule routine annual preventive health screenings.",
-      "Consult your healthcare provider if any new symptoms develop."
+    severity = conf > 85 ? "High" : "Moderate";
+    severity_color = severity === "High" ? "#EF4444" : "#F59E0B";
+    explanation = "Automated OCR extraction and hematological NLP pipeline successfully parsed the diagnostic laboratory report. Target biomarkers were normalized against clinical reference intervals, identifying specific out-of-range deviations across the clinical parameter profile. Review the extracted table below for detailed metric values and status.";
+    severity_description = "Laboratory biomarker panel analysis complete with extracted metrics.";
+    recommendations = [
+      "Review flagged out-of-range parameters with your attending primary care physician.",
+      "Repeat abnormal tests in 2–4 weeks to monitor physiological normalization.",
+      "Correlate laboratory findings with clinical symptoms and existing medical history."
     ];
-
-    const reportId = analysis.report_id || `MED-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
-    const timestamp = analysis.date || analysis.createdAt || new Date().toLocaleString();
-
-    return {
-      modality,
-      prediction: predName,
-      confidence: 98.5,
-      explanation,
-      severity,
-      severity_color,
-      severity_description,
-      recommendations,
-      disclaimer,
-      report: {
-        report_id: reportId,
-        generated_at: timestamp,
-        modality,
-        primary_prediction: predName,
-        confidence_percentage: 98.5,
-        severity_level: severity,
-        severity_description,
-        medical_explanation: explanation,
-        clinical_recommendations: recommendations,
-        disclaimer,
-        scan_quality: "Diagnostic Grade",
-        original_image_url: analysis.filePath || analysis.original_image,
-        gradcam_image_url: null,
-        patient_name: analysis.patientName || "Public / Anonymous",
-        patient_id: analysis.patientId || "N/A"
-      },
-      report_id: reportId,
-      generated_at: timestamp
-    };
   } else {
-    // Chest X-Ray
+    // Default Chest X-Ray
+    const isPneumonia = pred.toLowerCase().includes("pneumonia");
+    const isTb = pred.toLowerCase().includes("tuberculosis") || pred.toLowerCase().includes("tb");
     const isNormal = pred.toLowerCase().includes("normal");
-    const isHighRisk = ["pneumonia", "tuberculosis", "covid", "cardiomegaly", "pneumothorax", "mass", "edema"].some(k => pred.toLowerCase().includes(k));
-    severity = isNormal ? "Low" : (isHighRisk ? (conf > 40 ? "High" : "Moderate") : "Moderate");
-    severity_color = severity === "High" ? "#EF4444" : (severity === "Moderate" ? "#F59E0B" : "#10B981");
-    explanation = isNormal
-      ? "Frontal chest radiograph displays clear bilateral lung fields with crisp, physiological bronchovascular markings extending symmetrically to the periphery. The cardiothoracic ratio is well within normal limits (<50%) with sharp, well-defined left and right costophrenic and cardiophrenic angles. The mediastinal contour, hila, and trachea are midline and structurally unremarkable with no evidence of lymphadenopathy or vascular engorgement. Osseous thoracic cage structures and soft tissues exhibit normal radiological density with no acute bony lesions or focal pleural thickening. Overall imaging confirms normal thoracic architecture with no active infectious, congestive, or neoplastic pulmonary processes."
-      : `Frontal chest radiograph reveals localized areas of increased radiographic opacity and alveolar consolidation with prominent air bronchograms, typical of infectious ${pred}. The inflammatory exudate is concentrated within the pulmonary parenchyma, leading to localized loss of normal aeration and volume reduction in the affected lobes. Surrounding bronchovascular bundles demonstrate peribronchial thickening consistent with active inflammatory airway response and interstitial exudation. Cardiac silhouette contours and contralateral lung fields remain preserved with no evidence of gross pneumothorax. Clinical correlation with physical auscultation, laboratory inflammatory markers, and targeted management is strongly indicated.`;
-    severity_description = isNormal
-      ? "Normal chest radiograph with clear pulmonary fields."
-      : `Active radiological finding of ${pred} identified. Requires clinical correlation.`;
-    recommendations = isNormal ? [
-      "Maintain routine preventive health checkups and vaccinations.",
-      "Engage in regular cardiovascular and pulmonary aerobic exercise.",
-      "Avoid tobacco smoke and respiratory pollutants.",
-      "Consult a doctor if respiratory symptoms such as cough or chest pain occur."
-    ] : [
-      "Consult a physician or pulmonologist for clinical auscultation and targeted antimicrobial protocols.",
-      "Monitor resting oxygen saturation (SpO2) and body temperature with supplemental pulse oximetry.",
-      "Correlate with auscultatory crackles and schedule interval follow-up radiograph in 10-14 days.",
-      "Seek immediate emergency medical attention if severe shortness of breath or high fever develops."
-    ];
+
+    if (isNormal) {
+      severity = "Low";
+      severity_color = "#10B981";
+      explanation = "Posteroanterior (PA) chest radiograph shows clear lung fields bilaterally with no focal parenchymal consolidation, infiltrates, or suspicious pulmonary nodular opacities. The cardiothoracic ratio is normal (<0.50) without cardiomegaly. Costophrenic and cardiophrenic angles are sharp with no evidence of pleural effusion. Mediastinal contours, hilar vascular patterns, and osseous thoracic structures appear intact with no acute cardiopulmonary abnormality.";
+      severity_description = "Normal chest radiograph with no acute cardiopulmonary findings.";
+      recommendations = [
+        "Continue routine preventative health maintenance and annual primary care wellness checkups.",
+        "Maintain current cardiovascular fitness and avoid tobacco or respiratory environmental irritants.",
+        "Re-evaluate with clinical consultation should respiratory symptoms (cough, dyspnea, fever) develop."
+      ];
+    } else if (isPneumonia) {
+      severity = "High";
+      severity_color = "#EF4444";
+      explanation = "Frontal chest radiograph reveals localized areas of increased radiographic opacity and alveolar consolidation with prominent air bronchograms, typical of infectious pneumonia. The inflammatory exudate is concentrated within the pulmonary parenchyma, leading to localized loss of normal aeration and volume reduction in the affected lobes. Surrounding bronchovascular bundles demonstrate peribronchial thickening consistent with an active inflammatory airway response and interstitial exudation. Cardiac silhouette contours and contralateral lung fields remain preserved with no evidence of gross pneumothorax or cavitation. Clinical correlation with physical auscultation, laboratory inflammatory markers, and immediate targeted antimicrobial management is strongly indicated.";
+      severity_description = "Acute pulmonary consolidation detected consistent with pneumonia.";
+      recommendations = [
+        "Consult a pulmonologist or attending physician immediately for clinical auscultation and targeted antimicrobial therapy.",
+        "Monitor pulse oximetry (SpO2) and body temperature regularly; seek emergency care if SpO2 drops below 92%.",
+        "Perform follow-up PA chest radiography in 4–6 weeks to document complete radiographic resolution of consolidation."
+      ];
+    } else if (isTb) {
+      severity = "High";
+      severity_color = "#EF4444";
+      explanation = "Chest radiograph demonstrates heterogeneous fibro-cavitary opacities with apical and subapical predominance, characteristic of active pulmonary tuberculosis. Focal parenchymal destruction with radiolucent cavities and surrounding satellite nodular infiltrates are noted. Retractile changes in the adjacent hilar structures and mild volume loss are identifiable. Contralateral lung displays compensatory hyperinflation without evidence of acute miliary dissemination.";
+      severity_description = "Apical cavitary infiltration identified suggestive of active tuberculosis.";
+      recommendations = [
+        "Consult an infectious disease specialist or pulmonologist immediately for confirmatory AFB sputum smears and GeneXpert.",
+        "Initiate appropriate multi-drug anti-tubercular therapy (DOTS protocol) under strict medical supervision.",
+        "Implement airborne infection control precautions and screen close household contacts promptly."
+      ];
+    }
   }
 
-  const reportId = analysis.report_id || `MED-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
-  const timestamp = analysis.date || analysis.createdAt || new Date().toLocaleString();
-
   return {
-    modality,
+    is_valid: true,
+    report_id: analysis.report_id || `MED-${Date.now()}`,
+    generated_at: analysis.date || new Date().toISOString(),
+    modality: mod,
     prediction: pred,
-    confidence: Math.round(conf * 10) / 10,
-    explanation,
+    confidence: conf,
     severity,
     severity_color,
     severity_description,
+    explanation,
     recommendations,
-    disclaimer,
-    report: {
-      report_id: reportId,
-      generated_at: timestamp,
-      modality,
-      primary_prediction: pred,
-      confidence_percentage: Math.round(conf * 10) / 10,
-      severity_level: severity,
-      severity_description,
-      medical_explanation: explanation,
-      clinical_recommendations: recommendations,
-      disclaimer,
-      scan_quality: analysis.scan_quality || "Diagnostic Grade",
-      original_image_url: analysis.filePath || analysis.original_image,
-      gradcam_image_url: analysis.gradcamPath || analysis.gradcam_image || analysis.heatmap,
-      patient_name: analysis.patientName || "Public / Anonymous",
-      patient_id: analysis.patientId || "N/A"
-    },
-    report_id: reportId,
-    generated_at: timestamp
+    disclaimer: "Notice: MediScan AI is an algorithmic decision-support tool. It does not substitute professional medical judgment, diagnosis, or clinical evaluation by a board-certified physician."
   };
 }
 
@@ -421,10 +281,11 @@ export default function PostAnalysisWorkflow({
   setPublicMode = null,
   onBackToLogin = null
 }) {
-  const [activeStep, setActiveStep] = useState(2); // 1: Upload, 2: Prediction, 3: Explanation, 4: Severity, 5: Action Plan, 6: Report
-  const [highlightedSection, setHighlightedSection] = useState(null);
+  // Workflow view stage: 'image_analysis' (Stage 1) or 'medical_report' (Stage 2)
+  const [workflowStage, setWorkflowStage] = useState("image_analysis");
+  // eslint-disable-next-line no-unused-vars
+  const [activeStep, setActiveStep] = useState(2);
   const [windowPreset, setWindowPreset] = useState("lung"); // 'lung', 'mediastinum', 'bone'
-  const [overlayMode, setOverlayMode] = useState("heatmap"); // 'heatmap', 'box', 'original'
   const [contrastInvert, setContrastInvert] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [showReportModal, setShowReportModal] = useState(false);
@@ -466,12 +327,6 @@ export default function PostAnalysisWorkflow({
     icdCode = "ICD-10 K02.9";
     viewTag = "BITEWING";
     windowPresets = ["Enamel", "Dentin", "Periodontal"];
-  } else if (modLower.includes("mri") || modLower.includes("brain")) {
-    modelName = "ResNet-18";
-    scanTitle = "Brain MRI (Axial T2/FLAIR)";
-    icdCode = postData.prediction.toLowerCase().includes("glioma") ? "ICD-10 C71.9" : postData.prediction.toLowerCase().includes("meningioma") ? "ICD-10 D32.9" : "ICD-10 R90.8";
-    viewTag = "AXIAL";
-    windowPresets = ["T1+C", "T2/FLAIR", "DWI"];
   } else if (modLower.includes("ct") || modLower.includes("kidney") || modLower.includes("stone")) {
     modelName = "MobileNetV2";
     scanTitle = "Abdominal CT Scan (Renal Helical)";
@@ -486,16 +341,14 @@ export default function PostAnalysisWorkflow({
     windowPresets = ["Standard", "Contrast", "Inverted"];
   }
 
-  // Format primary finding title to match clinical style
-  if (postData.prediction.toLowerCase().includes("pneumonia")) {
-    primaryFindingTitle = "Right Lower Lobe Consolidation";
-  } else if (postData.prediction.toLowerCase().includes("tuberculosis")) {
-    primaryFindingTitle = "Apical Cavitary Infiltration";
-  } else if (postData.prediction.toLowerCase().includes("cavity")) {
-    primaryFindingTitle = "Active Occlusal Caries";
+  if (postData.prediction.toLowerCase().includes("cavity") || postData.prediction.toLowerCase().includes("caries")) {
+    primaryFindingTitle = "Active Dental Caries (Cavity)";
+  } else if (postData.prediction.toLowerCase().includes("normal")) {
+    primaryFindingTitle = "Normal — No Significant Finding";
+  } else {
+    primaryFindingTitle = postData.prediction;
   }
 
-  // Severity / Risk calculation
   const riskLabel = postData.severity === "High"
     ? "HIGH RISK • CRITICAL TIER"
     : postData.severity === "Moderate"
@@ -508,7 +361,6 @@ export default function PostAnalysisWorkflow({
     ? "0.64 Risk Index"
     : "0.12 Risk Index";
 
-  // Stepper items matching workflow
   const isDental = modLower.includes("dental") || modLower.includes("cavity");
   const stepperSteps = isDental ? [
     { id: 1, label: "Upload Radiograph", target: null },
@@ -533,35 +385,15 @@ export default function PostAnalysisWorkflow({
       return;
     }
     if (stepId === 6) {
-      setShowReportModal(true);
+      setWorkflowStage("medical_report");
       return;
     }
 
-    let targetId = "section-ai-prediction";
-    let sectionKey = "prediction";
-
-    if (stepId === 2) {
-      targetId = isDental ? "section-image-viewer" : "section-ai-prediction";
-      sectionKey = "prediction";
-    } else if (stepId === 3) {
-      targetId = isDental ? "section-ai-prediction" : "section-explanation";
-      sectionKey = "explanation";
-    } else if (stepId === 4) {
-      targetId = "section-severity";
-      sectionKey = "severity";
-    } else if (stepId === 5) {
-      targetId = "section-action-plan";
-      sectionKey = "action";
+    if (stepId >= 2 && stepId <= 3) {
+      setWorkflowStage("image_analysis");
+    } else if (stepId >= 4) {
+      setWorkflowStage("medical_report");
     }
-
-    setHighlightedSection(sectionKey);
-    const el = document.getElementById(targetId);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-    setTimeout(() => {
-      setHighlightedSection(null);
-    }, 2500);
   };
 
   const handleCopyReport = () => {
@@ -627,16 +459,12 @@ ${postData.disclaimer}
             <span className="glowing-green-dot"></span>
             SYSTEM ONLINE
           </div>
-
-          <div className="results-hipaa-badge">
-            HIPAA COMPLIANT
-          </div>
         </div>
 
         {/* Center Modality Tabs */}
         <div className="results-modality-tabs">
           <button
-            className={`results-mod-tab ${modLower.includes("chest") || (!modLower.includes("dental") && !modLower.includes("mri") && !modLower.includes("ct")) ? "active" : ""}`}
+            className={`results-mod-tab ${modLower.includes("chest") || (!modLower.includes("dental") && !modLower.includes("ct")) ? "active" : ""}`}
             onClick={() => {
               if (setPublicMode) { setPublicMode("xray"); if (onBackToUpload) onBackToUpload(); }
             }}
@@ -658,14 +486,6 @@ ${postData.disclaimer}
             }}
           >
             CT Kidney Stone
-          </button>
-          <button
-            className={`results-mod-tab ${modLower.includes("mri") || modLower.includes("brain") ? "active" : ""}`}
-            onClick={() => {
-              if (setPublicMode) { setPublicMode("mri"); if (onBackToUpload) onBackToUpload(); }
-            }}
-          >
-            Brain MRI
           </button>
           <button
             className={`results-mod-tab ${modLower.includes("report") ? "active" : ""}`}
@@ -696,102 +516,71 @@ ${postData.disclaimer}
           >
             Portal Login
           </button>
-
-
         </div>
       </header>
 
       {/* 2. WORKFLOW STEPPER BAR (INTERACTIVE) */}
       <div className="results-stepper-container">
         <div className="results-stepper-track">
-          {stepperSteps.map((s, idx) => (
-            <React.Fragment key={s.id}>
-              <div
-                className={`stepper-node ${activeStep === s.id ? "active" : activeStep > s.id ? "completed" : ""} clickable-step`}
-                onClick={() => handleStepClick(s.id)}
-                title={`Click to navigate to ${s.label}`}
-              >
-                <div className="stepper-circle">
-                  {activeStep > s.id ? <Check size={12} /> : s.id}
+          {stepperSteps.map((s, idx) => {
+            const isStepActive = workflowStage === "image_analysis"
+              ? (s.id === 2 || s.id === 3)
+              : (s.id >= 4);
+            const isStepCompleted = workflowStage === "medical_report" ? s.id <= 3 : s.id < 2;
+
+            return (
+              <React.Fragment key={s.id}>
+                <div
+                  className={`stepper-node ${isStepActive ? "active" : isStepCompleted ? "completed" : ""} clickable-step`}
+                  onClick={() => handleStepClick(s.id)}
+                  title={`Click to navigate to ${s.label}`}
+                >
+                  <div className="stepper-circle">
+                    {isStepCompleted ? <Check size={12} /> : s.id}
+                  </div>
+                  <span className="stepper-label">{s.label}</span>
                 </div>
-                <span className="stepper-label">{s.label}</span>
-              </div>
-              {idx < stepperSteps.length - 1 && <div className="stepper-connector" />}
-            </React.Fragment>
-          ))}
+                {idx < stepperSteps.length - 1 && <div className="stepper-connector" />}
+              </React.Fragment>
+            );
+          })}
         </div>
       </div>
 
-      {/* 3. TWO-COLUMN MEDICAL WORKSPACE */}
-      <main className="results-main-workspace">
-        {/* LEFT COLUMN: RADIOLOGICAL IMAGE VIEWER */}
-        <section
-          id="section-image-viewer"
-          className={`radiological-viewer-card ${highlightedSection === "viewer" ? "section-pipeline-highlight" : ""}`}
+      {/* STAGE NAVIGATION SWITCHER BAR */}
+      <div className="stage-navigation-bar">
+        <button
+          className={`stage-switch-btn ${workflowStage === "image_analysis" ? "active" : ""}`}
+          onClick={() => setWorkflowStage("image_analysis")}
         >
-          {/* Viewer Header */}
-          <div className="viewer-header-bar">
-            <div className="viewer-scan-info">
-              <span className="scan-title">{scanTitle}</span>
-              <span className="patient-snippet">{patientSnippet}</span>
-            </div>
-            <div className="viewer-tags-row">
-              <span className="viewer-tag">{viewTag}</span>
-              <span className="viewer-tag live">LIVE HEATMAP</span>
-            </div>
-          </div>
+          <ZoomIn size={15} />
+          <span>Stage 1: Full-Screen Image Analysis</span>
+        </button>
+        <div className="stage-switch-divider">→</div>
+        <button
+          className={`stage-switch-btn ${workflowStage === "medical_report" ? "active" : ""}`}
+          onClick={() => setWorkflowStage("medical_report")}
+        >
+          <FileText size={15} />
+          <span>Stage 2: Full-Screen Medical Report</span>
+        </button>
+      </div>
 
-          {/* Main Visual Canvas Box */}
-          <div className="viewer-canvas-box">
-            <div className="scan-frame-corner tl" />
-            <div className="scan-frame-corner tr" />
-            <div className="scan-frame-corner bl" />
-            <div className="scan-frame-corner br" />
-
-            {/* Rendered Scan Image with filter states */}
-            <div
-              className="scan-image-wrapper"
-              style={{
-                filter: `${contrastInvert ? "invert(100%)" : "none"} contrast(${windowPreset === "bone" ? 1.4 : 1.1})`,
-                transform: `scale(${zoomLevel})`,
-                transition: "transform 0.3s ease, filter 0.3s ease"
-              }}
-            >
-              <img
-                src={overlayMode === "heatmap" && gradcamImg ? gradcamImg : (originalImg || gradcamImg)}
-                alt="Radiological Diagnostic Scan"
-                className="scan-main-img"
-              />
+      {/* ============================================================== */}
+      {/* STAGE 1: FULL-SCREEN IMAGE ANALYSIS (SIDE-BY-SIDE LARGE TILES) */}
+      {/* ============================================================== */}
+      {workflowStage === "image_analysis" && (
+        <main className="stage1-fullscreen-container">
+          {/* Top Bar for Viewport Controls and Continue Action */}
+          <div className="stage1-toolbar">
+            <div className="stage1-meta-info">
+              <span className="stage1-scan-title">{scanTitle}</span>
+              <span className="stage1-patient-snippet">{patientSnippet}</span>
+              <span className="stage1-model-pill">{modelName} • {viewTag}</span>
             </div>
 
-            {/* Saliency / Heatmap Overlay Indicator */}
-            <div className="viewer-overlay-legend">
-              <div className="legend-color-bar" />
-              <span>P(Caries/Pathology) Peak Saliency</span>
-            </div>
-
-            {/* Quick Film Strip Thumbnails */}
-            <div className="viewer-film-strip">
-              <div
-                className={`film-thumb ${overlayMode === "original" ? "active" : ""}`}
-                onClick={() => setOverlayMode("original")}
-                title="View Original Scan"
-              >
-                <img src={originalImg || gradcamImg} alt="Original" />
-              </div>
-              {gradcamImg && (
-                <div
-                  className={`film-thumb ${overlayMode === "heatmap" ? "active" : ""}`}
-                  onClick={() => setOverlayMode("heatmap")}
-                  title="View Grad-CAM Saliency Overlay"
-                >
-                  <img src={gradcamImg} alt="Grad-CAM" />
-                </div>
-              )}
-            </div>
-
-            {/* Viewport Control Bar */}
-            <div className="viewer-bottom-controls">
+            <div className="stage1-actions-right">
+              {/* Window Presets */}
               <div className="window-preset-group">
                 <span className="preset-label">WINDOW:</span>
                 {windowPresets.map(preset => (
@@ -805,6 +594,7 @@ ${postData.disclaimer}
                 ))}
               </div>
 
+              {/* Tool Icons */}
               <div className="viewer-tool-icons">
                 <button
                   className={`icon-tool-btn ${contrastInvert ? "active" : ""}`}
@@ -814,218 +604,342 @@ ${postData.disclaimer}
                   ◐
                 </button>
                 <button
-                  className={`icon-tool-btn ${overlayMode === "heatmap" ? "active" : ""}`}
-                  onClick={() => setOverlayMode(overlayMode === "heatmap" ? "original" : "heatmap")}
-                  title="Toggle Heatmap"
-                >
-                  🎨
-                </button>
-                <button
                   className="icon-tool-btn"
                   onClick={() => setZoomLevel(zoomLevel === 1 ? 1.25 : zoomLevel === 1.25 ? 1.5 : 1)}
                   title="Zoom In/Out"
                 >
-                  <ZoomIn size={13} />
+                  <ZoomIn size={14} />
+                  <span style={{ fontSize: "11px", marginLeft: 4 }}>{zoomLevel}x</span>
                 </button>
-                <button
-                  className="icon-tool-btn"
-                  onClick={() => {
-                    const el = document.querySelector(".viewer-canvas-box");
-                    if (el) {
-                      if (document.fullscreenElement) document.exitFullscreen();
-                      else el.requestFullscreen();
-                    }
+              </div>
+
+              {/* Prominent Continue to Report Button */}
+              <button
+                className="stage1-continue-btn"
+                onClick={() => setWorkflowStage("medical_report")}
+              >
+                <span>Continue to Report</span>
+                <ArrowRight size={16} />
+              </button>
+            </div>
+          </div>
+
+          {/* Side-by-Side Dual Image Viewing Grid */}
+          <div className="stage1-dual-viewport-grid">
+            {/* Left Tile: Original Scan */}
+            <div className="stage1-image-tile">
+              <div className="tile-header-bar">
+                <div className="tile-badge-left">
+                  <span className="tile-dot original"></span>
+                  <span className="tile-title-text">ORIGINAL SCAN</span>
+                </div>
+                <span className="tile-tag-meta">Patient Exposure (Raw)</span>
+              </div>
+
+              <div className="tile-canvas-wrap">
+                <div className="scan-frame-corner tl" />
+                <div className="scan-frame-corner tr" />
+                <div className="scan-frame-corner bl" />
+                <div className="scan-frame-corner br" />
+
+                <div
+                  className="stage1-img-wrapper"
+                  style={{
+                    filter: `${contrastInvert ? "invert(100%)" : "none"} contrast(${windowPreset === "bone" ? 1.4 : 1.1})`,
+                    transform: `scale(${zoomLevel})`,
+                    transition: "transform 0.3s ease, filter 0.3s ease"
                   }}
-                  title="Fullscreen Viewport"
                 >
-                  <Maximize2 size={13} />
-                </button>
+                  <img
+                    src={originalImg || gradcamImg}
+                    alt="Original Diagnostic Scan"
+                    className="stage1-viewport-img"
+                  />
+                </div>
+                <div className="tile-footer-caption">
+                  <span>Anatomical Baseline</span>
+                  <span>100% Quality Ingestion</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Tile: Grad-CAM Heatmap Visualization */}
+            <div className="stage1-image-tile">
+              <div className="tile-header-bar">
+                <div className="tile-badge-left">
+                  <span className="tile-dot gradcam"></span>
+                  <span className="tile-title-text">GRAD-CAM VISUALIZATION</span>
+                </div>
+                <span className="tile-tag-meta">Saliency Activation Map</span>
+              </div>
+
+              <div className="tile-canvas-wrap">
+                <div className="scan-frame-corner tl" />
+                <div className="scan-frame-corner tr" />
+                <div className="scan-frame-corner bl" />
+                <div className="scan-frame-corner br" />
+
+                <div
+                  className="stage1-img-wrapper"
+                  style={{
+                    filter: `${contrastInvert ? "invert(100%)" : "none"} contrast(${windowPreset === "bone" ? 1.4 : 1.1})`,
+                    transform: `scale(${zoomLevel})`,
+                    transition: "transform 0.3s ease, filter 0.3s ease"
+                  }}
+                >
+                  <img
+                    src={gradcamImg || originalImg}
+                    alt="Grad-CAM Saliency Overlay"
+                    className="stage1-viewport-img"
+                  />
+                </div>
+
+                {/* Saliency Heatmap Legend */}
+                <div className="viewer-overlay-legend">
+                  <div className="legend-color-bar" />
+                  <span>P({primaryFindingTitle}) Attention Zone</span>
+                </div>
+
+                <div className="tile-footer-caption">
+                  <span style={{ color: "#2DD4BF" }}>Confidence: {postData.confidence}%</span>
+                  <span>Neural Weight Backpropagation</span>
+                </div>
               </div>
             </div>
           </div>
-        </section>
 
-        {/* RIGHT COLUMN: AI DIAGNOSTIC RESULTS PANEL */}
-        <section className="diagnostic-results-panel">
-          {/* Top Status & Architecture Badge */}
-          <div className="results-panel-header">
-            <div className="complete-badge">
-              <span className="cyan-dot">●</span>
-              <span>Analysis Complete • High Confidence</span>
-            </div>
-            <div className="model-arch-tag">{modelName}</div>
-          </div>
-
-          {/* Primary Finding Block */}
-          <div
-            id="section-ai-prediction"
-            className={`primary-finding-block ${highlightedSection === "prediction" ? "section-pipeline-highlight" : ""}`}
-          >
-            <div className="finding-header-row">
-              <div className="finding-code-label">PRIMARY FINDING ({icdCode})</div>
-              <div className="finding-confidence-large">{postData.confidence}%</div>
-            </div>
-
-            <h2 className="finding-title">{primaryFindingTitle}</h2>
-
-            <div id="section-explanation" className={`finding-morphology-container ${highlightedSection === "explanation" ? "section-pipeline-highlight" : ""}`}>
-              <ul style={{ margin: 0, paddingLeft: "18px", display: "flex", flexDirection: "column", gap: "8px" }}>
-                {formatExplanationPoints(postData.explanation).map((point, idx) => (
-                  <li key={idx} style={{ color: "#E2E8F0", fontSize: "13px", lineHeight: "1.6" }}>
-                    {point}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {result.reportFindings && Array.isArray(result.reportFindings) && result.reportFindings.length > 0 && (
-              <div style={{ marginTop: "16px", overflowX: "auto" }}>
-                <h4 style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px", letterSpacing: "0.5px" }}>EXTRACTED LABORATORY METRICS</h4>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", textAlign: "left" }}>
-                  <thead>
-                    <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.1)", color: "#94A3B8", fontSize: "11px" }}>
-                      <th style={{ padding: "8px 6px" }}>Metric</th>
-                      <th style={{ padding: "8px 6px" }}>Value</th>
-                      <th style={{ padding: "8px 6px" }}>Unit</th>
-                      <th style={{ padding: "8px 6px" }}>Reference Range</th>
-                      <th style={{ padding: "8px 6px" }}>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.reportFindings.map((row, rIdx) => {
-                      const st = (row.status || "UNKNOWN").toUpperCase();
-                      const badgeBg = st === "HIGH" ? "rgba(239,68,68,0.2)" : st === "LOW" ? "rgba(59,130,246,0.2)" : st === "NORMAL" ? "rgba(16,185,129,0.2)" : "rgba(148,163,184,0.2)";
-                      const badgeColor = st === "HIGH" ? "#EF4444" : st === "LOW" ? "#3B82F6" : st === "NORMAL" ? "#10B981" : "#94A3B8";
-                      return (
-                        <tr key={rIdx} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                          <td style={{ padding: "8px 6px", fontWeight: "600", color: "#F8FAFC" }}>{row.test_name}</td>
-                          <td style={{ padding: "8px 6px", color: "#E2E8F0" }}>{row.value}</td>
-                          <td style={{ padding: "8px 6px", color: "#94A3B8" }}>{row.unit || "-"}</td>
-                          <td style={{ padding: "8px 6px", color: "#94A3B8" }}>{row.reference_text || row.reference || "-"}</td>
-                          <td style={{ padding: "8px 6px" }}>
-                            <span style={{ padding: "2px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: "700", background: badgeBg, color: badgeColor }}>
-                              {st}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* Glowing Confidence Progress Bar */}
-            <div className="confidence-meter-track">
-              <div
-                className="confidence-meter-fill"
-                style={{ width: `${Math.min(postData.confidence, 100)}%` }}
-              />
-            </div>
-          </div>
-
-          {/* Severity & Risk Index Card */}
-          <div
-            id="section-severity"
-            className={`results-severity-box severity-${postData.severity.toLowerCase()} ${highlightedSection === "severity" ? "section-pipeline-highlight" : ""}`}
-          >
-            <div className="severity-text-content">
-              <div className="severity-badge-row">
-                <span className="severity-tag">{riskLabel}</span>
-                <span className="risk-index-tag">{riskScore}</span>
-              </div>
-              <p className="severity-action-desc">
-                {postData.severity === "High"
-                  ? "Urgent clinical intervention and specialist escalation advised."
-                  : postData.severity === "Moderate"
-                  ? "Inpatient observational stay advised with supplemental pulse oximetry monitoring."
-                  : "Routine surveillance and outpatient preventive maintenance recommended."}
-              </p>
-            </div>
-            <div className="severity-alert-icon">
-              <AlertTriangle size={20} color={postData.severity === "High" ? "#EF4444" : postData.severity === "Moderate" ? "#F59E0B" : "#10B981"} />
-            </div>
-          </div>
-
-          {/* Clinical Recommendations & XAI Insights */}
-          <div
-            id="section-action-plan"
-            className={`xai-insights-card ${highlightedSection === "action" ? "section-pipeline-highlight" : ""}`}
-          >
-            <div className="insights-header">
-              <CheckCircle2 size={15} color="#2DD4BF" />
-              <span>CLINICAL RECOMMENDATIONS & XAI INSIGHTS</span>
-            </div>
-
-            <ul className="insights-bullets">
-              {postData.modality?.toLowerCase().includes("report") ? null : (
-                <li>
-                  Grad-CAM saliency strongly concentrates over the localized {postData.prediction} zone; adjacent anatomical boundaries remain clearly delineated.
-                </li>
-              )}
-              {postData.recommendations.map((rec, i) => (
-                <li key={i}>{rec}</li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Recommended Treatment & Cure Protocol */}
-          <div
-            className="xai-insights-card treatment-cure-card"
-            style={{ marginTop: "16px", border: "1px solid rgba(45, 212, 191, 0.4)", background: "rgba(13, 25, 45, 0.7)", borderRadius: "12px", padding: "16px" }}
-          >
-            <div className="insights-header" style={{ color: "#2DD4BF", fontWeight: "700", display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+          {/* Bottom Stage 1 Callout & Action Bar */}
+          <div className="stage1-bottom-bar">
+            <div className="stage1-bottom-desc">
               <Sparkles size={16} color="#2DD4BF" />
-              <span>RECOMMENDED TREATMENT & CURE PROTOCOL</span>
+              <span>
+                Visual attention localized over target pathology coordinates. Review the radiographic exposure alongside Grad-CAM saliency before advancing to synthesis.
+              </span>
             </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-              {/* Doctor Consultation */}
-              <div>
-                <div style={{ fontSize: "12px", fontWeight: "700", color: "#38BDF8", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                  👨‍⚕️ 1. Specialist Doctor Consultation
-                </div>
-                <div style={{ fontSize: "13px", color: "#F8FAFC", paddingLeft: "10px", borderLeft: "3px solid #38BDF8", lineHeight: "1.5" }}>
-                  {getDoctorConsultationGuidance(postData.prediction, postData.modality)}
-                </div>
-              </div>
-
-              {/* Treatment & Cure Steps */}
-              <div>
-                <div style={{ fontSize: "12px", fontWeight: "700", color: "#34D399", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                  💊 2. Therapeutic Treatment & Cure Measures
-                </div>
-                <ul className="insights-bullets" style={{ margin: 0, paddingLeft: "18px", display: "flex", flexDirection: "column", gap: "6px" }}>
-                  {getTreatmentCureSteps(postData.prediction, postData.modality).map((step, idx) => (
-                    <li key={idx} style={{ color: "#E2E8F0", fontSize: "13px", lineHeight: "1.5" }}>{step}</li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* Emergency Red Flags */}
-              <div>
-                <div style={{ fontSize: "12px", fontWeight: "700", color: "#F59E0B", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                  ⚠️ 3. Red Flags & Emergency Escalation
-                </div>
-                <div style={{ fontSize: "12px", color: "#FCD34D", paddingLeft: "10px", borderLeft: "3px solid #F59E0B", lineHeight: "1.5" }}>
-                  {getEmergencyRedFlags(postData.prediction, postData.modality)}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Bottom Action CTA Buttons */}
-          <div className="results-cta-group">
             <button
-              className="primary-report-btn"
-              onClick={() => setShowReportModal(true)}
+              className="stage1-continue-btn primary-pulse"
+              onClick={() => setWorkflowStage("medical_report")}
             >
-              <FileText size={16} />
-              <span>Generate Medical Report (PDF) ↓</span>
+              <span>Continue to Report</span>
+              <ArrowRight size={16} />
             </button>
           </div>
-        </section>
-      </main>
+        </main>
+      )}
+
+      {/* ============================================================== */}
+      {/* STAGE 2: FULL-SCREEN MEDICAL REPORT VIEW                       */}
+      {/* ============================================================== */}
+      {workflowStage === "medical_report" && (
+        <main className="stage2-fullscreen-report">
+          {/* Top Stage 2 Action Bar */}
+          <div className="stage2-action-bar">
+            <button
+              className="stage2-back-btn"
+              onClick={() => setWorkflowStage("image_analysis")}
+            >
+              <ArrowLeft size={16} />
+              <span>Back to Image Analysis</span>
+            </button>
+
+            <div className="stage2-report-meta">
+              <span className="stage2-id-badge">REPORT: {postData.report_id}</span>
+              <span className="stage2-mod-tag">{postData.modality}</span>
+            </div>
+
+            <div className="stage2-export-actions">
+              <button className="stage2-action-btn primary" onClick={() => setShowReportModal(true)}>
+                <Printer size={15} />
+                <span>Save as PDF / Print</span>
+              </button>
+              <button className="stage2-action-btn" onClick={handleDownloadJSON}>
+                <Download size={15} />
+                <span>Download JSON</span>
+              </button>
+              <button className="stage2-action-btn" onClick={handleCopyReport}>
+                <Copy size={15} />
+                <span>{copied ? "Copied!" : "Copy Text"}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Full-Screen Report Layout Grid */}
+          <div className="stage2-report-grid">
+            {/* Header Diagnostic Banner */}
+            <div className="stage2-diagnostic-banner">
+              <div className="stage2-banner-left">
+                <div className="stage2-finding-code">PRIMARY FINDING ({icdCode})</div>
+                <h1 className="stage2-finding-heading">{primaryFindingTitle}</h1>
+                <div className="stage2-badges-strip">
+                  <span className="stage2-conf-pill">{postData.confidence}% Confidence</span>
+                  <span className="stage2-status-pill">
+                    <span className="glowing-green-dot"></span>
+                    Verified Neural Classification
+                  </span>
+                  <span className="stage2-arch-pill">{modelName}</span>
+                </div>
+              </div>
+
+              <div className="stage2-banner-right">
+                <div className={`stage2-severity-card severity-${postData.severity.toLowerCase()}`}>
+                  <div className="stage2-sev-header">
+                    <span className="stage2-sev-label">{riskLabel}</span>
+                    <AlertTriangle size={18} color={postData.severity === "High" ? "#EF4444" : postData.severity === "Moderate" ? "#F59E0B" : "#10B981"} />
+                  </div>
+                  <div className="stage2-risk-score">{riskScore}</div>
+                  <p className="stage2-sev-desc">{postData.severity_description}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Two Column Detailed Findings & Action Plan */}
+            <div className="stage2-details-row">
+              {/* Left Column: Detailed Findings & Morphological Explanation */}
+              <div className="stage2-detail-card">
+                <div className="detail-card-header">
+                  <FileText size={18} color="#2DD4BF" />
+                  <h3>1. Morphological Findings & Diagnostic Explanation</h3>
+                </div>
+
+                <div className="detail-card-body">
+                  <ul className="stage2-points-list">
+                    {formatExplanationPoints(postData.explanation).map((point, idx) => (
+                      <li key={idx}>
+                        <span className="bullet-point-arrow">›</span>
+                        <span>{point}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  {result.reportFindings && Array.isArray(result.reportFindings) && result.reportFindings.length > 0 && (
+                    <div className="stage2-lab-table-wrap">
+                      <h4>Extracted Laboratory Biomarkers</h4>
+                      <table className="stage2-lab-table">
+                        <thead>
+                          <tr>
+                            <th>Metric</th>
+                            <th>Value</th>
+                            <th>Unit</th>
+                            <th>Reference Range</th>
+                            <th>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {result.reportFindings.map((row, rIdx) => {
+                            const st = (row.status || "UNKNOWN").toUpperCase();
+                            const badgeColor = st === "HIGH" ? "#EF4444" : st === "LOW" ? "#38BDF8" : st === "NORMAL" ? "#34D399" : "#94A3B8";
+                            return (
+                              <tr key={rIdx}>
+                                <td><strong>{row.test_name}</strong></td>
+                                <td>{row.value}</td>
+                                <td>{row.unit || "-"}</td>
+                                <td>{row.reference_text || row.reference || "-"}</td>
+                                <td>
+                                  <span className="lab-status-badge" style={{ color: badgeColor, borderColor: `${badgeColor}40`, background: `${badgeColor}15` }}>
+                                    {st}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* Visual Reference Thumbnails embedded in Report */}
+                  <div className="stage2-report-thumbnails">
+                    <div className="thumb-item" onClick={() => setWorkflowStage("image_analysis")}>
+                      <span className="thumb-label">Original Radiograph</span>
+                      <img src={originalImg || gradcamImg} alt="Original" />
+                    </div>
+                    {gradcamImg && (
+                      <div className="thumb-item" onClick={() => setWorkflowStage("image_analysis")}>
+                        <span className="thumb-label">Grad-CAM Heatmap</span>
+                        <img src={gradcamImg} alt="Grad-CAM" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column: Recommendations, Specialist Care, & Treatment Protocols */}
+              <div className="stage2-detail-card">
+                <div className="detail-card-header">
+                  <CheckCircle2 size={18} color="#38BDF8" />
+                  <h3>2. Clinical Recommendations & Action Plan</h3>
+                </div>
+
+                <div className="detail-card-body">
+                  <ul className="stage2-points-list">
+                    {postData.recommendations.map((rec, i) => (
+                      <li key={i}>
+                        <span className="bullet-point-arrow" style={{ color: "#38BDF8" }}>✓</span>
+                        <span>{rec}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  {/* Specialist Consultation Guidance */}
+                  <div className="treatment-block specialist">
+                    <div className="treatment-block-title">
+                      👨‍⚕️ Specialist Doctor Consultation Guidance
+                    </div>
+                    <div className="treatment-block-content">
+                      {getDoctorConsultationGuidance(postData.prediction, postData.modality)}
+                    </div>
+                  </div>
+
+                  {/* Therapeutic Treatment & Cure Measures */}
+                  <div className="treatment-block therapeutic">
+                    <div className="treatment-block-title">
+                      💊 Therapeutic Treatment & Cure Measures
+                    </div>
+                    <ul className="treatment-steps-list">
+                      {getTreatmentCureSteps(postData.prediction, postData.modality).map((step, idx) => (
+                        <li key={idx}>{step}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* Emergency Escalation Red Flags */}
+                  <div className="treatment-block red-flags">
+                    <div className="treatment-block-title">
+                      ⚠️ Red Flags & Emergency Escalation
+                    </div>
+                    <div className="treatment-block-content red-flags-text">
+                      {getEmergencyRedFlags(postData.prediction, postData.modality)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom PDF CTA & Disclaimer */}
+            <div className="stage2-bottom-actions">
+              <button
+                className="stage2-back-analysis-btn"
+                onClick={() => setWorkflowStage("image_analysis")}
+              >
+                <ArrowLeft size={16} />
+                <span>Back to Image Analysis</span>
+              </button>
+
+              <button
+                className="stage2-generate-pdf-btn"
+                onClick={() => setShowReportModal(true)}
+              >
+                <Printer size={18} />
+                <span>Generate Official Medical Report (PDF)</span>
+              </button>
+            </div>
+
+            <div className="stage2-disclaimer-note">
+              {postData.disclaimer}
+            </div>
+          </div>
+        </main>
+      )}
 
       {/* 4. BOTTOM FOOTER */}
       <footer className="results-bottom-footer">
@@ -1037,7 +951,7 @@ ${postData.disclaimer}
         </div>
       </footer>
 
-      {/* 5. STRUCTURED MEDICAL REPORT MODAL (NO DOCTOR NAME) */}
+      {/* 5. STRUCTURED MEDICAL REPORT MODAL (FOR PDF PRINTING) */}
       {showReportModal && (
         <div className="report-modal-backdrop" onClick={() => setShowReportModal(false)}>
           <div className="report-modal-window" onClick={(e) => e.stopPropagation()}>
@@ -1189,7 +1103,7 @@ ${postData.disclaimer}
                   <span className="seal-check">✓</span>
                   <div>
                     <strong>MEDISCAN NEURAL VERIFICATION ENGINE</strong>
-                    <div className="seal-sub">Automated Radiological Triaging • ISO 13485 Certified • HIPAA Compliant</div>
+                    <div className="seal-sub">Automated Radiological Triaging • Certified Decision Support</div>
                   </div>
                 </div>
               </div>

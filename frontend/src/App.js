@@ -20,7 +20,15 @@ import {
   Zap,
   Check,
   HelpCircle,
-  AlertTriangle
+  AlertTriangle,
+  ShieldCheck,
+  Cpu,
+  FileText,
+  ChevronRight,
+  Clock,
+  Key,
+  FileCheck,
+  Server
 } from "lucide-react";
 import "./App.css";
 import PostAnalysisWorkflow from "./components/PostAnalysisWorkflow";
@@ -42,7 +50,7 @@ function App() {
   const [authError, setAuthError] = useState("");
   const [isRegistering, setIsRegistering] = useState(false);
   const [regName, setRegName] = useState("");
-  const [publicMode, setPublicMode] = useState("login"); // login, xray, cavity, ct_scan, mri, report, history
+  const [publicMode, setPublicMode] = useState("home"); // home, login, xray, cavity, ct_scan, report, history
   const [publicResult, setPublicResult] = useState(null);
   const [publicHistory, setPublicHistory] = useState(() => {
     try {
@@ -68,16 +76,20 @@ function App() {
     if (mode === "xray") return "/analysis/chest-xray";
     if (mode === "cavity") return "/analysis/dental-cavity";
     if (mode === "ct_scan") return "/analysis/kidney-stone";
-    if (mode === "mri") return "/analysis/brain-mri";
     if (mode === "report") return "/analysis/blood-report";
     if (mode === "history") return "/history";
     if (mode === "login") return "/login";
+    if (mode === "home") return "/";
     return "/";
   }, [token]);
 
   // Sync state from URL location on direct page loads and browser Back/Forward
   useEffect(() => {
     const path = location.pathname;
+    // When navigating to a new URL, clear publicResult so the page view updates
+    setPublicResult(null);
+    setUploadFile(null);
+
     if (path === "/dashboard") {
       if (token) setActiveTab("dashboard");
       else setPublicMode("login");
@@ -93,25 +105,27 @@ function App() {
       setPublicMode("cavity");
     } else if (path === "/analysis/kidney-stone") {
       setPublicMode("ct_scan");
-    } else if (path === "/analysis/brain-mri") {
-      setPublicMode("mri");
     } else if (path === "/analysis/blood-report") {
       setPublicMode("report");
     } else if (path === "/history") {
       setPublicMode("history");
-    } else if (path === "/login" || path === "/") {
+    } else if (path === "/login") {
       if (token) setActiveTab("dashboard");
       else setPublicMode("login");
+    } else if (path === "/") {
+      if (token) setActiveTab("dashboard");
+      else setPublicMode("home");
     }
   }, [location.pathname, token]);
 
-  // Keep browser URL bar in sync when publicMode or activeTab changes
+  // Keep browser URL bar in sync when user clicks buttons that change publicMode or activeTab
   useEffect(() => {
     const targetPath = getPathForState(publicMode, activeTab, selectedPatient);
     if (location.pathname !== targetPath) {
       navigate(targetPath, { replace: false });
     }
-  }, [publicMode, activeTab, selectedPatient, token, getPathForState, location.pathname, navigate]);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [publicMode, activeTab, selectedPatient, getPathForState]);
 
   const [newPatient, setNewPatient] = useState({ name: "", age: "", gender: "Male", contact: "" });
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -137,7 +151,7 @@ function App() {
     setPublicResult(null);
 
     const formData = new FormData();
-    if (publicMode === "xray" || publicMode === "cavity" || publicMode === "ct_scan" || publicMode === "mri") {
+    if (publicMode === "xray" || publicMode === "cavity" || publicMode === "ct_scan") {
       formData.append("image", uploadFile);
     } else {
       formData.append("file", uploadFile);
@@ -148,8 +162,6 @@ function App() {
       endpoint = "/predict/cavity";
     } else if (publicMode === "ct_scan") {
       endpoint = "/predict/ct";
-    } else if (publicMode === "mri") {
-      endpoint = "/predict/mri";
     } else if (publicMode === "report") {
       endpoint = "/api/reports/analyze";
     }
@@ -170,15 +182,13 @@ function App() {
           return;
         }
 
-        const modalityName = publicMode === "mri"
-          ? "Brain MRI"
-          : publicMode === "cavity"
-            ? "Dental X-Ray"
-            : publicMode === "ct_scan"
-              ? "Kidney Stone CT"
-              : publicMode === "xray"
-                ? "Chest X-Ray"
-                : "Medical Report";
+        const modalityName = publicMode === "cavity"
+          ? "Dental X-Ray"
+          : publicMode === "ct_scan"
+            ? "Kidney Stone CT"
+            : publicMode === "xray"
+              ? "Chest X-Ray"
+              : "Medical Report";
 
         const enriched = {
           ...data,
@@ -474,10 +484,9 @@ function App() {
         <PostAnalysisWorkflow
           result={publicResult}
           modality={publicResult.modality || (
-            publicMode === "mri" ? "Brain MRI" :
-              publicMode === "cavity" ? "Dental X-Ray" :
-                publicMode === "ct_scan" ? "Kidney Stone CT" :
-                  publicMode === "report" ? "Medical Report" : "Chest X-Ray"
+            publicMode === "cavity" ? "Dental X-Ray" :
+              publicMode === "ct_scan" ? "Kidney Stone CT" :
+                publicMode === "report" ? "Medical Report" : "Chest X-Ray"
           )}
           apiBase={API_BASE}
           historyList={publicHistory}
@@ -550,7 +559,6 @@ function App() {
                         const modLower = (item.modality || item.fileType || "").toLowerCase();
                         if (modLower.includes("cavity") || modLower.includes("dental")) setPublicMode("cavity");
                         else if (modLower.includes("ct") || modLower.includes("kidney") || modLower.includes("stone")) setPublicMode("ct_scan");
-                        else if (modLower.includes("mri") || modLower.includes("brain")) setPublicMode("mri");
                         else if (modLower.includes("report") || modLower.includes("lab")) setPublicMode("report");
                         else setPublicMode("xray");
                       }}
@@ -632,7 +640,7 @@ function App() {
       );
     }
 
-    if (publicMode === "xray" || publicMode === "report" || publicMode === "cavity" || publicMode === "ct_scan" || publicMode === "mri") {
+    if (publicMode === "xray" || publicMode === "report" || publicMode === "cavity" || publicMode === "ct_scan") {
       return (
         <div className="studio-preupload-workspace">
           {/* Top Navbar */}
@@ -672,12 +680,6 @@ function App() {
                 onClick={() => { setPublicMode("ct_scan"); setUploadFile(null); setPublicResult(null); setUploadError(""); }}
               >
                 CT Kidney Stone
-              </button>
-              <button
-                className={`results-mod-tab ${publicMode === "mri" ? "active" : ""}`}
-                onClick={() => { setPublicMode("mri"); setUploadFile(null); setPublicResult(null); setUploadError(""); }}
-              >
-                Brain MRI
               </button>
               <button
                 className={`results-mod-tab ${publicMode === "report" ? "active" : ""}`}
@@ -788,9 +790,7 @@ function App() {
                     ? "Chest Radiograph AI Thoracic Analysis"
                     : publicMode === "ct_scan"
                       ? "Abdominal CT Kidney Stone AI Detection"
-                      : publicMode === "mri"
-                        ? "Brain MRI Neural Tumor Classifier"
-                        : "Diagnostic Medical Lab Report Analyzer"}
+                      : "Diagnostic Medical Lab Report Analyzer"}
               </h1>
 
               <p className="studio-main-sub">
@@ -800,9 +800,7 @@ function App() {
                     ? "Upload posteroanterior (PA) or anteroposterior (AP) chest radiographs for multi-label pneumonia, effusion, and cardiomegaly screening."
                     : publicMode === "ct_scan"
                       ? "Upload unenhanced helical CT cross-section slices for automated renal calculi sizing and urolithiasis classification."
-                      : publicMode === "mri"
-                        ? "Upload brain MRI scans for AI multi-class neoplasm classification (Glioma, Meningioma, Pituitary, or Normal)."
-                        : "Upload laboratory test sheets, hematology panels, or metabolic profiles for automated OCR biomarker parsing."}
+                      : "Upload laboratory test sheets, hematology panels, or metabolic profiles for automated OCR biomarker parsing."}
               </p>
             </div>
 
@@ -857,9 +855,7 @@ function App() {
                     ? "Select or drag Chest X-Ray scan here"
                     : publicMode === "ct_scan"
                       ? "Select or drag CT scan slice here"
-                      : publicMode === "mri"
-                        ? "Select or drag Brain MRI scan here"
-                        : "Select or drag Medical Report image or PDF here"}
+                      : "Select or drag Medical Report image or PDF here"}
               </div>
 
               <p className="upload-prompt-sub">
@@ -913,9 +909,7 @@ function App() {
                               ? "Analyze Chest X-Ray"
                               : publicMode === "ct_scan"
                                 ? "Detect Kidney Stone"
-                                : publicMode === "mri"
-                                  ? "Detect Brain Tumor"
-                                  : "Analyze Lab Report"}
+                                : "Analyze Lab Report"}
                         </span>
                         <ArrowRight size={15} />
                       </>
@@ -955,11 +949,195 @@ function App() {
       );
     }
 
+    // Show login form page at /login
+    if (publicMode === "login") {
+      return (
+        <div className="portal-landing-bg">
+          <header className="portal-navbar">
+            <div
+              className="portal-nav-brand"
+              style={{ cursor: "pointer" }}
+              onClick={() => { setPublicMode("home"); }}
+              title="Back to Homepage"
+            >
+              <div className="portal-logo-orb">
+                <Sparkles size={20} color="#2DD4BF" />
+              </div>
+              <div>
+                <div className="portal-brand-title">
+                  MediScan <span className="brand-ai">AI</span>
+                  <span className="portal-system-badge">
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#10B981", display: "inline-block", boxShadow: "0 0 6px #10B981" }}></span>
+                    SYSTEM ONLINE
+                  </span>
+                </div>
+                <div className="portal-brand-sub">Clinical Decision Support & Patient Management System</div>
+              </div>
+            </div>
+            <div className="portal-nav-right">
+              <button
+                className="portal-support-link"
+                onClick={() => alert("MediScan Clinical Support Portal\n24/7 Hotline: +1 (800) 555-MEDI\nEmail: clinical.support@mediscan.ai\nStatus: All neural inference engines operating nominal.")}
+              >
+                <HelpCircle size={14} /> Clinical Support
+              </button>
+            </div>
+          </header>
+
+          <main style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1, padding: "40px 20px" }}>
+            <div className="portal-auth-card" style={{ position: "relative", zIndex: 1 }}>
+              <div className="portal-auth-header">
+                <div className="portal-auth-icon-orb">
+                  <Zap size={22} color="#2DD4BF" />
+                </div>
+                <div className="portal-auth-title">
+                  {isRegistering ? "Register Doctor Account" : "MediScan AI Portal"}
+                </div>
+                <div className="portal-auth-sub">
+                  {isRegistering
+                    ? "Create your practitioner credentials"
+                    : "Clinical Decision Support & Patient Management System"}
+                </div>
+                <div className="portal-gateway-tag">• SECURE PRACTITIONER GATEWAY •</div>
+              </div>
+
+              <form onSubmit={isRegistering ? handleRegister : handleLogin}>
+                {authError && <div className="error-alert">{authError}</div>}
+
+                {isRegistering && (
+                  <div className="portal-input-group">
+                    <label className="portal-input-label">Practitioner Full Name</label>
+                    <div className="portal-input-wrap">
+                      <User size={15} className="portal-input-icon" />
+                      <input
+                        type="text"
+                        required
+                        className="portal-input"
+                        value={regName}
+                        onChange={(e) => setRegName(e.target.value)}
+                        placeholder="e.g. Dr. Varsha Gowda"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="portal-input-group">
+                  <label className="portal-input-label">Username / Clinical Email</label>
+                  <div className="portal-input-wrap">
+                    <Mail size={15} className="portal-input-icon" />
+                    <input
+                      type="text"
+                      required
+                      className="portal-input"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      placeholder="doctor.id@hospital-network.org"
+                    />
+                  </div>
+                </div>
+
+                <div className="portal-input-group">
+                  <label className="portal-input-label">Security Passcode</label>
+                  <div className="portal-input-wrap">
+                    <Lock size={15} className="portal-input-icon" />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      required
+                      className="portal-input"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••••••"
+                    />
+                    <button
+                      type="button"
+                      className="portal-pass-toggle"
+                      onClick={() => setShowPassword(!showPassword)}
+                      tabIndex="-1"
+                    >
+                      {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="portal-form-options">
+                  <label className="portal-checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={keepSessionActive}
+                      onChange={(e) => setKeepSessionActive(e.target.checked)}
+                    />
+                    <span>Keep session active (24h)</span>
+                  </label>
+
+                  <div className="portal-ssl-link">
+                    <span
+                      className="link"
+                      onClick={() => alert("Institutional password recovery: Please contact IT security at security@hospital-network.org")}
+                    >
+                      Forgot password?
+                    </span>
+                    &nbsp;• 256-Bit SSL
+                  </div>
+                </div>
+
+                <button type="submit" className="portal-submit-btn">
+                  {isRegistering ? "Register Account" : "Authenticate Portal"}
+                  <ArrowRight size={15} />
+                </button>
+              </form>
+
+              <div className="portal-mode-toggle">
+                {isRegistering ? (
+                  <span>
+                    Already have an account?
+                    <button onClick={() => { setIsRegistering(false); setAuthError(""); }}>
+                      Sign In
+                    </button>
+                  </span>
+                ) : (
+                  <span>
+                    Need an account?
+                    <button onClick={() => { setIsRegistering(true); setAuthError(""); }}>
+                      Sign Up
+                    </button>
+                  </span>
+                )}
+              </div>
+
+              <div style={{ textAlign: "center", marginTop: "16px" }}>
+                <button
+                  onClick={() => setPublicMode("home")}
+                  style={{ background: "none", border: "none", color: "#2DD4BF", fontSize: "13px", cursor: "pointer", textDecoration: "underline" }}
+                >
+                  ← Back to Homepage
+                </button>
+              </div>
+            </div>
+          </main>
+
+                  <footer className="portal-footer">
+          <div className="portal-footer-left">
+            <span style={{width:6,height:6,borderRadius:"50%",background:"#2DD4BF",display:"inline-block"}}></span>
+            <span>MediScan.AI Clinical Portal Authentication</span>
+          </div>
+          <div className="portal-footer-right"></div>
+        </footer>
+
+        </div>
+      );
+    }
+
+    // Homepage (publicMode === "home" or default)
     return (
       <div className="portal-landing-bg">
         {/* Top Navbar */}
         <header className="portal-navbar">
-          <div className="portal-nav-brand">
+          <div
+            className="portal-nav-brand"
+            style={{ cursor: "pointer" }}
+            onClick={() => setPublicMode("login")}
+            title="Doctor Portal Login"
+          >
             <div className="portal-logo-orb">
               <Sparkles size={20} color="#2DD4BF" />
             </div>
@@ -976,10 +1154,6 @@ function App() {
           </div>
 
           <div className="portal-nav-right">
-            <div className="portal-hipaa-badge">
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#0EA5E9", display: "inline-block" }}></span>
-              HIPAA COMPLIANT &nbsp;|&nbsp; DICOM v3.0 READY
-            </div>
             <button
               className="portal-support-link"
               onClick={() => alert("MediScan Clinical Support Portal\n24/7 Hotline: +1 (800) 555-MEDI\nEmail: clinical.support@mediscan.ai\nStatus: All neural inference engines operating nominal.")}
@@ -989,326 +1163,855 @@ function App() {
           </div>
         </header>
 
-        {/* Main 2-Column Split */}
-        <main className="portal-main-grid">
-          {/* Left Column: Hero Typography + Feature Badges + 5 Diagnostic Modules + Pipeline */}
-          <div className="portal-hero-left">
-            <div className="portal-top-pill">
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2DD4BF", display: "inline-block", boxShadow: "0 0 6px #2DD4BF" }}></span>
-              NEXT-GEN NEURAL DIAGNOSTIC SUITE
-            </div>
-
-            <h1 className="portal-hero-title">
-              Intelligent Medical <br />
-              Imaging. <br />
-              <span className="highlight-cyan">Smarter Clinical</span>
-              <span className="highlight-cyan">Decisions.</span>
-            </h1>
-
-            <p className="portal-hero-desc">
-              MediScan AI ingests multi-modal radiological scans, synthesizes contextual
-              patient records, and delivers instant, explainable deep learning decision
-              support directly to your clinical workflow.
-            </p>
-
-            {/* Feature Pills */}
-            <div className="portal-feature-pills">
-              <div className="portal-feature-pill cyan-border">
-                <Check size={13} color="#2DD4BF" />
-                <span>AI-Powered Clinical Analysis</span>
+        {/* Main Content - Full Width */}
+        <main className="portal-home-main">
+          {/* === HERO ROW === */}
+          <div className="portal-hero-row">
+            <div className="portal-hero-text">
+              <div className="portal-top-pill">
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2DD4BF", display: "inline-block", boxShadow: "0 0 6px #2DD4BF" }}></span>
+                NEXT-GEN NEURAL DIAGNOSTIC SUITE
               </div>
-              <div className="portal-feature-pill">
-                <Layers size={13} color="#38BDF8" />
-                <span>Multimodal Medical Imaging</span>
-              </div>
-              <div className="portal-feature-pill">
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#34D399", display: "inline-block", boxShadow: "0 0 6px #34D399" }}></span>
-                <span>99.4% Model Confidence</span>
-              </div>
-            </div>
 
-            {/* AI Diagnostic Modules Card */}
-            <div className="portal-modules-card">
-              <div className="portal-modules-header">
-                <div className="portal-modules-title">
-                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2DD4BF", display: "inline-block", boxShadow: "0 0 6px #2DD4BF" }}></span>
-                  AI Diagnostic Modules <span className="sub">| Multimodal medical imaging analysis</span>
+              <h1 className="portal-hero-title">
+                Intelligent Medical<br />Imaging.<br />
+                <span className="highlight-cyan">Smarter Clinical<br />Decisions.</span>
+              </h1>
+              <p className="portal-hero-desc">
+                MediScan AI ingests multi-modal radiological scans, synthesizes contextual
+                patient records, and delivers instant, explainable deep learning decision
+                support directly to your clinical workflow.
+              </p>
+              <div className="portal-feature-pills">
+                <div className="portal-feature-pill cyan-border">
+                  <Check size={13} color="#2DD4BF" /><span>AI-Powered Clinical Analysis</span>
                 </div>
-                <div className="portal-types-badge">5 ANALYSIS TYPES</div>
+                <div className="portal-feature-pill">
+                  <Layers size={13} color="#38BDF8" /><span>Multimodal Medical Imaging</span>
+                </div>
+                <div className="portal-feature-pill">
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#34D399", display: "inline-block" }}></span>
+                  <span>99.4% Model Confidence</span>
+                </div>
               </div>
+            </div>
 
-              {/* 2x2 + 1 Grid */}
-              <div className="portal-modules-grid">
-                {/* 1. Chest X-Ray */}
-                <div
-                  className="portal-module-item"
-                  onClick={() => { setPublicMode("xray"); setAuthError(""); setPublicResult(null); }}
-                  title="Launch Public Chest X-Ray AI Analysis"
-                >
-                  <div className="portal-mod-top">
-                    <div className="portal-mod-icon-box">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 4v16" />
-                        <path d="M7 6a5 5 0 0 0-4 4.5c0 3.5 2.5 6.5 5 7.5" />
-                        <path d="M17 6a5 5 0 0 1 4 4.5c0 3.5-2.5 6.5-5 7.5" />
-                        <path d="M8 10h8" />
-                        <path d="M8 14h8" />
-                      </svg>
+            {/* Right: Medical imaging illustration - Floating Multi-Screen Hologram matching reference */}
+            <div className="portal-hero-illus">
+              <div className="illus-hologram-wrap">
+                {/* Glowing neon teal circular halo */}
+                <div className="illus-hologram-ring"></div>
+
+                {/* Main Floating Chest Radiograph Panel */}
+                <div className="illus-screen illus-screen-main">
+                  <div className="screen-header">
+                    <span className="dot-teal"></span>
+                    <span className="screen-title">THORACIC DIGITAL RADIOGRAPHY</span>
+                    <span className="screen-tag">PA HIGH-RES</span>
+                  </div>
+                  <div className="screen-img-wrap">
+                    <img src="/assets/modules/chest_xray.jpg" alt="Chest Radiograph" className="screen-img" />
+                    {/* Scanning laser beam overlay */}
+                    <div className="screen-scan-line"></div>
+                    {/* Diagnostic HUD crosshair target */}
+                    <div className="screen-hud-reticle">
+                      <div className="reticle-ring"></div>
+                      <div className="reticle-dot"></div>
+                      <span className="reticle-text">TARGET: RLL 99.4%</span>
                     </div>
-                    <span className="portal-mod-ready-badge">
-                      <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#34D399", display: "inline-block" }}></span>
-                      Ready to Analyze
-                    </span>
+                  </div>
+                  <div className="screen-footer-metrics">
+                    <span>120 kVp · 4.2 mAs</span>
+                    <span className="metric-cyan">AI SEGMENTATION ACTIVE</span>
+                  </div>
+                </div>
+
+                {/* Floating Mid-Right Dental Panoramic Panel */}
+                <div className="illus-screen illus-screen-dental">
+                  <div className="screen-header mini">
+                    <span className="screen-title">PANORAMIC DENTAL</span>
+                  </div>
+                  <div className="screen-img-wrap mini">
+                    <img src="/assets/modules/dental_panoramic.jpg" alt="Dental OPG" className="screen-img" />
+                  </div>
+                </div>
+
+                {/* Floating Bottom-Right Kidney CT Panel */}
+                <div className="illus-screen illus-screen-kidney">
+                  <div className="screen-header mini">
+                    <span className="screen-title">ABDOMINAL CT SCAN</span>
+                  </div>
+                  <div className="screen-img-wrap mini">
+                    <img src="/assets/modules/kidney_ct.jpg" alt="Kidney CT" className="screen-img" />
+                  </div>
+                </div>
+
+                {/* Anatomical Holographic Body Silhouette (SVG wireframe on right) */}
+                <div className="illus-body-wireframe">
+                  <svg viewBox="0 0 160 320" className="wireframe-svg" fill="none" stroke="#2DD4BF" strokeWidth="1.2">
+                    {/* Head & Neck */}
+                    <ellipse cx="80" cy="32" rx="18" ry="22" stroke="#2DD4BF" strokeWidth="1.4" opacity="0.8" />
+                    <line x1="74" y1="54" x2="74" y2="68" stroke="#2DD4BF" opacity="0.6" />
+                    <line x1="86" y1="54" x2="86" y2="68" stroke="#2DD4BF" opacity="0.6" />
+                    {/* Shoulders & Torso Outline */}
+                    <path d="M40 76 Q80 66 120 76 L130 140 Q118 190 108 240 L114 310 M40 76 L30 140 Q42 190 52 240 L46 310" stroke="#2DD4BF" strokeWidth="1.2" opacity="0.75" />
+                    {/* Chest / Lungs Hologram Glow */}
+                    <path d="M56 88 Q46 112 48 142 Q52 162 66 166 Q74 150 72 120 Z" fill="rgba(45,212,191,0.18)" stroke="#2DD4BF" strokeWidth="1.2" opacity="0.85" />
+                    <path d="M104 88 Q114 112 112 142 Q108 162 94 166 Q86 150 88 120 Z" fill="rgba(45,212,191,0.18)" stroke="#2DD4BF" strokeWidth="1.2" opacity="0.85" />
+                    {/* Spine / Vertebrae */}
+                    <line x1="80" y1="68" x2="80" y2="235" stroke="#38BDF8" strokeWidth="1.5" strokeDasharray="3 3" opacity="0.7" />
+                    {/* Circulatory / Target Rings */}
+                    <circle cx="80" cy="180" r="14" stroke="#2DD4BF" strokeWidth="1" strokeDasharray="2 3" opacity="0.6">
+                      <animateTransform attributeName="transform" type="rotate" from="0 80 180" to="360 80 180" dur="10s" repeatCount="indefinite" />
+                    </circle>
+                    <circle cx="80" cy="180" r="6" stroke="#38BDF8" strokeWidth="1.2" opacity="0.8" />
+                    <circle cx="80" cy="180" r="2" fill="#2DD4BF" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* === MODULES + PIPELINE === */}
+          <div className="portal-modules-section">
+            <div className="portal-modules-header">
+              <div className="portal-modules-title">
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2DD4BF", display: "inline-block", boxShadow: "0 0 6px #2DD4BF" }}></span>
+                AI Diagnostic Modules <span className="sub">| Multimodal medical imaging analysis</span>
+              </div>
+              <div className="portal-types-badge">4 ANALYSIS TYPES</div>
+            </div>
+
+            <div className="portal-modules-row5">
+              <div className="pmod5" onClick={() => { setPublicMode("xray"); setAuthError(""); setPublicResult(null); }}>
+                <div className="pmod5-bg pmod5-bg-xray"></div><div className="pmod5-overlay"></div>
+                <div className="pmod5-content">
+                  <div className="portal-mod-top">
+                    <div className="portal-mod-icon-box"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4v16"/><path d="M7 6a5 5 0 0 0-4 4.5c0 3.5 2.5 6.5 5 7.5"/><path d="M17 6a5 5 0 0 1 4 4.5c0 3.5-2.5 6.5-5 7.5"/><path d="M8 10h8"/><path d="M8 14h8"/></svg></div>
+                    <span className="portal-mod-ready-badge"><span style={{width:4,height:4,borderRadius:"50%",background:"#34D399",display:"inline-block"}}></span> Ready to Analyze</span>
                   </div>
                   <div className="portal-mod-name">Chest X-Ray</div>
                   <div className="portal-mod-sub">AI-powered chest abnormality analysis</div>
                 </div>
+              </div>
 
-                {/* 2. Dental Analysis */}
-                <div
-                  className="portal-module-item"
-                  onClick={() => { setPublicMode("cavity"); setAuthError(""); setPublicResult(null); }}
-                  title="Launch Public Dental Cavity Detection"
-                >
+              <div className="pmod5" onClick={() => { setPublicMode("cavity"); setAuthError(""); setPublicResult(null); }}>
+                <div className="pmod5-bg pmod5-bg-dental"></div><div className="pmod5-overlay"></div>
+                <div className="pmod5-content">
                   <div className="portal-mod-top">
-                    <div className="portal-mod-icon-box">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M7 3C4.2 3 2 8 2 10.5c0 3.8 2 7 4 10.5 1 1.8 2 1.8 3 0 .8-1.5 1.5-3.5 2.5-3.5s1.7 2 2.5 3.5c1 1.8 2 1.8 3 0 2-3.5 4-6.7 4-10.5C20.5 8 18.3 3 15.5 3c-2 0-3 1-4.2 2-1.2-1-2.2-2-4.3-2z" />
-                      </svg>
-                    </div>
-                    <span className="portal-mod-ready-badge">
-                      <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#34D399", display: "inline-block" }}></span>
-                      Ready to Analyze
-                    </span>
+                    <div className="portal-mod-icon-box"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 3C4.2 3 2 8 2 10.5c0 3.8 2 7 4 10.5 1 1.8 2 1.8 3 0 .8-1.5 1.5-3.5 2.5-3.5s1.7 2 2.5 3.5c1 1.8 2 1.8 3 0 2-3.5 4-6.7 4-10.5C20.5 8 18.3 3 15.5 3c-2 0-3 1-4.2 2-1.2-1-2.2-2-4.3-2z"/></svg></div>
+                    <span className="portal-mod-ready-badge"><span style={{width:4,height:4,borderRadius:"50%",background:"#34D399",display:"inline-block"}}></span> Ready to Analyze</span>
                   </div>
                   <div className="portal-mod-name">Dental Analysis</div>
                   <div className="portal-mod-sub">AI cavity and dental condition analysis</div>
                 </div>
+              </div>
 
-                {/* 3. Brain MRI */}
-                <div
-                  className="portal-module-item"
-                  onClick={() => { setPublicMode("mri"); setAuthError(""); setPublicResult(null); }}
-                  title="Launch Public Brain MRI Classifier"
-                >
+              <div className="pmod5" onClick={() => { setPublicMode("ct_scan"); setAuthError(""); setPublicResult(null); }}>
+                <div className="pmod5-bg pmod5-bg-kidney"></div><div className="pmod5-overlay"></div>
+                <div className="pmod5-content">
                   <div className="portal-mod-top">
-                    <div className="portal-mod-icon-box">
-                      <Brain size={18} />
-                    </div>
-                    <span className="portal-mod-ready-badge">
-                      <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#34D399", display: "inline-block" }}></span>
-                      Ready to Analyze
-                    </span>
-                  </div>
-                  <div className="portal-mod-name">Brain MRI</div>
-                  <div className="portal-mod-sub">AI-assisted brain imaging analysis</div>
-                </div>
-
-                {/* 4. Kidney Stone CT */}
-                <div
-                  className="portal-module-item"
-                  onClick={() => { setPublicMode("ct_scan"); setAuthError(""); setPublicResult(null); }}
-                  title="Launch Public CT Kidney Stone Classifier"
-                >
-                  <div className="portal-mod-top">
-                    <div className="portal-mod-icon-box">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="9" />
-                        <circle cx="12" cy="12" r="5" />
-                        <circle cx="12" cy="2" r="1.5" />
-                      </svg>
-                    </div>
-                    <span className="portal-mod-ready-badge">
-                      <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#34D399", display: "inline-block" }}></span>
-                      Ready to Analyze
-                    </span>
+                    <div className="portal-mod-icon-box"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="2" r="1.5"/></svg></div>
+                    <span className="portal-mod-ready-badge"><span style={{width:4,height:4,borderRadius:"50%",background:"#34D399",display:"inline-block"}}></span> Ready to Analyze</span>
                   </div>
                   <div className="portal-mod-name">Kidney Stone CT</div>
                   <div className="portal-mod-sub">Kidney stone detection and analysis</div>
                 </div>
+              </div>
 
-                {/* 5. Blood Report Analysis */}
-                <div
-                  className="portal-module-item"
-                  style={{ gridColumn: "1 / -1", maxWidth: "48.5%" }}
-                  onClick={() => { setPublicMode("report"); setAuthError(""); setPublicResult(null); }}
-                  title="Launch Public Lab Report Analyzer"
-                >
+              <div className="pmod5" onClick={() => { setPublicMode("report"); setAuthError(""); setPublicResult(null); }}>
+                <div className="pmod5-bg pmod5-bg-blood"></div><div className="pmod5-overlay"></div>
+                <div className="pmod5-content">
                   <div className="portal-mod-top">
-                    <div className="portal-mod-icon-box">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" />
-                      </svg>
-                    </div>
-                    <span className="portal-mod-ready-badge">
-                      <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#34D399", display: "inline-block" }}></span>
-                      Ready to Analyze
-                    </span>
+                    <div className="portal-mod-icon-box"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg></div>
+                    <span className="portal-mod-ready-badge"><span style={{width:4,height:4,borderRadius:"50%",background:"#34D399",display:"inline-block"}}></span> Ready to Analyze</span>
                   </div>
                   <div className="portal-mod-name">Blood Report Analysis</div>
-                  <div className="portal-mod-sub">AI hematology & biomarker lab report analysis</div>
+                  <div className="portal-mod-sub">AI hematology &amp; biomarker lab report analysis</div>
                 </div>
-              </div>
-
-              {/* Pipeline Footer Bar */}
-              <div className="portal-pipeline-bar">
-                <div className="portal-pipeline-steps">
-                  <span style={{ color: "#64748B", fontSize: "10px", letterSpacing: "0.5px" }}>PIPELINE:</span>
-                  <span className="portal-pipe-chip active">Prediction</span>
-                  <span className="portal-pipe-arrow">→</span>
-                  <span className="portal-pipe-chip">Explanation</span>
-                  <span className="portal-pipe-arrow">→</span>
-                  <span className="portal-pipe-chip">Severity</span>
-                  <span className="portal-pipe-arrow">→</span>
-                  <span className="portal-pipe-chip">Recommendation</span>
-                  <span className="portal-pipe-arrow">→</span>
-                  <span className="portal-pipe-chip">Report</span>
-                </div>
-
-                <button
-                  className="portal-history-btn"
-                  onClick={() => { setPublicMode("history"); setAuthError(""); }}
-                  title="View Public Analysis History Audit Record"
-                >
-                  <History size={13} />
-                  <span>Analysis History</span>
-                </button>
               </div>
             </div>
-          </div>
 
-          {/* Right Column: Sleek Glowing Portal Login Card */}
-          <div className="portal-auth-card">
-            <div className="portal-auth-header">
-              <div className="portal-auth-icon-orb">
-                <Zap size={22} color="#2DD4BF" />
+            <div className="portal-pipeline-bar">
+              <div className="portal-pipeline-steps">
+                <span style={{color:"#64748B",fontSize:"10px",letterSpacing:"0.5px",fontWeight:700}}>PIPELINE:</span>
+                <span className="portal-pipe-chip active">Prediction</span>
+                <span className="portal-pipe-arrow">—</span>
+                <span className="portal-pipe-chip">Explanation</span>
+                <span className="portal-pipe-arrow">—</span>
+                <span className="portal-pipe-chip">Severity</span>
+                <span className="portal-pipe-arrow">—</span>
+                <span className="portal-pipe-chip">Recommendation</span>
+                <span className="portal-pipe-arrow">—</span>
+                <span className="portal-pipe-chip">Report</span>
               </div>
-              <div className="portal-auth-title">
-                {isRegistering ? "Register Doctor Account" : "MediScan AI Portal"}
-              </div>
-              <div className="portal-auth-sub">
-                {isRegistering
-                  ? "Create your practitioner credentials"
-                  : "Clinical Decision Support & Patient Management System"}
-              </div>
-              <div className="portal-gateway-tag">• SECURE PRACTITIONER GATEWAY •</div>
-            </div>
-
-            <form onSubmit={isRegistering ? handleRegister : handleLogin}>
-              {authError && <div className="error-alert">{authError}</div>}
-
-              {isRegistering && (
-                <div className="portal-input-group">
-                  <label className="portal-input-label">Practitioner Full Name</label>
-                  <div className="portal-input-wrap">
-                    <User size={15} className="portal-input-icon" />
-                    <input
-                      type="text"
-                      required
-                      className="portal-input"
-                      value={regName}
-                      onChange={(e) => setRegName(e.target.value)}
-                      placeholder="e.g. Dr. Varsha Gowda"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className="portal-input-group">
-                <label className="portal-input-label">Username / Clinical Email</label>
-                <div className="portal-input-wrap">
-                  <Mail size={15} className="portal-input-icon" />
-                  <input
-                    type="text"
-                    required
-                    className="portal-input"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="doctor.id@hospital-network.org"
-                  />
-                </div>
-              </div>
-
-              <div className="portal-input-group">
-                <label className="portal-input-label">Security Passcode</label>
-                <div className="portal-input-wrap">
-                  <Lock size={15} className="portal-input-icon" />
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    required
-                    className="portal-input"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••••••"
-                  />
-                  <button
-                    type="button"
-                    className="portal-pass-toggle"
-                    onClick={() => setShowPassword(!showPassword)}
-                    tabIndex="-1"
-                  >
-                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </button>
-                </div>
-              </div>
-
-              <div className="portal-form-options">
-                <label className="portal-checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={keepSessionActive}
-                    onChange={(e) => setKeepSessionActive(e.target.checked)}
-                  />
-                  <span>Keep session active (24h)</span>
-                </label>
-
-                <div className="portal-ssl-link">
-                  <span
-                    className="link"
-                    onClick={() => alert("Institutional password recovery: Please contact IT security at security@hospital-network.org")}
-                  >
-                    Forgot password?
-                  </span>
-                  &nbsp;• 256-Bit SSL
-                </div>
-              </div>
-
-              <button type="submit" className="portal-submit-btn">
-                {isRegistering ? "Register Account" : "Authenticate Portal"}
-                <ArrowRight size={15} />
+              <button className="portal-history-btn" onClick={() => { setPublicMode("history"); setAuthError(""); }}>
+                <History size={13}/><span>Analysis History</span>
               </button>
-            </form>
-
-            <div className="portal-mode-toggle">
-              {isRegistering ? (
-                <span>
-                  Already have an account?
-                  <button onClick={() => { setIsRegistering(false); setAuthError(""); }}>
-                    Sign In
-                  </button>
-                </span>
-              ) : (
-                <span>
-                  Need an account?
-                  <button onClick={() => { setIsRegistering(true); setAuthError(""); }}>
-                    Sign Up
-                  </button>
-                </span>
-              )}
             </div>
           </div>
         </main>
 
-        {/* Bottom Footer */}
-        <footer className="portal-footer">
-          <div className="portal-footer-left">
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2DD4BF", display: "inline-block" }}></span>
-            <span>Powered by Multi-Modal Deep Neural Networks & Medical Decision Support Engine</span>
-          </div>
+        {/* ============================================================ */}
+{/* SECTION 1: PLATFORM REAL-TIME SYSTEM ARCHITECTURE & STATS     */}
+{/* ============================================================ */}
+<section className="portal-landing-section" id="platform-stats">
+  <div className="section-header-tag">
+    <span className="dot-teal"></span>
+    <span>PLATFORM ARCHITECTURE & CAPABILITIES</span>
+  </div>
+  <h2 className="section-main-title">
+    Engineered for High-Precision <span className="highlight-cyan">Clinical Intelligence</span>
+  </h2>
+  <p className="section-main-desc">
+    State-of-the-art vision models and automated OCR hematology processors, calibrated for radiographical transparency and instant diagnostic assistance.
+  </p>
 
-          <div className="portal-footer-right">
+  <div className="stats-metric-grid">
+    <div className="stat-metric-card">
+      <div className="stat-card-glow"></div>
+      <div className="stat-card-icon"><Activity size={24} color="#2DD4BF" /></div>
+      <div className="stat-card-val"><span className="stat-number">4</span><span className="stat-suffix">/4</span></div>
+      <div className="stat-card-label">Diagnostic Modalities</div>
+      <p className="stat-card-sub">Chest X-Ray, Dental Panoramic, Kidney CT, and Hematology Reports</p>
+      <div className="stat-card-footer">
+        <span className="status-pill-online"><span className="tiny-dot"></span> Active & Online</span>
+      </div>
+    </div>
+
+    <div className="stat-metric-card">
+      <div className="stat-card-glow"></div>
+      <div className="stat-card-icon"><Cpu size={24} color="#38BDF8" /></div>
+      <div className="stat-card-val"><span className="stat-number">3</span><span className="stat-plus">+</span></div>
+      <div className="stat-card-label">Neural Architectures</div>
+      <p className="stat-card-sub">DenseNet-121, EfficientNet-B0, MobileNetV2 & Tesseract OCR</p>
+      <div className="stat-card-footer">
+        <span className="status-pill-info">PyTorch & TorchVision</span>
+      </div>
+    </div>
+
+    <div className="stat-metric-card">
+      <div className="stat-card-glow"></div>
+      <div className="stat-card-icon"><Zap size={24} color="#F59E0B" /></div>
+      <div className="stat-card-val"><span className="stat-number">&lt;2.4</span><span className="stat-suffix">s</span></div>
+      <div className="stat-card-label">Median Inference Speed</div>
+      <p className="stat-card-sub">Direct tensor transformation, Grad-CAM generation and clinical scoring</p>
+      <div className="stat-card-footer">
+        <span className="status-pill-online"><span className="tiny-dot"></span> Low-Latency Engine</span>
+      </div>
+    </div>
+
+    <div className="stat-metric-card">
+      <div className="stat-card-glow"></div>
+      <div className="stat-card-icon"><History size={24} color="#A78BFA" /></div>
+      <div className="stat-card-val"><span className="stat-number">{publicHistory.length}</span></div>
+      <div className="stat-card-label">Saved Audit Records</div>
+      <p className="stat-card-sub">Verified local diagnostic runs ready for interactive review</p>
+      <div className="stat-card-footer">
+        <span className="status-pill-info">Local Audit Trail</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+{/* ============================================================ */}
+{/* SECTION 2: HOW MEDISCAN WORKS (4-STEP WORKFLOW)              */}
+{/* ============================================================ */}
+<section className="portal-landing-section" id="how-it-works">
+  <div className="section-header-tag">
+    <span className="dot-teal"></span>
+    <span>METHODOLOGY & EXECUTION</span>
+  </div>
+  <h2 className="section-main-title">
+    How MediScan AI <span className="highlight-cyan">Processes Every Scan</span>
+  </h2>
+  <p className="section-main-desc">
+    From raw radiograph ingestion to synthesized diagnostic narratives in four automated, auditable phases.
+  </p>
+
+  <div className="workflow-steps-container">
+    <div className="workflow-track-line"></div>
+    
+    <div className="workflow-step-card">
+      <div className="step-badge-number">01</div>
+      <div className="step-icon-wrap"><Upload size={22} color="#2DD4BF" /></div>
+      <h3 className="step-title">Multimodal Ingestion</h3>
+      <p className="step-desc">
+        Upload raw DICOM exports, high-resolution radiographs (JPEG/PNG), or photographic/scanned blood lab documents.
+      </p>
+      <div className="step-tags">
+        <span>Chest X-Ray</span>
+        <span>Dental OPG</span>
+        <span>CT Slices</span>
+        <span>PDF / Images</span>
+      </div>
+    </div>
+
+    <div className="workflow-step-card">
+      <div className="step-badge-number">02</div>
+      <div className="step-icon-wrap"><Layers size={22} color="#38BDF8" /></div>
+      <h3 className="step-title">Adaptive Preprocessing</h3>
+      <p className="step-desc">
+        Bicubic interpolation, normalization to ImageNet manifolds, contrast balancing (CLAHE), and modality authentication check.
+      </p>
+      <div className="step-tags">
+        <span>224×224 Normalization</span>
+        <span>Artifact Filtering</span>
+        <span>Modality Validation</span>
+      </div>
+    </div>
+
+    <div className="workflow-step-card">
+      <div className="step-badge-number">03</div>
+      <div className="step-icon-wrap"><Brain size={22} color="#A78BFA" /></div>
+      <h3 className="step-title">Deep Inference & XAI</h3>
+      <p className="step-desc">
+        Target neural backbones compute class probabilities while Grad-CAM traces activations back to critical anatomical regions.
+      </p>
+      <div className="step-tags">
+        <span>Probability Distribution</span>
+        <span>Grad-CAM Activation</span>
+        <span>Biomarker OCR</span>
+      </div>
+    </div>
+
+    <div className="workflow-step-card">
+      <div className="step-badge-number">04</div>
+      <div className="step-icon-wrap"><FileCheck size={22} color="#34D399" /></div>
+      <h3 className="step-title">Clinical Synthesis</h3>
+      <p className="step-desc">
+        Generates severity ratings, secondary finding highlights, customized physician guidance, and downloadable PDF clinical summaries.
+      </p>
+      <div className="step-tags">
+        <span>Severity Categorization</span>
+        <span>Actionable Guidance</span>
+        <span>PDF Clinical Export</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+{/* ============================================================ */}
+{/* SECTION 3: AI TECHNOLOGY SHOWCASE (GENUINE MODELS)           */}
+{/* ============================================================ */}
+<section className="portal-landing-section" id="technology-showcase">
+  <div className="section-header-tag">
+    <span className="dot-teal"></span>
+    <span>SPECIALIZED NEURAL ENGINES</span>
+  </div>
+  <h2 className="section-main-title">
+    Deep Learning <span className="highlight-cyan">Architectures & OCR</span>
+  </h2>
+  <p className="section-main-desc">
+    Trained deep networks tailored for specific diagnostic visual patterns rather than generic black-box heuristics.
+  </p>
+
+  <div className="tech-models-grid">
+    {/* DenseNet-121 */}
+    <div className="tech-model-card">
+      <div className="tech-card-header">
+        <div className="tech-header-icon"><Brain size={24} color="#2DD4BF" /></div>
+        <div className="tech-header-meta">
+          <span className="tech-modality">Thoracic Imaging</span>
+          <h3 className="tech-title">DenseNet-121</h3>
+        </div>
+        <span className="tech-badge-primary">Dense Connectivity</span>
+      </div>
+      <p className="tech-description">
+        Connects each layer to every other layer in a feed-forward fashion to preserve maximum feature propagation for thoracic pathologies (Pneumonia, Tuberculosis, Normal).
+      </p>
+      <div className="tech-specs-table">
+        <div className="tech-spec-row">
+          <span className="spec-label">Input Shape</span>
+          <span className="spec-val">3 × 224 × 224 RGB</span>
+        </div>
+        <div className="tech-spec-row">
+          <span className="spec-label">Key Pathologies</span>
+          <span className="spec-val">Normal vs. Abnormality</span>
+        </div>
+        <div className="tech-spec-row">
+          <span className="spec-label">Explainability</span>
+          <span className="spec-val">Grad-CAM (Layer norm5)</span>
+        </div>
+      </div>
+      <div className="tech-card-action">
+        <button className="tech-btn" onClick={() => { setPublicMode("xray"); setAuthError(""); setPublicResult(null); }}>
+          <span>Launch Chest X-Ray Module</span>
+          <ArrowRight size={14} />
+        </button>
+      </div>
+    </div>
+
+    {/* EfficientNet-B0 / Cavity */}
+    <div className="tech-model-card">
+      <div className="tech-card-header">
+        <div className="tech-header-icon"><Activity size={24} color="#F59E0B" /></div>
+        <div className="tech-header-meta">
+          <span className="tech-modality">Dental Radiography</span>
+          <h3 className="tech-title">EfficientNet-B0</h3>
+        </div>
+        <span className="tech-badge-warning">Compound Scaling</span>
+      </div>
+      <p className="tech-description">
+        Balanced depth, width, and resolution scaling specifically optimized to spot subtle interproximal demineralization, enamel degradation, and deep dental caries.
+      </p>
+      <div className="tech-specs-table">
+        <div className="tech-spec-row">
+          <span className="spec-label">Input Shape</span>
+          <span className="spec-val">3 × 224 × 224 Bitewing/OPG</span>
+        </div>
+        <div className="tech-spec-row">
+          <span className="spec-label">Target Finding</span>
+          <span className="spec-val">Active Caries vs. Healthy</span>
+        </div>
+        <div className="tech-spec-row">
+          <span className="spec-label">Visual Focus</span>
+          <span className="spec-val">Enamel / Dentin Boundaries</span>
+        </div>
+      </div>
+      <div className="tech-card-action">
+        <button className="tech-btn" onClick={() => { setPublicMode("cavity"); setAuthError(""); setPublicResult(null); }}>
+          <span>Launch Dental Module</span>
+          <ArrowRight size={14} />
+        </button>
+      </div>
+    </div>
+
+    {/* MobileNetV2 / CT Scan */}
+    <div className="tech-model-card">
+      <div className="tech-card-header">
+        <div className="tech-header-icon"><Cpu size={24} color="#38BDF8" /></div>
+        <div className="tech-header-meta">
+          <span className="tech-modality">Abdominal Helical CT</span>
+          <h3 className="tech-title">MobileNetV2</h3>
+        </div>
+        <span className="tech-badge-cyan">Inverted Residuals</span>
+      </div>
+      <p className="tech-description">
+        Lightweight depthwise separable convolutions capable of rapid axial CT cross-section evaluation for hyperdense renal calculi and stone manifestations.
+      </p>
+      <div className="tech-specs-table">
+        <div className="tech-spec-row">
+          <span className="spec-label">Input Shape</span>
+          <span className="spec-val">Axial CT Contrast / Non-Contrast</span>
+        </div>
+        <div className="tech-spec-row">
+          <span className="spec-label">Target Finding</span>
+          <span className="spec-val">Kidney Calculi Detection</span>
+        </div>
+        <div className="tech-spec-row">
+          <span className="spec-label">Heatmap Overlay</span>
+          <span className="spec-val">Renal Parenchyma Attention</span>
+        </div>
+      </div>
+      <div className="tech-card-action">
+        <button className="tech-btn" onClick={() => { setPublicMode("ct_scan"); setAuthError(""); setPublicResult(null); }}>
+          <span>Launch Kidney CT Module</span>
+          <ArrowRight size={14} />
+        </button>
+      </div>
+    </div>
+
+    {/* OCR Hematology Engine */}
+    <div className="tech-model-card">
+      <div className="tech-card-header">
+        <div className="tech-header-icon"><FileText size={24} color="#EC4899" /></div>
+        <div className="tech-header-meta">
+          <span className="tech-modality">Lab Pathology</span>
+          <h3 className="tech-title">OCR-NLP Engine</h3>
+        </div>
+        <span className="tech-badge-pink">Biomarker Extraction</span>
+      </div>
+      <p className="tech-description">
+        Automated textual parser running OCR extraction coupled with clinical range normalization to detect abnormal hemoglobin, platelets, leukocyte counts, and lipids.
+      </p>
+      <div className="tech-specs-table">
+        <div className="tech-spec-row">
+          <span className="spec-label">Document Types</span>
+          <span className="spec-val">CBC, Lipid, Metabolic Panels</span>
+        </div>
+        <div className="tech-spec-row">
+          <span className="spec-label">Range Parsing</span>
+          <span className="spec-val">Reference Range Comparison</span>
+        </div>
+        <div className="tech-spec-row">
+          <span className="spec-label">Clinical Output</span>
+          <span className="spec-val">Highlighting Critical Biomarkers</span>
+        </div>
+      </div>
+      <div className="tech-card-action">
+        <button className="tech-btn" onClick={() => { setPublicMode("report"); setAuthError(""); setPublicResult(null); }}>
+          <span>Launch Report Analyzer</span>
+          <ArrowRight size={14} />
+        </button>
+      </div>
+    </div>
+  </div>
+</section>
+
+{/* ============================================================ */}
+{/* SECTION 4: EXPLAINABLE AI (XAI) & GRAD-CAM SHOWCASE          */}
+{/* ============================================================ */}
+<section className="portal-landing-section" id="explainable-ai">
+  <div className="section-header-tag">
+    <span className="dot-teal"></span>
+    <span>EXPLAINABILITY & VISUAL EVIDENCE</span>
+  </div>
+  <h2 className="section-main-title">
+    Explainable AI: <span className="highlight-cyan">Grad-CAM Heatmaps</span>
+  </h2>
+  <p className="section-main-desc">
+    Black-box AI is unacceptable in healthcare. MediScan AI traces gradient flows from the final convolutional layers directly back to anatomical coordinates.
+  </p>
+
+  <div className="xai-showcase-box">
+    <div className="xai-visual-side">
+      <div className="xai-image-comparison">
+        <div className="xai-image-panel">
+          <div className="xai-panel-tag">ORIGINAL RADIOGRAPH</div>
+          <img src="/assets/modules/chest_xray.jpg" alt="Original Scan" className="xai-img" />
+          <span className="xai-img-sub">Raw Patient Exposure</span>
+        </div>
+
+        <div className="xai-divider-arrow">
+          <div className="arrow-pulse-orb"><Cpu size={16} color="#2DD4BF" /></div>
+          <span>Grad-CAM</span>
+        </div>
+
+        <div className="xai-image-panel">
+          <div className="xai-panel-tag active-tag">GRAD-CAM ACTIVATION MAP</div>
+          <div className="xai-heatmap-wrap">
+            <img src="/assets/modules/chest_xray.jpg" alt="Grad-CAM Overlay" className="xai-img heatmap-base" />
+            <div className="xai-heat-sim-overlay"></div>
+            <div className="xai-heat-hotspot"></div>
           </div>
-        </footer>
+          <span className="xai-img-sub">Feature Weight Focus: Lower Lobes</span>
+        </div>
+      </div>
+
+      <div className="xai-spectrum-bar">
+        <span className="spectrum-label">Low Attention (0.0)</span>
+        <div className="spectrum-gradient"></div>
+        <span className="spectrum-label">High Diagnostic Impact (1.0)</span>
+      </div>
+    </div>
+
+    <div className="xai-content-side">
+      <div className="xai-pill-feature">
+        <Sparkles size={14} color="#2DD4BF" />
+        <span>Transparent Decision Pathways</span>
+      </div>
+      <h3 className="xai-feature-title">Why Gradient-weighted Class Activation Mapping Matters</h3>
+      <p className="xai-feature-desc">
+        Grad-CAM uses the gradients of any target concept, flowing into the final convolutional layer to produce a coarse localization map highlighting the important regions in the image for predicting the concept.
+      </p>
+
+      <div className="xai-feature-bullets">
+        <div className="xai-bullet-item">
+          <div className="bullet-check"><Check size={14} color="#2DD4BF" /></div>
+          <div>
+            <strong>Eliminates Hallucinations:</strong>
+            <p>Clinicians can instantly verify that the prediction is based on genuine physiological abnormalities, not imaging artifacts or hospital markers.</p>
+          </div>
+        </div>
+
+        <div className="xai-bullet-item">
+          <div className="bullet-check"><Check size={14} color="#2DD4BF" /></div>
+          <div>
+            <strong>Pinpoints Focal Lesions:</strong>
+            <p>Highlights localized consolidations, dental proximal cavities, or hyperdense kidney calculi with pixel-level coordinate heatmaps.</p>
+          </div>
+        </div>
+
+        <div className="xai-bullet-item">
+          <div className="bullet-check"><Check size={14} color="#2DD4BF" /></div>
+          <div>
+            <strong>Assists Peer Review & Second Opinions:</strong>
+            <p>Enables multidisciplinary medical teams to cross-examine algorithmic reasoning before finalizing reports.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+{/* ============================================================ */}
+{/* SECTION 5: RECENT ANALYSIS & SCAN AUDIT TRAIL                */}
+{/* ============================================================ */}
+<section className="portal-landing-section" id="recent-analyses">
+  <div className="section-header-tag">
+    <span className="dot-teal"></span>
+    <span>VERIFIED DIAGNOSTIC RUNS</span>
+  </div>
+  <div className="section-title-between">
+    <div>
+      <h2 className="section-main-title">
+        Recent <span className="highlight-cyan">Scan Audit History</span>
+      </h2>
+      <p className="section-main-desc">
+        Inspect your locally performed AI evaluations. Click any record to inspect the complete diagnostic report and recommendation suite.
+      </p>
+    </div>
+    <button className="portal-history-btn" onClick={() => { setPublicMode("history"); setAuthError(""); }}>
+      <History size={14}/><span>View Full History ({publicHistory.length})</span>
+    </button>
+  </div>
+
+  {publicHistory && publicHistory.length > 0 ? (
+    <div className="recent-analyses-table-wrap">
+      <table className="recent-analyses-table">
+        <thead>
+          <tr>
+            <th>Modality</th>
+            <th>Primary Finding</th>
+            <th>Confidence</th>
+            <th>Severity</th>
+            <th>Timestamp</th>
+            <th style={{ textAlign: "right" }}>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {publicHistory.slice(0, 5).map((item, idx) => {
+            const modName = item.modality || item.fileType || "Medical Scan";
+            const sev = item.post_analysis?.severity || "Analyzed";
+            const sevColor = sev === "High" ? "#EF4444" : sev === "Moderate" ? "#F59E0B" : "#10B981";
+            return (
+              <tr key={item.report_id || idx} className="recent-row-hover">
+                <td>
+                  <div className="table-modality-cell">
+                    <span className="modality-indicator-dot"></span>
+                    <strong>{modName}</strong>
+                  </div>
+                </td>
+                <td>
+                  <span className="table-prediction-text">{item.prediction || "Evaluation Complete"}</span>
+                </td>
+                <td>
+                  <span className="table-confidence-val">
+                    {item.confidence ? `${item.confidence}%` : "Processed"}
+                  </span>
+                </td>
+                <td>
+                  <span className="table-sev-badge" style={{ backgroundColor: `${sevColor}20`, color: sevColor, borderColor: `${sevColor}40` }}>
+                    {sev}
+                  </span>
+                </td>
+                <td className="table-timestamp-cell">
+                  <Clock size={12} color="#64748B" style={{ display: "inline-block", marginRight: 4 }} />
+                  {item.date ? new Date(item.date).toLocaleDateString() : "Recent"}
+                </td>
+                <td style={{ textAlign: "right" }}>
+                  <button
+                    className="view-report-pill-btn"
+                    onClick={() => {
+                      setPublicResult(item);
+                      const modLower = modName.toLowerCase();
+                      if (modLower.includes("cavity") || modLower.includes("dental")) setPublicMode("cavity");
+                      else if (modLower.includes("ct") || modLower.includes("kidney") || modLower.includes("stone")) setPublicMode("ct_scan");
+                      else if (modLower.includes("report") || modLower.includes("lab")) setPublicMode("report");
+                      else setPublicMode("xray");
+                    }}
+                  >
+                    <span>Inspect Report</span>
+                    <ChevronRight size={13} />
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  ) : (
+    <div className="recent-empty-state">
+      <div className="empty-state-icon"><Activity size={32} color="#2DD4BF" /></div>
+      <h4>No Scans Evaluated Yet</h4>
+      <p>Run your first Chest X-Ray, Dental Panoramic, or Kidney CT analysis using the diagnostic modules above to populate the clinical audit trail.</p>
+      <button
+        className="empty-cta-btn"
+        onClick={() => { setPublicMode("xray"); setAuthError(""); setPublicResult(null); }}
+      >
+        <Upload size={14} /> Start Chest X-Ray Analysis
+      </button>
+    </div>
+  )}
+</section>
+
+{/* ============================================================ */}
+{/* SECTION 6: CLINICAL WORKFLOW ARCHITECTURE                    */}
+{/* ============================================================ */}
+<section className="portal-landing-section" id="clinical-workflow">
+  <div className="section-header-tag">
+    <span className="dot-teal"></span>
+    <span>END-TO-END PIPELINE</span>
+  </div>
+  <h2 className="section-main-title">
+    Diagnostic Data <span className="highlight-cyan">Lifecycle & Architecture</span>
+  </h2>
+  <p className="section-main-desc">
+    How patient radiological scans move seamlessly through validation, inference, and clinical synthesis.
+  </p>
+
+  <div className="pipeline-flow-diagram">
+    <div className="pipe-node-box">
+      <div className="pipe-node-icon"><Upload size={20} color="#2DD4BF" /></div>
+      <h4>1. Clinical Ingestion</h4>
+      <p>Input radiograph or report uploaded via HTTPS interface.</p>
+      <div className="pipe-node-meta">Raw Pixels / Scans</div>
+    </div>
+
+    <div className="pipe-connector-line">
+      <div className="pipe-flow-pulse"></div>
+    </div>
+
+    <div className="pipe-node-box">
+      <div className="pipe-node-icon"><ShieldAlert size={20} color="#38BDF8" /></div>
+      <h4>2. Scan Validator</h4>
+      <p>ResNet validator screens for authentic radiograph modality.</p>
+      <div className="pipe-node-meta">Anomaly Rejection</div>
+    </div>
+
+    <div className="pipe-connector-line">
+      <div className="pipe-flow-pulse"></div>
+    </div>
+
+    <div className="pipe-node-box highlighted-node">
+      <div className="pipe-node-icon"><Cpu size={20} color="#A78BFA" /></div>
+      <h4>3. PyTorch Neural Engine</h4>
+      <p>DenseNet / EfficientNet / MobileNet generates class probability.</p>
+      <div className="pipe-node-meta">Grad-CAM Extraction</div>
+    </div>
+
+    <div className="pipe-connector-line">
+      <div className="pipe-flow-pulse"></div>
+    </div>
+
+    <div className="pipe-node-box">
+      <div className="pipe-node-icon"><FileCheck size={20} color="#34D399" /></div>
+      <h4>4. Clinical Decision Support</h4>
+      <p>Synthesizes severity, clinical explanation &amp; physician notes.</p>
+      <div className="pipe-node-meta">Actionable Guidance</div>
+    </div>
+  </div>
+</section>
+
+{/* ============================================================ */}
+{/* SECTION 7: SECURITY & DATA PROTECTION                        */}
+{/* ============================================================ */}
+<section className="portal-landing-section" id="security-section">
+  <div className="section-header-tag">
+    <span className="dot-teal"></span>
+    <span>PATIENT DATA PRIVACY & ACCESS CONTROL</span>
+  </div>
+  <h2 className="section-main-title">
+    Built with Modern <span className="highlight-cyan">Security & Integrity Standards</span>
+  </h2>
+  <p className="section-main-desc">
+    Designed for clinical confidentiality, authenticated practitioner access, and isolated memory processing.
+  </p>
+
+  <div className="security-cards-grid">
+    <div className="security-feature-card">
+      <div className="sec-icon-circle"><Key size={22} color="#2DD4BF" /></div>
+      <h3 className="sec-title">Authenticated Practitioner Sessions</h3>
+      <p className="sec-desc">
+        Doctor credential authorization powered by salted SHA-256 password hashing, tokenized session headers, and scoped role privileges for clinical portals.
+      </p>
+      <div className="sec-tag">SHA-256 & JWT Tokens</div>
+    </div>
+
+    <div className="security-feature-card">
+      <div className="sec-icon-circle"><Server size={22} color="#38BDF8" /></div>
+      <h3 className="sec-title">In-Memory Tensor Transformation</h3>
+      <p className="sec-desc">
+        Incoming clinical images are transformed straight into volatile memory tensors during inference, minimizing permanent disk exposure for anonymous public uploads.
+      </p>
+      <div className="sec-tag">Ephemeral Processing</div>
+    </div>
+
+    <div className="security-feature-card">
+      <div className="sec-icon-circle"><ShieldCheck size={22} color="#34D399" /></div>
+      <h3 className="sec-title">AI-Assisted Decision Support Boundary</h3>
+      <p className="sec-desc">
+        System strictly operates as secondary clinical decision support. Final diagnostic determinations always remain exclusively with licensed medical specialists.
+      </p>
+      <div className="sec-tag">Human-In-The-Loop AI</div>
+    </div>
+  </div>
+</section>
+
+{/* ============================================================ */}
+{/* SECTION 8: COMPREHENSIVE PLATFORM FOOTER                    */}
+{/* ============================================================ */}
+<footer className="portal-landing-footer">
+  <div className="footer-top-grid">
+    <div className="footer-brand-col">
+      <div className="portal-nav-brand">
+        <div className="portal-logo-orb">
+          <Sparkles size={18} color="#2DD4BF" />
+        </div>
+        <div>
+          <div className="portal-brand-title">
+            MediScan <span className="brand-ai">AI</span>
+          </div>
+          <div className="portal-brand-sub" style={{ fontSize: "11px" }}>Clinical Decision Support System</div>
+        </div>
+      </div>
+      <p className="footer-brand-bio">
+        Next-generation multimodal radiological analysis platform combining deep neural classification, automated laboratory OCR, and explainable Grad-CAM visualization for clinical workflows.
+      </p>
+      <div className="footer-social-meta">
+        <span className="footer-status-indicator">
+          <span className="dot-green-pulse"></span> PyTorch Inference Engine Online
+        </span>
+      </div>
+    </div>
+
+    <div className="footer-links-col">
+      <h4 className="footer-heading">Diagnostic Modules</h4>
+      <ul className="footer-nav-list">
+        <li><button onClick={() => { setPublicMode("xray"); setAuthError(""); setPublicResult(null); }}>Chest Radiograph (X-Ray)</button></li>
+        <li><button onClick={() => { setPublicMode("cavity"); setAuthError(""); setPublicResult(null); }}>Dental Cavity Detection</button></li>
+        <li><button onClick={() => { setPublicMode("ct_scan"); setAuthError(""); setPublicResult(null); }}>Abdominal CT (Kidney Stone)</button></li>
+        <li><button onClick={() => { setPublicMode("report"); setAuthError(""); setPublicResult(null); }}>Blood &amp; Lab Report OCR</button></li>
+      </ul>
+    </div>
+
+    <div className="footer-links-col">
+      <h4 className="footer-heading">Technology &amp; Models</h4>
+      <ul className="footer-nav-list">
+        <li><a href="#technology-showcase">DenseNet-121 Architecture</a></li>
+        <li><a href="#technology-showcase">EfficientNet-B0 Caries</a></li>
+        <li><a href="#technology-showcase">MobileNetV2 CT Engine</a></li>
+        <li><a href="#explainable-ai">Grad-CAM Explainable AI</a></li>
+        <li><a href="#clinical-workflow">Clinical Pipeline</a></li>
+      </ul>
+    </div>
+
+    <div className="footer-links-col">
+      <h4 className="footer-heading">Practitioner Portal</h4>
+      <ul className="footer-nav-list">
+        <li><button onClick={() => { setPublicMode("login"); setAuthError(""); }}>Doctor Sign In</button></li>
+        <li><button onClick={() => { setPublicMode("history"); setAuthError(""); }}>Audit History Log</button></li>
+        <li><a href="#security-section">Security &amp; Privacy</a></li>
+        <li>
+          <button onClick={() => alert("MediScan Clinical Support Portal\n24/7 Hotline: +1 (800) 555-MEDI\nEmail: clinical.support@mediscan.ai")}>
+            Clinical Support
+          </button>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <div className="footer-bottom-bar">
+    <div className="footer-copyright">
+      © {new Date().getFullYear()} MediScan AI Platform. All rights reserved. Designed for professional clinical decision support.
+    </div>
+    <div className="footer-disclaimer">
+      Notice: MediScan AI is an algorithmic decision-support tool. It does not substitute professional medical judgment, diagnosis, or clinical evaluation by a board-certified physician.
+    </div>
+  </div>
+</footer>
       </div>
     );
   }
@@ -1524,7 +2227,6 @@ function App() {
       if (analysisTypeFilter === "X-Ray") matchAnalysis = p.lastAnalysis && p.lastAnalysis.type === "X-Ray";
       else if (analysisTypeFilter === "Cavity") matchAnalysis = p.lastAnalysis && p.lastAnalysis.type === "Dental Cavity";
       else if (analysisTypeFilter === "CT Scan") matchAnalysis = p.lastAnalysis && p.lastAnalysis.type === "CT Scan";
-      else if (analysisTypeFilter === "MRI") matchAnalysis = p.lastAnalysis && (p.lastAnalysis.type === "Brain MRI" || p.lastAnalysis.type === "MRI");
       else if (analysisTypeFilter === "Report") matchAnalysis = p.lastAnalysis && p.lastAnalysis.type === "Report";
 
       return matchSearch && matchGender && matchAge && matchAnalysis;
@@ -1560,7 +2262,6 @@ function App() {
       (timelineFilter === "X-Ray" && item.fileType === "Chest X-Ray") ||
       (timelineFilter === "Cavity" && item.fileType === "Dental Cavity") ||
       (timelineFilter === "CT Scan" && (item.fileType === "CT Scan" || item.fileType === "Kidney Stone CT")) ||
-      (timelineFilter === "MRI" && (item.fileType === "Brain MRI" || item.fileType === "MRI")) ||
       (timelineFilter === "Reports" && item.fileType === "Medical Report");
 
     return matchSearch && matchFilter;
@@ -1993,7 +2694,6 @@ function App() {
                       <option value="X-Ray">Chest X-Ray</option>
                       <option value="Cavity">Dental Cavity</option>
                       <option value="CT Scan">CT Scan</option>
-                      <option value="MRI">Brain MRI</option>
                       <option value="Report">Lab Report</option>
                     </select>
                   </div>
@@ -2195,16 +2895,6 @@ function App() {
                 </button>
                 <button
                   className="primary-btn"
-                  style={{ background: "#EC4899", border: "none", color: "#fff" }}
-                  onClick={() => {
-                    setPublicMode("mri_patient"); // tab for Brain MRI upload
-                    document.getElementById("analyze-file-sec")?.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                >
-                  Analyze Brain MRI
-                </button>
-                <button
-                  className="primary-btn"
                   style={{ background: "var(--cyan)", border: "none", color: "#fff" }}
                   onClick={() => {
                     setPublicMode("xray"); // tab for Report upload
@@ -2402,13 +3092,6 @@ function App() {
                         CT Scan
                       </button>
                       <button
-                        className={`period-btn ${publicMode === "mri_patient" ? "active" : ""}`}
-                        style={{ padding: "4px 8px", fontSize: "11px", background: publicMode === "mri_patient" ? "#EC4899" : undefined, color: publicMode === "mri_patient" ? "#fff" : undefined }}
-                        onClick={() => { setPublicMode("mri_patient"); setUploadFile(null); }}
-                      >
-                        Brain MRI
-                      </button>
-                      <button
                         className={`period-btn ${publicMode === "xray" ? "active" : ""}`}
                         style={{ padding: "4px 8px", fontSize: "11px" }}
                         onClick={() => { setPublicMode("xray"); setUploadFile(null); }}
@@ -2424,15 +3107,13 @@ function App() {
                         ? "Upload a dental intraoral photo or radiograph for AI caries lesion detection."
                         : publicMode === "ct_patient"
                           ? "Upload an abdominal/pelvic CT scan slice for AI kidney stone detection."
-                          : publicMode === "mri_patient"
-                            ? "Upload a Brain MRI slice image for AI 4-class brain tumor classification (Glioma, Meningioma, Pituitary, Normal)."
-                            : "Upload a structured medical/hematology laboratory report document (PNG/JPG/PDF)."}
+                          : "Upload a structured medical/hematology laboratory report document (PNG/JPG/PDF)."}
                   </p>
 
                   <div className="upload-form">
                     <label className="drag-area">
                       <Upload size={32} className="upload-icon" />
-                      <span>{uploadFile ? uploadFile.name : (publicMode === "mri_patient" ? "Select or drag Brain MRI scan here" : "Select or drag file here")}</span>
+                      <span>{uploadFile ? uploadFile.name : "Select or drag file here"}</span>
                       <span className="supported">
                         {publicMode === "xray" ? "Supported: JPEG, PNG, PDF" : "Supported: JPEG, PNG"}
                       </span>
@@ -2461,9 +3142,7 @@ function App() {
                               ? "Dental Cavity"
                               : publicMode === "ct_patient"
                                 ? "CT Scan"
-                                : publicMode === "mri_patient"
-                                  ? "Brain MRI"
-                                  : "Medical Report";
+                                : "Medical Report";
                           try {
                             const res = await fetch(`${API_BASE}/api/patients/${selectedPatient.patientId}/files?analysis_type=${encodeURIComponent(chosenType)}`, {
                               method: "POST",
@@ -2490,7 +3169,7 @@ function App() {
                       >
                         {uploading
                           ? "Executing AI Engine..."
-                          : `Analyze ${publicMode === "login" ? "X-Ray" : publicMode === "cavity_patient" ? "Cavity" : publicMode === "ct_patient" ? "CT Scan" : publicMode === "mri_patient" ? "Brain MRI" : "Report"}`}
+                          : `Analyze ${publicMode === "login" ? "X-Ray" : publicMode === "cavity_patient" ? "Cavity" : publicMode === "ct_patient" ? "CT Scan" : "Report"}`}
                       </button>
                     )}
                   </div>
@@ -2510,18 +3189,14 @@ function App() {
                               ? "rgba(245,158,11,0.15)"
                               : analysisResult.fileType === "CT Scan"
                                 ? "rgba(139,92,246,0.15)"
-                                : analysisResult.fileType === "Brain MRI"
-                                  ? "rgba(236,72,153,0.15)"
-                                  : "rgba(6,182,212,0.15)",
+                                : "rgba(6,182,212,0.15)",
                           color: analysisResult.fileType === "Chest X-Ray"
                             ? "var(--warning)"
                             : analysisResult.fileType === "Dental Cavity"
                               ? "#F59E0B"
                               : analysisResult.fileType === "CT Scan"
                                 ? "#8B5CF6"
-                                : analysisResult.fileType === "Brain MRI"
-                                  ? "#EC4899"
-                                  : "var(--cyan)",
+                                : "var(--cyan)",
                           fontSize: "11px",
                           fontWeight: "700",
                           textTransform: "uppercase",
@@ -2671,22 +3346,22 @@ function App() {
                   {[...patientHistory].filter(h => compareIds.includes(h.analysisId)).map((item, cIdx) => (
                     <div key={item.analysisId || cIdx} style={{ background: "rgba(0,0,0,0.2)", borderRadius: "12px", padding: "16px", border: "1px solid rgba(255,255,255,0.05)" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px", borderBottom: "1px solid rgba(255,255,255,0.05)", paddingBottom: "8px" }}>
-                        <span style={{ fontSize: "11px", fontWeight: "700", textTransform: "uppercase", color: item.fileType === "Chest X-Ray" ? "var(--warning)" : item.fileType === "Dental Cavity" ? "#F59E0B" : item.fileType === "CT Scan" ? "#8B5CF6" : item.fileType === "Brain MRI" ? "#EC4899" : "var(--cyan)" }}>
-                          {item.fileType === "Chest X-Ray" ? "X-Ray" : item.fileType === "Dental Cavity" ? "Cavity" : item.fileType === "CT Scan" ? "CT Scan" : item.fileType === "Brain MRI" ? "Brain MRI" : "Report"}
+                        <span style={{ fontSize: "11px", fontWeight: "700", textTransform: "uppercase", color: item.fileType === "Chest X-Ray" ? "var(--warning)" : item.fileType === "Dental Cavity" ? "#F59E0B" : item.fileType === "CT Scan" ? "#8B5CF6" : "var(--cyan)" }}>
+                          {item.fileType === "Chest X-Ray" ? "X-Ray" : item.fileType === "Dental Cavity" ? "Cavity" : item.fileType === "CT Scan" ? "CT Scan" : "Report"}
                         </span>
                         <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{new Date(item.date).toLocaleDateString()}</span>
                       </div>
                       <h4 style={{ fontSize: "13px", color: "#fff", margin: "0 0 8px 0" }}>{item.fileName}</h4>
-                      {item.fileType === "CT Scan" || item.fileType === "Dental Cavity" || item.fileType === "Chest X-Ray" || item.fileType === "Brain MRI" ? (
+                      {item.fileType === "CT Scan" || item.fileType === "Dental Cavity" || item.fileType === "Chest X-Ray" ? (
                         <div>
                           <div style={{ display: "flex", gap: "16px", marginBottom: "12px" }}>
                             <div>
                               <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>Prediction</span>
-                              <div style={{ fontSize: "14px", fontWeight: "700", color: item.fileType === "Brain MRI" ? ((item.prediction?.toLowerCase().includes("normal") || item.prediction?.toLowerCase().includes("no tumor")) ? "#10B981" : "#EF4444") : item.prediction?.includes("Stone") || item.prediction?.includes("Cavity") ? "#EF4444" : "#fff" }}>{item.prediction}</div>
+                              <div style={{ fontSize: "14px", fontWeight: "700", color: item.prediction?.includes("Stone") || item.prediction?.includes("Cavity") ? "#EF4444" : "#fff" }}>{item.prediction}</div>
                             </div>
                             <div>
                               <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>Confidence</span>
-                              <div style={{ fontSize: "14px", fontWeight: "700", color: item.fileType === "Brain MRI" ? "#EC4899" : item.fileType === "CT Scan" ? "#8B5CF6" : item.fileType === "Dental Cavity" ? "#F59E0B" : "var(--warning)" }}>{item.confidence}%</div>
+                              <div style={{ fontSize: "14px", fontWeight: "700", color: item.fileType === "CT Scan" ? "#8B5CF6" : item.fileType === "Dental Cavity" ? "#F59E0B" : "var(--warning)" }}>{item.confidence}%</div>
                             </div>
                           </div>
                           <div style={{ position: "relative", paddingBottom: "100%", background: "#000", borderRadius: "8px", overflow: "hidden" }}>
@@ -2744,7 +3419,6 @@ function App() {
                     <option value="X-Ray">X-Ray Files</option>
                     <option value="Cavity">Dental Cavity</option>
                     <option value="CT Scan">CT Scan</option>
-                    <option value="MRI">Brain MRI</option>
                     <option value="Reports">Medical Reports</option>
                   </select>
 
@@ -2770,13 +3444,6 @@ function App() {
                       <>
                         <option value="Stone">Kidney Stone Detected</option>
                         <option value="Normal">Normal</option>
-                      </>
-                    ) : timelineFilter === "MRI" ? (
-                      <>
-                        <option value="Glioma">Glioma</option>
-                        <option value="Meningioma">Meningioma</option>
-                        <option value="Pituitary">Pituitary</option>
-                        <option value="Normal">Normal / No Tumor</option>
                       </>
                     ) : timelineFilter === "Reports" ? (
                       <>
@@ -2849,19 +3516,14 @@ function App() {
                             fontSize: "11px",
                             fontWeight: "700",
                             textTransform: "uppercase",
-                            color: item.fileType === "Chest X-Ray" ? "var(--warning)" : item.fileType === "Dental Cavity" ? "#F59E0B" : item.fileType === "CT Scan" ? "#8B5CF6" : item.fileType === "Brain MRI" ? "#EC4899" : "var(--cyan)"
+                            color: item.fileType === "Chest X-Ray" ? "var(--warning)" : item.fileType === "Dental Cavity" ? "#F59E0B" : item.fileType === "CT Scan" ? "#8B5CF6" : "var(--cyan)"
                           }}>
                             {item.fileType}
                           </span>
                           <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{new Date(item.date).toLocaleDateString()}</span>
                         </div>
                         <h4 style={{ fontSize: "14px", fontWeight: "600", color: "#fff", margin: "0 0 6px 0" }}>{item.fileName}</h4>
-                        {item.fileType === "Brain MRI" ? (
-                          <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
-                            Prediction: <strong style={{ color: (item.prediction?.toLowerCase().includes("normal") || item.prediction?.toLowerCase().includes("no tumor")) ? "#10B981" : "#EF4444" }}>{item.prediction}</strong> ({item.confidence}%)
-                            {item.gradcamPath && <span style={{ color: "#EC4899", marginLeft: "12px" }}>• Brain Heatmap Available</span>}
-                          </div>
-                        ) : item.fileType === "CT Scan" ? (
+                        {item.fileType === "CT Scan" ? (
                           <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
                             Prediction: <strong style={{ color: item.prediction?.includes("Stone") ? "#EF4444" : "#10B981" }}>{item.prediction}</strong> ({item.confidence}%)
                             {item.gradcamPath && <span style={{ color: "#8B5CF6", marginLeft: "12px" }}>• CT Heatmap Available</span>}

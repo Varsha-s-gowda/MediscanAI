@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 def validate_medical_scan(img: Image.Image, modality: str = "chest") -> Tuple[bool, str]:
     """
     Validates whether an uploaded image is an authentic medical diagnostic scan
-    (Chest X-Ray, Dental X-Ray/intraoral photo, Brain MRI, or Kidney CT Scan)
+    (Chest X-Ray, Dental X-Ray/intraoral photo, or Kidney CT Scan)
     and rejects invalid everyday photos (selfies, outdoor scenes, nature, cars, documents, etc.).
     
     Returns:
@@ -74,29 +74,7 @@ def validate_medical_scan(img: Image.Image, modality: str = "chest") -> Tuple[bo
         return True, "Valid Chest Radiograph"
 
     # =========================================================================
-    # MODALITY 2: BRAIN MRI
-    # Brain MRI scans are grayscale cross-sections with central parenchymal structure.
-    # =========================================================================
-    elif "mri" in mod_lower or "brain" in mod_lower:
-        if channel_diff > 20.0 or mean_saturation > 32.0 or high_sat_pixels_ratio > 0.15:
-            logger.info(f"Rejected non-MRI image: channel_diff={channel_diff:.1f}, mean_sat={mean_saturation:.1f}")
-            return False, "Invalid image detected: The uploaded file is a colored or everyday photo. Please upload a valid Brain MRI scan (T1/T2/FLAIR)."
-
-        # Check for dark perimeter / background typical of MRI scans
-        gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
-        corner_pixels = np.concatenate([
-            gray[:int(h*0.1), :int(w*0.1)].flatten(),
-            gray[:int(h*0.1), -int(w*0.1):].flatten(),
-            gray[-int(h*0.1):, :int(w*0.1)].flatten(),
-            gray[-int(h*0.1):, -int(w*0.1):].flatten()
-        ])
-        if np.mean(corner_pixels) > 180:  # Bright corners indicate non-scan document or photo
-            return False, "Invalid image: Missing characteristic MRI field margins. Please upload a genuine Brain MRI scan."
-
-        return True, "Valid Brain MRI Scan"
-
-    # =========================================================================
-    # MODALITY 3: KIDNEY STONE CT SCAN
+    # MODALITY 2: KIDNEY STONE CT SCAN
     # Unenhanced Helical CT scans are grayscale cross-sections.
     # =========================================================================
     elif "ct" in mod_lower or "kidney" in mod_lower or "stone" in mod_lower:

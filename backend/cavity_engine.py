@@ -125,7 +125,17 @@ class CavityInferenceEngine:
             except Exception as e:
                 logger.warn(f"Failed generating Grad-CAM for cavity: {e}")
 
-        is_cavity = (pred_idx == 1)
+        # Apply confidence threshold: only report Cavity if model is confident (>55%)
+        # This reduces false positives on normal teeth caused by mixed-label training data
+        CAVITY_THRESHOLD = 55.0
+        is_cavity = (pred_idx == 1) and (float(probs[1]) * 100.0 >= CAVITY_THRESHOLD)
+
+        # If below threshold, treat as Normal regardless of argmax
+        if pred_idx == 1 and not is_cavity:
+            pred_idx = 0
+            prediction_label = self.classes[0]
+            confidence = float(probs[0]) * 100.0
+
         severity = "Moderate to High Risk" if (is_cavity and confidence > 75) else ("Mild / Incipient" if is_cavity else "Normal")
         recommendation = (
             "Dental caries lesion detected. Clinical evaluation, bitewing radiograph confirmation, and restorative filling/fluoride seal treatment are advised."

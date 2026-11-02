@@ -471,81 +471,6 @@ def _get_dental_analysis(prediction: str, confidence: float, is_cavity: bool) ->
         }
 
 
-def _get_mri_analysis(prediction: str, confidence: float, raw_class: Optional[str] = None) -> Dict[str, Any]:
-    pred_lower = (raw_class or prediction).lower()
-
-    if "glioma" in pred_lower:
-        return {
-            "explanation": (
-                "Brain MRI demonstrates an expansive intra-axial mass lesion within the cerebral parenchyma characterized by heterogeneous T1 hypointensity and prominent T2/FLAIR hyperintensity. "
-                "The lesion exhibits irregular margins with extensive surrounding vasogenic edema extending along adjacent white matter tracts. "
-                "Local mass effect is identified with partial effacement of adjacent sulci, regional cortical displacement, and ipsilateral ventricular compression. "
-                "Diffusion-weighted imaging reveals restricted water diffusion within the hypercellular neoplastic core, characteristic of high-grade glial proliferation. "
-                "Urgent multidisciplinary neurosurgical and neuro-oncological evaluation is indicated for volumetric navigation and surgical resection planning."
-            ),
-            "severity": "High",
-            "severity_description": "Intracranial intra-axial mass lesion with high clinical urgency requiring neurosurgical evaluation.",
-            "recommendations": [
-                "Urgent consultation with a neurosurgeon and neuro-oncology multidisciplinary team.",
-                "Schedule multi-parametric contrast-enhanced MRI (T1+C, T2/FLAIR, DWI, Perfusion/Spectroscopy) for surgical planning.",
-                "Evaluate for mass effect, midline shift, and the need for anti-edema (corticosteroid) or anti-seizure prophylaxis.",
-                "Seek immediate emergency care if acute severe headaches, focal neurological deficits, altered consciousness, or seizures occur."
-            ]
-        }
-    elif "meningioma" in pred_lower:
-        severity = "High" if confidence > 80.0 else "Moderate"
-        return {
-            "explanation": (
-                "Brain MRI demonstrates a well-circumscribed, extra-axial dural-based mass lesion exhibiting homogeneous signal enhancement and prominent adjacent dural tail thickening. "
-                "The lesion exerts localized mechanical compression upon the adjacent cerebral cortex with a thin rim of cerebrospinal fluid cleft and surrounding vasogenic white matter edema. "
-                "Underlying bony structures show localized hyperostosis without evidence of frank osseous invasion or parenchymal destruction. "
-                "Ventricular geometry and midline positioning are preserved with no acute obstructive hydrocephalus. "
-                "Specialist neurosurgical evaluation is advised to determine surgical resection margins versus serial stereotactic radiosurgical surveillance."
-            ),
-            "severity": severity,
-            "severity_description": "Extra-axial dural mass lesion requiring neurosurgical review to evaluate mass effect and intervention options.",
-            "recommendations": [
-                "Consult a neurosurgeon for precise tumor volumetric measurement and intervention/surveillance planning.",
-                "Schedule serial contrast-enhanced MRI imaging to monitor growth rate and anatomical margins.",
-                "Report any emerging neurological symptoms such as localized headaches, vision changes, or motor weakness immediately."
-            ]
-        }
-    elif "pituitary" in pred_lower:
-        return {
-            "explanation": (
-                "Brain MRI exhibits focal tissue enlargement and lesion expansion within the sella turcica and pituitary fossa region, consistent with a pituitary micro/macroadenoma. "
-                "The lesion causes mild upward convexity of the sellar diaphragm and remodeling of the sellar floor without frank suprasellar extension into the optic chiasm. "
-                "Bilateral cavernous sinuses and internal carotid arteries maintain normal flow voids with no evidence of cavernous invasion. "
-                "Surrounding brain parenchyma and the third ventricle demonstrate normal morphology without obstructive signs. "
-                "Comprehensive endocrinological hormone profiling and formal visual field perimetry are recommended for staging."
-            ),
-            "severity": "Moderate",
-            "severity_description": "Sellar mass lesion requiring comprehensive endocrine workup and visual pathway evaluation.",
-            "recommendations": [
-                "Consult an endocrinologist and neurosurgeon for dedicated thin-slice sellar protocol MRI.",
-                "Perform comprehensive serum pituitary hormone profiling (Prolactin, ACTH, GH, IGF-1, TSH, Free T4, Morning Cortisol).",
-                "Schedule formal automated perimetry (visual field testing) with an ophthalmologist to verify optic chiasm clearance."
-            ]
-        }
-    else:  # notumor / normal
-        return {
-            "explanation": (
-                "Brain MRI scan demonstrates symmetric cerebral and cerebellar hemispheres with normal, well-defined grey-white matter differentiation throughout all cortical regions. "
-                "The lateral, third, and fourth ventricles exhibit normal symmetric caliber and configuration without hydrocephalus or midline shift. "
-                "No abnormal focal parenchymal signal alterations, pathological mass lesions, restricted diffusion, or abnormal contrast enhancement are identified. "
-                "Basal cisterns, sulcal patterns, and major intracranial vascular flow voids appear entirely physiological. "
-                "The radiographic examination reveals no intracranial mass effect, acute infarction, or neoplastic pathology."
-            ),
-            "severity": "Low",
-            "severity_description": "Normal brain MRI scan with no radiographic signs of intracranial neoplasm.",
-            "recommendations": [
-                "Continue standard wellness and neurological health monitoring.",
-                "If the scan was prompted by chronic headaches or neurological symptoms, discuss findings with your primary physician.",
-                "Maintain good cardiovascular health, adequate sleep hygiene, and stress management."
-            ]
-        }
-
-
 def _get_ct_kidney_analysis(prediction: str, confidence: float, is_stone: bool) -> Dict[str, Any]:
     if is_stone or "stone" in prediction.lower() or "calculi" in prediction.lower():
         severity = "High" if confidence > 80.0 else "Moderate"
@@ -606,10 +531,6 @@ def generate_post_analysis(
         is_cavity = bool(additional_info.get("is_cavity", "cavity" in prediction.lower()))
         analysis = _get_dental_analysis(prediction, confidence, is_cavity)
         standard_modality = "Dental X-Ray"
-    elif "mri" in modality_lower or "brain" in modality_lower:
-        raw_class = additional_info.get("raw_class")
-        analysis = _get_mri_analysis(prediction, confidence, raw_class)
-        standard_modality = "Brain MRI"
     elif "ct" in modality_lower or "kidney" in modality_lower or "stone" in modality_lower:
         is_stone = bool(additional_info.get("is_stone", "stone" in prediction.lower()))
         analysis = _get_ct_kidney_analysis(prediction, confidence, is_stone)
