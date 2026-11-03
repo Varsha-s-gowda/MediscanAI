@@ -281,8 +281,13 @@ export default function PostAnalysisWorkflow({
   setPublicMode = null,
   onBackToLogin = null
 }) {
+  const isReportModality = (() => {
+    const raw = `${modality || ""} ${result?.modality || ""}`.toLowerCase();
+    return raw.includes("report") || raw.includes("medical") || raw.includes("lab");
+  })();
+
   // Workflow view stage: 'image_analysis' (Stage 1) or 'medical_report' (Stage 2)
-  const [workflowStage, setWorkflowStage] = useState("image_analysis");
+  const [workflowStage, setWorkflowStage] = useState(isReportModality ? "medical_report" : "image_analysis");
   // eslint-disable-next-line no-unused-vars
   const [activeStep, setActiveStep] = useState(2);
   const [windowPreset, setWindowPreset] = useState("lung"); // 'lung', 'mediastinum', 'bone'
@@ -548,28 +553,30 @@ ${postData.disclaimer}
       </div>
 
       {/* STAGE NAVIGATION SWITCHER BAR */}
-      <div className="stage-navigation-bar">
-        <button
-          className={`stage-switch-btn ${workflowStage === "image_analysis" ? "active" : ""}`}
-          onClick={() => setWorkflowStage("image_analysis")}
-        >
-          <ZoomIn size={15} />
-          <span>Stage 1: Full-Screen Image Analysis</span>
-        </button>
-        <div className="stage-switch-divider">→</div>
-        <button
-          className={`stage-switch-btn ${workflowStage === "medical_report" ? "active" : ""}`}
-          onClick={() => setWorkflowStage("medical_report")}
-        >
-          <FileText size={15} />
-          <span>Stage 2: Full-Screen Medical Report</span>
-        </button>
-      </div>
+      {!isReportModality && (
+        <div className="stage-navigation-bar">
+          <button
+            className={`stage-switch-btn ${workflowStage === "image_analysis" ? "active" : ""}`}
+            onClick={() => setWorkflowStage("image_analysis")}
+          >
+            <ZoomIn size={15} />
+            <span>Stage 1: Full-Screen Image Analysis</span>
+          </button>
+          <div className="stage-switch-divider">→</div>
+          <button
+            className={`stage-switch-btn ${workflowStage === "medical_report" ? "active" : ""}`}
+            onClick={() => setWorkflowStage("medical_report")}
+          >
+            <FileText size={15} />
+            <span>Stage 2: Full-Screen Medical Report</span>
+          </button>
+        </div>
+      )}
 
       {/* ============================================================== */}
       {/* STAGE 1: FULL-SCREEN IMAGE ANALYSIS (SIDE-BY-SIDE LARGE TILES) */}
       {/* ============================================================== */}
-      {workflowStage === "image_analysis" && (
+      {!isReportModality && workflowStage === "image_analysis" && (
         <main className="stage1-fullscreen-container">
           {/* Top Bar for Viewport Controls and Continue Action */}
           <div className="stage1-toolbar">
@@ -730,17 +737,19 @@ ${postData.disclaimer}
       {/* ============================================================== */}
       {/* STAGE 2: FULL-SCREEN MEDICAL REPORT VIEW                       */}
       {/* ============================================================== */}
-      {workflowStage === "medical_report" && (
+      {(isReportModality || workflowStage === "medical_report") && (
         <main className="stage2-fullscreen-report">
           {/* Top Stage 2 Action Bar */}
           <div className="stage2-action-bar">
-            <button
-              className="stage2-back-btn"
-              onClick={() => setWorkflowStage("image_analysis")}
-            >
-              <ArrowLeft size={16} />
-              <span>Back to Image Analysis</span>
-            </button>
+            {!isReportModality && (
+              <button
+                className="stage2-back-btn"
+                onClick={() => setWorkflowStage("image_analysis")}
+              >
+                <ArrowLeft size={16} />
+                <span>Back to Image Analysis</span>
+              </button>
+            )}
 
             <div className="stage2-report-meta">
               <span className="stage2-id-badge">REPORT: {postData.report_id}</span>
@@ -848,18 +857,20 @@ ${postData.disclaimer}
                   )}
 
                   {/* Visual Reference Thumbnails embedded in Report */}
-                  <div className="stage2-report-thumbnails">
-                    <div className="thumb-item" onClick={() => setWorkflowStage("image_analysis")}>
-                      <span className="thumb-label">Original Radiograph</span>
-                      <img src={originalImg || gradcamImg} alt="Original" />
-                    </div>
-                    {gradcamImg && (
+                  {!isReportModality && (
+                    <div className="stage2-report-thumbnails">
                       <div className="thumb-item" onClick={() => setWorkflowStage("image_analysis")}>
-                        <span className="thumb-label">Grad-CAM Heatmap</span>
-                        <img src={gradcamImg} alt="Grad-CAM" />
+                        <span className="thumb-label">Original Radiograph</span>
+                        <img src={originalImg || gradcamImg} alt="Original" />
                       </div>
-                    )}
-                  </div>
+                      {gradcamImg && (
+                        <div className="thumb-item" onClick={() => setWorkflowStage("image_analysis")}>
+                          <span className="thumb-label">Grad-CAM Heatmap</span>
+                          <img src={gradcamImg} alt="Grad-CAM" />
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -917,13 +928,15 @@ ${postData.disclaimer}
 
             {/* Bottom PDF CTA & Disclaimer */}
             <div className="stage2-bottom-actions">
-              <button
-                className="stage2-back-analysis-btn"
-                onClick={() => setWorkflowStage("image_analysis")}
-              >
-                <ArrowLeft size={16} />
-                <span>Back to Image Analysis</span>
-              </button>
+              {!isReportModality && (
+                <button
+                  className="stage2-back-analysis-btn"
+                  onClick={() => setWorkflowStage("image_analysis")}
+                >
+                  <ArrowLeft size={16} />
+                  <span>Back to Image Analysis</span>
+                </button>
+              )}
 
               <button
                 className="stage2-generate-pdf-btn"

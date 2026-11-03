@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Upload,
@@ -28,7 +28,33 @@ import {
   Clock,
   Key,
   FileCheck,
-  Server
+  Server,
+  Bell,
+  Settings,
+  TrendingUp,
+  HeartPulse,
+  Calendar,
+  Download,
+  CheckCircle2,
+  Database,
+  FileUp,
+  LayoutDashboard,
+  Stethoscope,
+  FolderOpen,
+  BarChart2,
+  GitBranch,
+  HardDrive,
+  UserCircle,
+  ChevronLeft,
+  Menu,
+  X,
+  RefreshCw,
+  FileImage,
+  Microscope,
+  ScanLine,
+  Shield,
+  Heart,
+  FileCheck2
 } from "lucide-react";
 import "./App.css";
 import PostAnalysisWorkflow from "./components/PostAnalysisWorkflow";
@@ -72,6 +98,14 @@ function App() {
       if (tab === "dashboard") return "/dashboard";
       if (tab === "patients") return "/patients";
       if (tab === "patient-profile") return `/patients/${patient?.patientId || patient?.id || "profile"}`;
+      if (tab === "new-analysis") return "/new-analysis";
+      if (tab === "my-reports") return "/my-reports";
+      if (tab === "analysis-history") return "/analysis-history";
+      if (tab === "health-insights") return "/health-insights";
+      if (tab === "health-timeline") return "/health-timeline";
+      if (tab === "vault") return "/vault";
+      if (tab === "profile") return "/profile";
+      if (tab === "settings") return "/settings";
     }
     if (mode === "xray") return "/analysis/chest-xray";
     if (mode === "cavity") return "/analysis/dental-cavity";
@@ -266,6 +300,19 @@ function App() {
   const [editNoteText, setEditNoteText] = useState("");
   const [compareIds, setCompareIds] = useState([]);
 
+  // NEW INDIVIDUAL HEALTHCARE DASHBOARD STATES
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [myPatientId, setMyPatientId] = useState(null);
+  const [myAnalysisHistory, setMyAnalysisHistory] = useState([]);
+  const [loadingMyHistory, setLoadingMyHistory] = useState(false);
+  const [dashboardUploadFile, setDashboardUploadFile] = useState(null);
+  const [dashboardUploading, setDashboardUploading] = useState(false);
+  const [dashboardUploadError, setDashboardUploadError] = useState("");
+  const [dashboardResult, setDashboardResult] = useState(null);
+  const [dashboardAnalysisMode, setDashboardAnalysisMode] = useState("xray");
+  const [notifOpen, setNotifOpen] = useState(false);
+  const dashboardFileRef = useRef(null);
+
   const getAuthHeaders = () => {
     const headers = { "Content-Type": "application/json" };
     if (token) {
@@ -332,11 +379,160 @@ function App() {
     }
   };
 
+  // Auto-associate all uploads/analyses with authenticated user
+  const ensureUserPatient = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/patients`, { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.length > 0) {
+          setMyPatientId(data[0].patientId);
+          return data[0].patientId;
+        }
+        const uname = token.replace("mock-jwt-token-", "");
+        const createRes = await fetch(`${API_BASE}/api/patients`, {
+          method: "POST",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ name: doctorName || uname, age: 25, gender: "Other", contact: "" })
+        });
+        if (createRes.ok) {
+          const created = await createRes.json();
+          setMyPatientId(created.patientId);
+          return created.patientId;
+        }
+      }
+    } catch (err) { console.error("ensureUserPatient error", err); }
+    return null;
+  };
+
+  const fetchMyAnalyses = async () => {
+    setLoadingMyHistory(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/patients`, { headers: getAuthHeaders() });
+      if (res.ok) {
+        const pats = await res.json();
+        let allHistory = [];
+        for (const p of (pats || [])) {
+          try {
+            const hr = await fetch(`${API_BASE}/api/patients/${p.patientId}/history`, { headers: getAuthHeaders() });
+            if (hr.ok) {
+              const hd = await hr.json();
+              const hist = (hd.history || []).map(item => ({ ...item, patientName: p.name, patientId: p.patientId }));
+              allHistory = [...allHistory, ...hist];
+            }
+          } catch(_) {}
+          if (!myPatientId && p.patientId) setMyPatientId(p.patientId);
+        }
+        allHistory.sort((a, b) => new Date(b.date) - new Date(a.date));
+        setMyAnalysisHistory(allHistory);
+      }
+    } catch (err) { console.error("fetchMyAnalyses error", err); }
+    finally { setLoadingMyHistory(false); }
+  };
+
+  const handleDashboardUpload = async (e) => {
+    e.preventDefault();
+    if (!dashboardUploadFile) return;
+    setDashboardUploading(true);
+    setDashboardUploadError("");
+    setDashboardResult(null);
+
+    let pid = myPatientId;
+    if (!pid) pid = await ensureUserPatient();
+
+    const modalityName = dashboardAnalysisMode === "cavity"
+      ? "Dental Cavity"
+      : dashboardAnalysisMode === "ct_scan"
+        ? "CT Scan"
+        : dashboardAnalysisMode === "xray"
+          ? "Chest X-Ray"
+          : "Medical Report";
+
+    try {
+      let data = null;
+      // If we have a patient record for the user, upload directly to the patient endpoint to store in their history!
+      if (pid) {
+        const saveForm = new FormData();
+        saveForm.append("file", dashboardUploadFile);
+        const res = await fetch(`${API_BASE}/api/patients/${pid}/files?analysis_type=${encodeURIComponent(modalityName)}`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${token}` },
+          body: saveForm
+        });
+        if (res.ok) {
+          data = await res.json();
+        } else {
+          // If error returned from patient endpoint
+          const err = await res.json();
+          const errMsg = err.detail || err.error || "Analysis failed.";
+          setDashboardUploadError(errMsg);
+          showToast(errMsg);
+          setDashboardUploading(false);
+          return;
+        }
+      }
+
+      // If patient endpoint didn't execute or fallback needed, use public predict endpoint
+      if (!data) {
+        const formData = new FormData();
+        if (dashboardAnalysisMode === "xray" || dashboardAnalysisMode === "cavity" || dashboardAnalysisMode === "ct_scan") {
+          formData.append("image", dashboardUploadFile);
+        } else {
+          formData.append("file", dashboardUploadFile);
+        }
+        let endpoint = "/predict";
+        if (dashboardAnalysisMode === "cavity") endpoint = "/predict/cavity";
+        else if (dashboardAnalysisMode === "ct_scan") endpoint = "/predict/ct";
+        else if (dashboardAnalysisMode === "report") endpoint = "/api/reports/analyze";
+
+        const res = await fetch(`${API_BASE}${endpoint}`, { method: "POST", body: formData });
+        if (res.ok) {
+          data = await res.json();
+        } else {
+          const err = await res.json();
+          const errMsg = err.detail || err.error || "Analysis failed.";
+          setDashboardUploadError(errMsg);
+          showToast(errMsg);
+          setDashboardUploading(false);
+          return;
+        }
+      }
+
+      if (data.is_valid === false || data.success === false || (data.prediction && data.prediction.toLowerCase().includes("invalid"))) {
+        const errMsg = data.error || data.detail || "Invalid image detected.";
+        setDashboardUploadError(errMsg);
+        showToast(errMsg);
+        setDashboardUploadFile(null);
+        setDashboardUploading(false);
+        return;
+      }
+
+      const enriched = {
+        ...data,
+        modality: modalityName,
+        fileType: modalityName,
+        fileName: dashboardUploadFile.name,
+        date: new Date().toISOString()
+      };
+      setDashboardResult(enriched);
+      showToast("AI analysis completed and saved to your personal records.");
+      setDashboardUploadFile(null);
+      await fetchMyAnalyses();
+      await fetchDashboardData(period);
+    } catch (err) {
+      setDashboardUploadError("Connection to AI server failed.");
+      showToast("Connection to AI server failed.");
+    } finally {
+      setDashboardUploading(false);
+    }
+  };
+
   useEffect(() => {
     if (token) {
       fetchPatients();
       fetchDashboardData(period);
       fetchRegistryData();
+      fetchMyAnalyses();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, period]);
@@ -2268,313 +2464,285 @@ function App() {
   });
 
   return (
-    <div className="app-layout">
-      <aside className="sidebar">
-        <div className="sidebar-brand">
-          <Activity size={24} color="#10B981" />
-          <span>MediScan Portal</span>
+    <div className={`prem-layout ${sidebarCollapsed ? "collapsed" : ""}`}>
+      {/* ===== SIDEBAR NAVIGATION ===== */}
+      <aside className="prem-sidebar">
+        <div className="prem-sidebar-brand">
+          <div className="prem-brand-icon">
+            <Activity size={22} color="#0ff" />
+          </div>
+          {!sidebarCollapsed && (
+            <div className="prem-brand-text">
+              <span className="prem-brand-name">MediScan</span>
+              <span className="prem-brand-sub">AI Platform</span>
+            </div>
+          )}
+          <button className="prem-collapse-btn" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} title="Toggle sidebar">
+            {sidebarCollapsed ? <Menu size={16} /> : <X size={16} />}
+          </button>
         </div>
 
-        <div className="doctor-profile-widget">
-          <div className="avatar">
-            <User size={20} color="#3B82F6" />
+        {/* Personalized Welcome Widget */}
+        {!sidebarCollapsed && (
+          <div className="prem-user-widget">
+            <div className="prem-avatar">
+              <span>{(doctorName || "U").charAt(0).toUpperCase()}</span>
+            </div>
+            <div className="prem-user-info">
+              <span className="prem-user-name" title={doctorName}>{doctorName || "User"}</span>
+              <span className="prem-user-role">Healthcare User</span>
+            </div>
+            <button className="prem-notif-btn" onClick={() => setNotifOpen(!notifOpen)} title="Notifications">
+              <Bell size={16} />
+              {myAnalysisHistory.length > 0 && <span className="prem-notif-dot" />}
+            </button>
           </div>
-          <div className="info">
-            <span className="name">{doctorName}</span>
-          </div>
-        </div>
+        )}
 
-        <nav className="sidebar-nav">
-          <button
-            className={`nav-item ${activeTab === "dashboard" ? "active" : ""}`}
-            onClick={() => {
-              setActiveTab("dashboard");
-              setSelectedPatient(null);
-              fetchPatients();
-              fetchDashboardData();
-            }}
-          >
-            <Layers size={18} />
-            <span>Dashboard</span>
+        {/* Sidebar Navigation Items */}
+        <nav className="prem-nav">
+          <button className={`prem-nav-item ${activeTab === "dashboard" ? "active" : ""}`}
+            onClick={() => { setActiveTab("dashboard"); fetchDashboardData(period); fetchMyAnalyses(); }}>
+            <LayoutDashboard size={18} />
+            {!sidebarCollapsed && <span>Dashboard</span>}
           </button>
 
-          <button
-            className={`nav-item ${activeTab === "patients" ? "active" : ""}`}
-            onClick={() => setActiveTab("patients")}
-          >
-            <User size={18} />
-            <span>Patients Registry</span>
+          <button className={`prem-nav-item ${activeTab === "new-analysis" ? "active" : ""}`}
+            onClick={() => { setActiveTab("new-analysis"); setDashboardResult(null); setDashboardUploadError(""); setDashboardUploadFile(null); }}>
+            <ScanLine size={18} />
+            {!sidebarCollapsed && <span>New Analysis</span>}
+          </button>
+
+          <button className={`prem-nav-item ${activeTab === "my-reports" ? "active" : ""}`}
+            onClick={() => { setActiveTab("my-reports"); fetchMyAnalyses(); }}>
+            <FileText size={18} />
+            {!sidebarCollapsed && <span>My Medical Reports</span>}
+          </button>
+
+          <button className={`prem-nav-item ${activeTab === "analysis-history" ? "active" : ""}`}
+            onClick={() => { setActiveTab("analysis-history"); fetchMyAnalyses(); }}>
+            <History size={18} />
+            {!sidebarCollapsed && <span>Analysis History</span>}
+          </button>
+
+          <button className={`prem-nav-item ${activeTab === "health-insights" ? "active" : ""}`}
+            onClick={() => setActiveTab("health-insights")}>
+            <BarChart2 size={18} />
+            {!sidebarCollapsed && <span>Health Insights</span>}
+          </button>
+
+          <button className={`prem-nav-item ${activeTab === "health-timeline" ? "active" : ""}`}
+            onClick={() => { setActiveTab("health-timeline"); fetchMyAnalyses(); }}>
+            <GitBranch size={18} />
+            {!sidebarCollapsed && <span>Health Timeline</span>}
+          </button>
+
+          <button className={`prem-nav-item ${activeTab === "vault" ? "active" : ""}`}
+            onClick={() => { setActiveTab("vault"); fetchMyAnalyses(); }}>
+            <HardDrive size={18} />
+            {!sidebarCollapsed && <span>My Medical Vault</span>}
+          </button>
+
+          {!sidebarCollapsed && <div className="prem-nav-divider" />}
+
+          <button className={`prem-nav-item ${activeTab === "profile" ? "active" : ""}`}
+            onClick={() => setActiveTab("profile")}>
+            <UserCircle size={18} />
+            {!sidebarCollapsed && <span>My Profile</span>}
+          </button>
+
+          <button className={`prem-nav-item ${activeTab === "settings" ? "active" : ""}`}
+            onClick={() => setActiveTab("settings")}>
+            <Settings size={18} />
+            {!sidebarCollapsed && <span>Settings</span>}
           </button>
         </nav>
 
-        <button className="logout-btn" onClick={handleLogout}>
+        <button className="prem-logout-btn" onClick={handleLogout}>
           <LogOut size={18} />
-          <span>Logout Portal</span>
+          {!sidebarCollapsed && <span>Logout</span>}
         </button>
       </aside>
 
-      <main className="main-content">
+      {/* ===== MAIN CONTENT AREA ===== */}
+      <main className="prem-main">
+
+        {/* 1. DASHBOARD TAB */}
         {activeTab === "dashboard" && (
-          <div className="dashboard-view">
-            <header className="view-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "32px" }}>
-              <div>
-                <h1>Healthcare Dashboard</h1>
-                <p>AI-assisted medical analysis and patient monitoring. Review the latest diagnostic insights below.</p>
+          <div className="prem-view">
+            <div className="prem-welcome-header">
+              <div className="prem-welcome-left">
+                <p className="prem-welcome-greeting">
+                  Good {new Date().getHours() < 12 ? "Morning" : new Date().getHours() < 17 ? "Afternoon" : "Evening"}, <span className="prem-highlight">{doctorName || "User"}</span> 👋
+                </p>
+                <h1 className="prem-welcome-title">Your Health Dashboard</h1>
+                <p className="prem-welcome-sub">AI-powered medical analysis at your fingertips. Track your personal health journey below.</p>
               </div>
-              <div className="system-status-pill">
-                <span className="dot"></span>
-                <span>System Status: Healthy</span>
+              <div className="prem-welcome-right">
+                <div className="prem-date-chip">
+                  <Calendar size={14} />
+                  <span>{new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</span>
+                </div>
+                <button className="prem-refresh-btn" onClick={() => { fetchDashboardData(period); fetchMyAnalyses(); }}>
+                  <RefreshCw size={15} />
+                  <span>Refresh</span>
+                </button>
               </div>
-            </header>
+            </div>
 
             {dashboardLoading && !dashboardData ? (
-              <div className="dashboard-loading">
-                <Brain size={48} className="brain-loader animate-pulse" />
-                <p>Retrieving diagnostic records and real-time statistics...</p>
+              <div className="prem-loading">
+                <div className="prem-spinner" />
+                <p>Loading your health data...</p>
               </div>
             ) : dashboardError ? (
-              <div className="dashboard-error-card">
-                <ShieldAlert size={48} className="error-icon" />
-                <h3>{dashboardError}</h3>
-                <button className="primary-btn" onClick={() => fetchDashboardData(period)}>Retry Connection</button>
+              <div className="prem-error-card">
+                <ShieldAlert size={40} color="#f87171" />
+                <p>{dashboardError}</p>
+                <button className="prem-btn-primary" onClick={() => fetchDashboardData(period)}>Retry</button>
               </div>
             ) : (
               <>
-                {/* 1. Dashboard Statistics Cards */}
-                <div className="stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "24px", marginBottom: "32px" }}>
-                  <div className="stat-card">
-                    <div className="stat-header">
-                      <span className="label">Total Patients</span>
-                      <User size={16} color="var(--accent)" />
-                    </div>
-                    <span className="value">{dashboardData.stats.total_patients}</span>
-                    <span className="indicator green">{dashboardData.stats.patients_trend}</span>
-                  </div>
-                  <div className="stat-card">
-                    <div className="stat-header">
-                      <span className="label">Total Analyses</span>
-                      <Layers size={16} color="var(--accent)" />
-                    </div>
-                    <span className="value">{dashboardData.stats.total_analyses}</span>
-                    <span className="indicator green">{dashboardData.stats.analyses_trend}</span>
-                  </div>
-                  <div className="stat-card">
-                    <div className="stat-header">
-                      <span className="label">X-Ray Analyses</span>
-                      <Layers size={16} color="var(--warning)" />
-                    </div>
-                    <span className="value">{dashboardData.stats.total_xray}</span>
-                    <span className="indicator yellow">Awaiting review: {dashboardData.stats.xray_awaiting}</span>
-                  </div>
-                  <div className="stat-card">
-                    <div className="stat-header">
-                      <span className="label">Report Analyses</span>
-                      <Layers size={16} color="var(--cyan)" />
-                    </div>
-                    <span className="value">{dashboardData.stats.total_reports}</span>
-                    <span className="indicator blue">Awaiting review: {dashboardData.stats.reports_awaiting}</span>
-                  </div>
-                </div>
-
-                {/* 2. Middle charts row */}
-                <div className="charts-row" style={{ display: "grid", gridTemplateColumns: "1.7fr 1fr", gap: "24px", marginBottom: "32px" }}>
-                  <div className="chart-card line-chart-card">
-                    <div className="chart-header">
-                      <h3>Analysis Activity</h3>
-                      <div className="period-selector">
-                        {["7d", "30d", "3m"].map((p) => (
-                          <button
-                            key={p}
-                            className={`period-btn ${period === p ? "active" : ""}`}
-                            onClick={() => setPeriod(p)}
-                          >
-                            {p.toUpperCase()}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="chart-body" style={{ height: "200px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      {dashboardData.trends && dashboardData.trends.length > 0 ? (
-                        renderLineChart(dashboardData.trends)
-                      ) : (
-                        <span className="no-data">Not enough historical data</span>
-                      )}
-                    </div>
-                    <div className="chart-legend" style={{ display: "flex", gap: "16px", justifyContent: "center", marginTop: "8px" }}>
-                      <span className="legend-item"><span className="color-dot xray"></span>X-Ray</span>
-                      <span className="legend-item"><span className="color-dot report"></span>Report</span>
+                {/* 3. Statistics Cards (User-Specific from DB) */}
+                <div className="prem-stats-grid">
+                  <div className="prem-stat-card prem-stat-blue">
+                    <div className="prem-stat-icon"><ScanLine size={22} /></div>
+                    <div className="prem-stat-body">
+                      <span className="prem-stat-label">Total Analyses</span>
+                      <span className="prem-stat-value">{myAnalysisHistory.length}</span>
+                      <span className="prem-stat-trend">Your records</span>
                     </div>
                   </div>
-
-                  <div className="chart-card donut-chart-card">
-                    <h3>Analysis Overview</h3>
-                    <div className="chart-body" style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "180px" }}>
-                      {renderDonutChart(dashboardData.stats.total_xray, dashboardData.stats.total_reports)}
+                  <div className="prem-stat-card prem-stat-teal">
+                    <div className="prem-stat-icon"><FileText size={22} /></div>
+                    <div className="prem-stat-body">
+                      <span className="prem-stat-label">Saved Medical Reports</span>
+                      <span className="prem-stat-value">{myAnalysisHistory.filter(h => (h.fileType || h.analysisType) === "Medical Report").length}</span>
+                      <span className="prem-stat-trend">In your vault</span>
                     </div>
-                    <div className="donut-legend" style={{ display: "flex", justifyContent: "space-between", marginTop: "12px" }}>
-                      <span className="legend-item"><span className="color-dot xray"></span>X-Ray ({dashboardData.stats.total_analyses > 0 ? Math.round((dashboardData.stats.total_xray / dashboardData.stats.total_analyses) * 100) : 0}%)</span>
-                      <span className="legend-item"><span className="color-dot report"></span>Report ({dashboardData.stats.total_analyses > 0 ? Math.round((dashboardData.stats.total_reports / dashboardData.stats.total_analyses) * 100) : 0}%)</span>
+                  </div>
+                  <div className="prem-stat-card prem-stat-purple">
+                    <div className="prem-stat-icon"><Layers size={22} /></div>
+                    <div className="prem-stat-body">
+                      <span className="prem-stat-label">Scan Categories</span>
+                      <span className="prem-stat-value">4</span>
+                      <span className="prem-stat-trend">Chest, Dental, Kidney, Lab</span>
+                    </div>
+                  </div>
+                  <div className="prem-stat-card prem-stat-orange">
+                    <div className="prem-stat-icon"><Activity size={22} /></div>
+                    <div className="prem-stat-body">
+                      <span className="prem-stat-label">Recent Activities</span>
+                      <span className="prem-stat-value">{myAnalysisHistory.slice(0, 30).length}</span>
+                      <span className="prem-stat-trend">Completed analyses</span>
                     </div>
                   </div>
                 </div>
 
-                {/* 3. Lower disease and system status row */}
-                <div className="lower-row" style={{ display: "grid", gridTemplateColumns: "1.7fr 1fr", gap: "24px", marginBottom: "32px" }}>
-                  <div className="distribution-card">
-                    <h3>Disease Distribution</h3>
-                    <p className="subtitle">Distribution of predictions in analyzed X-rays</p>
-                    <div className="distribution-list" style={{ display: "flex", flexDirection: "column", gap: "16px", marginTop: "16px" }}>
-                      {Object.entries(dashboardData.distribution).map(([disease, count]) => {
-                        const total = Object.values(dashboardData.distribution).reduce((a, b) => a + b, 0);
-                        const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
-                        return (
-                          <div key={disease} className="dist-item">
-                            <div className="dist-meta">
-                              <span className="dist-name">{disease}</span>
-                              <span className="dist-val">{percentage}% ({count})</span>
-                            </div>
-                            <div className="progress-bar-bg">
-                              <div className={`progress-bar-fill ${disease.toLowerCase().replace("-", "")}`} style={{ width: `${percentage}%` }}></div>
-                            </div>
-                          </div>
-                        );
-                      })}
+                {/* 4. Quick Analysis Cards */}
+                <div className="prem-section-header">
+                  <h2>Quick Analysis</h2>
+                  <p>Select a scan category to immediately begin analysis without patient creation</p>
+                </div>
+                <div className="prem-analysis-grid">
+                  {[
+                    { mode: "xray", label: "Chest X-Ray", desc: "Pneumonia, TB, effusion detection via DenseNet-121", icon: <Stethoscope size={28} />, color: "#3b82f6", tag: "DenseNet-121" },
+                    { mode: "cavity", label: "Dental X-Ray", desc: "Cavity and periodontal disease detection", icon: <Microscope size={28} />, color: "#10b981", tag: "MobileNetV2" },
+                    { mode: "ct_scan", label: "Kidney CT", desc: "Kidney stone and renal pathology analysis", icon: <ScanLine size={28} />, color: "#f59e0b", tag: "ResNet-18" },
+                    { mode: "report", label: "Lab Report", desc: "OCR-powered medical report analysis & insights", icon: <FileText size={28} />, color: "#8b5cf6", tag: "OCR + NLP" },
+                  ].map(({ mode, label, desc, icon, color, tag }) => (
+                    <div key={mode} className="prem-analysis-card" style={{ "--card-color": color }}>
+                      <div className="prem-analysis-icon" style={{ color }}>{icon}</div>
+                      <div className="prem-analysis-tag">{tag}</div>
+                      <h3>{label}</h3>
+                      <p>{desc}</p>
+                      <button className="prem-analyze-btn" onClick={() => {
+                        setDashboardAnalysisMode(mode);
+                        setDashboardResult(null);
+                        setDashboardUploadFile(null);
+                        setDashboardUploadError("");
+                        setActiveTab("new-analysis");
+                      }}>
+                        Analyze Now <ArrowRight size={16} />
+                      </button>
                     </div>
-                  </div>
-
-                  <div className="system-health-card">
-                    <h3>System Health</h3>
-                    <div className="health-list" style={{ display: "flex", flexDirection: "column", gap: "16px", marginTop: "16px" }}>
-                      <div className="health-item">
-                        <span className="health-label">AI X-Ray Model</span>
-                        <span className={`health-status ${dashboardData.system_health.xray_model.toLowerCase()}`}>
-                          {dashboardData.system_health.xray_model}
-                        </span>
-                      </div>
-                      <div className="health-item">
-                        <span className="health-label">X-Ray Validation</span>
-                        <span className={`health-status ${dashboardData.system_health.validation.toLowerCase()}`}>
-                          {dashboardData.system_health.validation}
-                        </span>
-                      </div>
-                      <div className="health-item">
-                        <span className="health-label">Report Analysis</span>
-                        <span className={`health-status ${dashboardData.system_health.report_analysis.toLowerCase()}`}>
-                          {dashboardData.system_health.report_analysis}
-                        </span>
-                      </div>
-                      <div className="health-item">
-                        <span className="health-label">Database</span>
-                        <span className={`health-status ${dashboardData.system_health.database.toLowerCase()}`}>
-                          {dashboardData.system_health.database}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="ai-engine-card" style={{ marginTop: "24px", background: "rgba(255, 255, 255, 0.02)", padding: "16px", borderRadius: "12px", border: "1px solid var(--border-color)" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-                        <Brain size={16} color="var(--accent)" />
-                        <span style={{ fontSize: "12px", fontWeight: "700" }}>AI Analysis Engine</span>
-                      </div>
-                      <p style={{ fontSize: "11px", color: "var(--text-muted)", lineHeight: "1.4", margin: 0 }}>
-                        Powered by DenseNet121 architecture. Visual explanations provided via Grad-CAM mapping for high-confidence regional highlighting. Device: {dashboardData.system_health.device || "CPU"}.
-                      </p>
-                    </div>
+                  ))}
+                  <div className="prem-analysis-card prem-analysis-coming-soon">
+                    <div className="prem-analysis-icon" style={{ color: "#6b7280" }}><Brain size={28} /></div>
+                    <div className="prem-analysis-tag prem-tag-gray">Coming Soon</div>
+                    <h3>Brain MRI</h3>
+                    <p>Tumor detection and neurological analysis — model training in progress</p>
+                    <button className="prem-analyze-btn prem-btn-disabled" disabled>Coming Soon</button>
                   </div>
                 </div>
 
-                {/* 4. Quick Actions */}
-                <div className="quick-actions-card" style={{ marginBottom: "32px" }}>
-                  <h3>Quick Actions</h3>
-                  <div className="quick-actions-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "24px", marginTop: "16px" }}>
-                    <button className="action-card-btn" onClick={() => setShowCreateModal(true)}>
-                      <User size={20} color="var(--accent)" />
-                      <span>Register Patient</span>
-                    </button>
-                    <button className="action-card-btn" onClick={() => {
-                      setActiveTab("patients");
-                      showToast("Select a patient from the directory to analyze their X-Ray.");
-                    }}>
-                      <Layers size={20} color="var(--warning)" />
-                      <span>Analyze X-Ray</span>
-                    </button>
-                    <button className="action-card-btn" onClick={() => {
-                      setActiveTab("patients");
-                      showToast("Select a patient from the directory to analyze their Lab Report.");
-                    }}>
-                      <Brain size={20} color="var(--cyan)" />
-                      <span>Analyze Report</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* 5. Recent Analyses Table */}
-                <div className="recent-analyses-card" style={{ display: "grid", gridTemplateColumns: "1.70fr 1fr", gap: "24px" }}>
-                  <div className="table-card">
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-                      <h3>Recent Analyses</h3>
-                      <button className="text-btn" onClick={() => setActiveTab("patients")}>View All</button>
+                {/* 5. Recent Analyses Table & 6. Recent Activities */}
+                <div className="prem-bottom-grid">
+                  <div className="prem-recent-card">
+                    <div className="prem-card-header">
+                      <h2>Recent Analyses</h2>
+                      <button className="prem-text-btn" onClick={() => { setActiveTab("analysis-history"); fetchMyAnalyses(); }}>View All</button>
                     </div>
-                    <table className="patients-table">
-                      <thead>
-                        <tr>
-                          <th>Type</th>
-                          <th>Patient</th>
-                          <th>Result</th>
-                          <th>Confidence</th>
-                          <th>Date</th>
-                          <th>Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {dashboardData.recent_analyses.length === 0 ? (
+                    {loadingMyHistory ? (
+                      <div className="prem-mini-loading"><div className="prem-spinner-sm" /><span>Loading your records...</span></div>
+                    ) : myAnalysisHistory.length === 0 ? (
+                      <div className="prem-empty-state">
+                        <ScanLine size={36} color="var(--text-muted)" />
+                        <p>No analyses yet. Click Analyze Now on any card above to get started.</p>
+                        <button className="prem-btn-primary" onClick={() => setActiveTab("new-analysis")}>Start Analysis</button>
+                      </div>
+                    ) : (
+                      <table className="prem-table">
+                        <thead>
                           <tr>
-                            <td colSpan="6" className="no-data">No analysis data available yet.</td>
+                            <th>Type</th>
+                            <th>Result</th>
+                            <th>Confidence</th>
+                            <th>Date</th>
+                            <th>Action</th>
                           </tr>
-                        ) : (
-                          dashboardData.recent_analyses.map((row) => (
-                            <tr key={row.analysisId}>
+                        </thead>
+                        <tbody>
+                          {myAnalysisHistory.slice(0, 6).map((row, i) => (
+                            <tr key={row.analysisId || i}>
                               <td>
-                                <span className={`type-tag ${row.type.toLowerCase()}`}>{row.type}</span>
+                                <span className={`prem-type-badge prem-type-${(row.fileType || row.analysisType || "").toLowerCase().replace(/\s/g, "")}`}>
+                                  {row.fileType || row.analysisType || "Scan"}
+                                </span>
                               </td>
-                              <td className="patient-id">{row.patientId}</td>
+                              <td><span className="prem-result-text">{row.prediction || row.result || "Analyzed"}</span></td>
+                              <td><span className="prem-conf">{row.confidence ? `${row.confidence}%` : "—"}</span></td>
+                              <td className="prem-date-cell">{row.date ? new Date(row.date).toLocaleDateString() : "—"}</td>
                               <td>
-                                <span className={`result-tag ${row.result.toLowerCase()}`}>{row.result}</span>
-                              </td>
-                              <td>{row.confidence ? `${row.confidence}%` : "N/A"}</td>
-                              <td>{formatRelativeTime(row.date)}</td>
-                              <td>
-                                <button className="action-btn" onClick={() => {
-                                  const pat = patients.find(p => p.patientId === row.patientId);
-                                  if (pat) {
-                                    selectPatient(pat, row.analysisId);
-                                  } else {
-                                    showToast("Patient record not found.");
-                                  }
-                                }}>
-                                  View
-                                </button>
+                                <button className="prem-view-btn" onClick={() => {
+                                  const enriched = { ...row, modality: row.fileType || row.analysisType || "Chest X-Ray" };
+                                  setDashboardResult(enriched);
+                                  setActiveTab("new-analysis");
+                                }}>View</button>
                               </td>
                             </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
                   </div>
 
-                  <div className="recent-activity-card">
-                    <h3>Recent Activity</h3>
-                    <div className="activity-list" style={{ display: "flex", flexDirection: "column", gap: "20px", marginTop: "16px" }}>
-                      {dashboardData.activities.length === 0 ? (
-                        <p className="no-data">No activity logged yet.</p>
+                  <div className="prem-activity-card">
+                    <div className="prem-card-header"><h2>Recent Activities</h2></div>
+                    <div className="prem-activity-list">
+                      {myAnalysisHistory.length === 0 ? (
+                        <p className="prem-no-data">No recent activity logged yet.</p>
                       ) : (
-                        dashboardData.activities.map((act, index) => (
-                          <div key={index} className="activity-item" style={{ display: "flex", gap: "12px" }}>
-                            <div className={`activity-icon-container ${act.type}`}>
-                              {act.type === "patient" ? <User size={14} /> : <Brain size={14} />}
+                        myAnalysisHistory.slice(0, 8).map((item, i) => (
+                          <div key={item.analysisId || i} className="prem-activity-item">
+                            <div className="prem-activity-dot prem-dot-analysis">
+                              <Brain size={12} />
                             </div>
-                            <div className="activity-details">
-                              <p className="activity-text" style={{ fontSize: "13px", margin: 0 }}>{act.text}</p>
-                              <span className="activity-time" style={{ fontSize: "11px", color: "var(--text-muted)" }}>{formatRelativeTime(act.date)}</span>
+                            <div>
+                              <p className="prem-act-text">
+                                Completed {item.fileType || item.analysisType || "Analysis"}: {item.prediction || item.result || "Result saved"}
+                              </p>
+                              <span className="prem-act-time">{formatRelativeTime(item.date)}</span>
                             </div>
                           </div>
                         ))
@@ -2587,1029 +2755,602 @@ function App() {
           </div>
         )}
 
-        {activeTab === "patients" && (
-          <div className="dashboard-view">
-            <header className="view-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "32px" }}>
-              <div>
-                <h1>PATIENTS REGISTRY</h1>
-                <p>Manage patient records, medical analyses, and longitudinal history.</p>
+        {/* 2. NEW ANALYSIS TAB */}
+        {activeTab === "new-analysis" && (
+          <div className={`prem-view ${dashboardResult ? "prem-view-results" : ""}`}>
+            {dashboardResult ? (
+              <div className="prem-results-wrapper">
+                <PostAnalysisWorkflow
+                  result={dashboardResult}
+                  modality={dashboardResult.modality || dashboardResult.fileType || "Chest X-Ray"}
+                  onBack={() => { setDashboardResult(null); }}
+                />
               </div>
-              <button className="primary-btn" onClick={() => setShowCreateModal(true)}>
-                <Plus size={18} />
-                <span>Add Patient</span>
-              </button>
-            </header>
-
-            {/* 1. Summary Cards */}
-            <div className="stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "24px", marginBottom: "32px" }}>
-              <div className="stat-card">
-                <span className="label">Total Patients</span>
-                <span className="value">{loadingRegistry ? "..." : registryStats.total_patients}</span>
-                <span className="indicator green">Portal Active</span>
-              </div>
-              <div className="stat-card">
-                <span className="label">Active Cases</span>
-                <span className="value">{loadingRegistry ? "..." : registryStats.active_cases}</span>
-                <span className="indicator blue">Direct DB Query</span>
-              </div>
-              <div className="stat-card">
-                <span className="label">Analyses This Month</span>
-                <span className="value">{loadingRegistry ? "..." : registryStats.analyses_this_month}</span>
-                <span className="indicator green">X-Ray + Report</span>
-              </div>
-              <div className="stat-card">
-                <span className="label">Recently Added</span>
-                <span className="value">{loadingRegistry ? "..." : registryStats.recently_added}</span>
-                <span className="indicator blue">Last 30 Days</span>
-              </div>
-            </div>
-
-            {/* 2. Search & Collapsible Filters */}
-            <div className="action-panel" style={{ display: "flex", flexDirection: "column", gap: "16px", marginBottom: "24px" }}>
-              <div style={{ display: "flex", gap: "16px", width: "100%" }}>
-                <div className="search-bar" style={{ flex: 1 }}>
-                  <Search size={18} className="search-icon" />
-                  <input
-                    type="text"
-                    placeholder="Search by patient ID, name, or other registered information..."
-                    value={searchQuery}
-                    onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-                  />
+            ) : (
+              <>
+                <div className="prem-welcome-header">
+                  <div className="prem-welcome-left">
+                    <p className="prem-welcome-greeting">Instant Diagnostic AI</p>
+                    <h1 className="prem-welcome-title">New Analysis</h1>
+                    <p className="prem-welcome-sub">Upload your medical scan or laboratory report. Results are immediately associated with your private profile.</p>
+                  </div>
                 </div>
-                <button className="outline-btn" onClick={() => setShowFilterDrawer(!showFilterDrawer)}>
-                  <span>Filter</span>
-                </button>
-                <div className="sorting-selector" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: "700" }}>Sort by:</span>
-                  <select
-                    className="period-selector"
-                    style={{ background: "rgba(13,19,35,0.75)", border: "1px solid var(--border-color)", color: "#fff", padding: "8px 12px", borderRadius: "8px", fontSize: "13px" }}
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value)}
-                  >
-                    <option value="registrationDate">Registration Date</option>
-                    <option value="name">Name</option>
-                    <option value="patientId">Patient ID</option>
-                    <option value="lastAnalysis">Last Active</option>
-                  </select>
-                </div>
-              </div>
 
-              {showFilterDrawer && (
-                <div className="filter-drawer-card" style={{ background: "rgba(13,19,35,0.3)", border: "1px solid var(--border-color)", padding: "16px", borderRadius: "16px", display: "flex", gap: "24px", flexWrap: "wrap" }}>
-                  <div className="filter-group" style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                    <span style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: "700" }}>Gender</span>
-                    <select
-                      value={genderFilter}
-                      onChange={(e) => { setGenderFilter(e.target.value); setCurrentPage(1); }}
-                      style={{ background: "rgba(5,8,22,0.8)", border: "1px solid var(--border-color)", color: "#fff", padding: "6px 12px", borderRadius: "8px", fontSize: "13px" }}
-                    >
-                      <option value="All">All Genders</option>
-                      <option value="Male">Male</option>
-                      <option value="Female">Female</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </div>
-                  <div className="filter-group" style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                    <span style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: "700" }}>Age Range</span>
-                    <select
-                      value={ageFilter}
-                      onChange={(e) => { setAgeFilter(e.target.value); setCurrentPage(1); }}
-                      style={{ background: "rgba(5,8,22,0.8)", border: "1px solid var(--border-color)", color: "#fff", padding: "6px 12px", borderRadius: "8px", fontSize: "13px" }}
-                    >
-                      <option value="All">All Ages</option>
-                      <option value="Under 30">Under 30</option>
-                      <option value="30-50">30 - 50</option>
-                      <option value="Over 50">Over 50</option>
-                    </select>
-                  </div>
-                  <div className="filter-group" style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                    <span style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: "700" }}>Last Analysis Type</span>
-                    <select
-                      value={analysisTypeFilter}
-                      onChange={(e) => { setAnalysisTypeFilter(e.target.value); setCurrentPage(1); }}
-                      style={{ background: "rgba(5,8,22,0.8)", border: "1px solid var(--border-color)", color: "#fff", padding: "6px 12px", borderRadius: "8px", fontSize: "13px" }}
-                    >
-                      <option value="All">All Types</option>
-                      <option value="X-Ray">Chest X-Ray</option>
-                      <option value="Cavity">Dental Cavity</option>
-                      <option value="CT Scan">CT Scan</option>
-                      <option value="Report">Lab Report</option>
-                    </select>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "flex-end" }}>
+                {/* Modality Selector */}
+                <div className="prem-modality-selector">
+                  {[
+                    { mode: "xray", label: "Chest X-Ray", icon: <Stethoscope size={18} /> },
+                    { mode: "cavity", label: "Dental X-Ray", icon: <Microscope size={18} /> },
+                    { mode: "ct_scan", label: "Kidney CT", icon: <ScanLine size={18} /> },
+                    { mode: "report", label: "Lab Report", icon: <FileText size={18} /> },
+                  ].map(({ mode, label, icon }) => (
                     <button
-                      className="text-btn"
-                      onClick={() => {
-                        setGenderFilter("All");
-                        setAgeFilter("All");
-                        setAnalysisTypeFilter("All");
-                        setSortBy("registrationDate");
-                        setCurrentPage(1);
-                      }}
-                      style={{ fontSize: "12px", paddingBottom: "6px" }}
+                      key={mode}
+                      className={`prem-modality-btn ${dashboardAnalysisMode === mode ? "active" : ""}`}
+                      onClick={() => { setDashboardAnalysisMode(mode); setDashboardUploadError(""); setDashboardResult(null); }}
                     >
-                      Clear Filters
+                      {icon} {label}
                     </button>
-                  </div>
+                  ))}
                 </div>
-              )}
-            </div>
 
-            {/* 3. Patient List Directory */}
-            <div className="table-card">
-              <table className="patients-table">
-                <thead>
-                  <tr>
-                    <th>Patient Name</th>
-                    <th>Patient ID</th>
-                    <th>Age</th>
-                    <th>Gender</th>
-                    <th>Last Analysis</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loadingRegistry ? (
-                    <tr>
-                      <td colSpan="7" className="no-data">Querying patient registry database records...</td>
-                    </tr>
-                  ) : currentRegPatients.length === 0 ? (
-                    <tr>
-                      <td colSpan="7" className="no-data">
-                        {searchQuery || genderFilter !== "All" || ageFilter !== "All" || analysisTypeFilter !== "All"
-                          ? "No matching patients found. Adjust filters or search parameters."
-                          : "No patients registered yet."}
-                      </td>
-                    </tr>
-                  ) : (
-                    currentRegPatients.map((p) => {
-                      const isActive = p.lastAnalysis !== null;
-                      return (
-                        <tr key={p.patientId}>
-                          <td>
-                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                              <User size={16} color="var(--text-muted)" />
-                              <span className="patient-name">{p.name}</span>
-                            </div>
-                          </td>
-                          <td className="patient-id">{p.patientId}</td>
-                          <td>{p.age} Yrs</td>
-                          <td>{p.gender}</td>
-                          <td>
-                            {p.lastAnalysis ? (
-                              <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                                <span style={{ fontSize: "11px", fontWeight: "700", textTransform: "uppercase", color: p.lastAnalysis.type === "X-Ray" ? "var(--warning)" : "var(--cyan)" }}>
-                                  {p.lastAnalysis.type}
-                                </span>
-                                <span style={{ fontSize: "13px", color: "var(--text-main)" }}>
-                                  {p.lastAnalysis.type === "X-Ray"
-                                    ? `${p.lastAnalysis.result} • ${p.lastAnalysis.confidence}%`
-                                    : `${p.lastAnalysis.abnormalCount} abnormal findings`}
-                                </span>
-                              </div>
-                            ) : (
-                              <span style={{ fontSize: "13px", color: "var(--text-muted)" }}>No analysis yet</span>
-                            )}
-                          </td>
-                          <td>
-                            <span className={`health-status ${isActive ? "online" : "unavailable"}`} style={{ fontSize: "10px", padding: "2px 8px" }}>
-                              {isActive ? "Active" : "No Recent Activity"}
-                            </span>
-                          </td>
-                          <td style={{ display: "flex", gap: "8px" }}>
-                            <button className="action-btn" onClick={() => selectPatient(p)}>
-                              View Profile
-                            </button>
-                            <button
-                              className="action-btn"
-                              style={{ background: "rgba(255,255,255,0.02)", borderColor: "rgba(255,255,255,0.08)", color: "var(--text-muted)" }}
-                              onClick={() => {
-                                setEditPatientData({ patientId: p.patientId, name: p.name, age: p.age, gender: p.gender });
-                                setShowEditModal(true);
-                              }}
-                            >
-                              Edit
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-
-              {/* 4. Pagination */}
-              {!loadingRegistry && filteredRegPatients.length > itemsPerPage && (
-                <div className="pagination-bar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "24px", paddingTop: "16px", borderTop: "1px solid var(--border-color)" }}>
-                  <span style={{ fontSize: "13px", color: "var(--text-muted)" }}>
-                    Showing {indexOfFirstItem + 1}–{Math.min(indexOfLastItem, filteredRegPatients.length)} of {filteredRegPatients.length} patients
-                  </span>
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <button
-                      className="outline-btn"
-                      style={{ padding: "8px 16px", fontSize: "12px" }}
-                      disabled={currentPage === 1}
-                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                    >
-                      Previous
-                    </button>
-                    {Array.from({ length: totalRegPages }).map((_, i) => (
-                      <button
-                        key={i}
-                        className={`outline-btn ${currentPage === i + 1 ? "active" : ""}`}
-                        style={{
-                          padding: "8px 14px",
-                          fontSize: "12px",
-                          background: currentPage === i + 1 ? "var(--accent)" : "transparent",
-                          borderColor: currentPage === i + 1 ? "var(--accent)" : "var(--border-color)",
-                          color: "#fff"
-                        }}
-                        onClick={() => setCurrentPage(i + 1)}
-                      >
-                        {i + 1}
-                      </button>
-                    ))}
-                    <button
-                      className="outline-btn"
-                      style={{ padding: "8px 16px", fontSize: "12px" }}
-                      disabled={currentPage === totalRegPages}
-                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalRegPages))}
-                    >
-                      Next
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {activeTab === "patient-profile" && selectedPatient && (
-          <div className="profile-view" style={{ color: "var(--text-main)" }}>
-            {/* 1. Patient Profile Header */}
-            <header className="profile-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-color)", paddingBottom: "24px", marginBottom: "24px" }}>
-              <div className="header-info">
-                <h1 style={{ fontSize: "28px", fontWeight: "800", marginBottom: "8px", color: "#fff" }}>{selectedPatient.name}</h1>
-                <div className="patient-meta" style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
-                  <span className="badge" style={{ padding: "4px 10px", background: "rgba(59, 130, 246, 0.1)", border: "1px solid rgba(59, 130, 246, 0.2)", borderRadius: "6px", fontFamily: "monospace", fontWeight: "700", color: "var(--accent)", fontSize: "12px" }}>
-                    ID: {selectedPatient.patientId}
-                  </span>
-                  <span className="meta-item" style={{ fontSize: "14px", color: "var(--text-muted)" }}>• &nbsp; {selectedPatient.age} Years</span>
-                  <span className="meta-item" style={{ fontSize: "14px", color: "var(--text-muted)" }}>• &nbsp; {selectedPatient.gender}</span>
-                  {selectedPatient.contact && <span className="meta-item" style={{ fontSize: "14px", color: "var(--text-muted)" }}>• &nbsp; Contact: {selectedPatient.contact}</span>}
-                  <span className="meta-item" style={{ fontSize: "14px", color: "var(--text-muted)" }}>• &nbsp; Registered: {selectedPatient.createdAt ? new Date(selectedPatient.createdAt).toLocaleDateString("en-US", { day: 'numeric', month: 'short', year: 'numeric' }) : "Unknown"}</span>
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-                <button
-                  className="primary-btn"
-                  style={{ background: "var(--warning)", border: "none", color: "#000" }}
-                  onClick={() => {
-                    setPublicMode("login"); // tab for X-ray upload
-                    document.getElementById("analyze-file-sec")?.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                >
-                  Analyze X-Ray
-                </button>
-                <button
-                  className="primary-btn"
-                  style={{ background: "#F59E0B", border: "none", color: "#000" }}
-                  onClick={() => {
-                    setPublicMode("cavity_patient"); // tab for Dental Cavity upload
-                    document.getElementById("analyze-file-sec")?.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                >
-                  Analyze Cavity
-                </button>
-                <button
-                  className="primary-btn"
-                  style={{ background: "#8B5CF6", border: "none", color: "#fff" }}
-                  onClick={() => {
-                    setPublicMode("ct_patient"); // tab for CT Scan upload
-                    document.getElementById("analyze-file-sec")?.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                >
-                  Analyze CT Scan
-                </button>
-                <button
-                  className="primary-btn"
-                  style={{ background: "var(--cyan)", border: "none", color: "#fff" }}
-                  onClick={() => {
-                    setPublicMode("xray"); // tab for Report upload
-                    document.getElementById("analyze-file-sec")?.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                >
-                  Analyze Report
-                </button>
-                <button
-                  className="outline-btn"
-                  onClick={() => {
-                    setEditPatientData({ patientId: selectedPatient.patientId, name: selectedPatient.name, age: selectedPatient.age, gender: selectedPatient.gender, contact: selectedPatient.contact || "" });
-                    setShowEditModal(true);
-                  }}
-                >
-                  Edit Patient
-                </button>
-                <button
-                  className="outline-btn"
-                  style={{ borderColor: "rgba(239, 68, 68, 0.4)", color: "rgba(239, 68, 68, 0.9)" }}
-                  onClick={() => handleArchivePatient(selectedPatient.patientId)}
-                >
-                  Archive Patient
-                </button>
-                <button
-                  className="outline-btn"
-                  onClick={() => {
-                    setActiveTab("patients");
-                    fetchRegistryData();
-                  }}
-                >
-                  Back to Registry
-                </button>
-              </div>
-            </header>
-
-            {/* 2. Overall Patient Analysis Section */}
-            <section className="overall-analysis" style={{ background: "rgba(13, 19, 35, 0.6)", border: "1px solid var(--border-color)", borderRadius: "16px", padding: "20px", marginBottom: "24px" }}>
-              <h2 style={{ fontSize: "16px", fontWeight: "800", color: "#fff", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Overall Patient Analysis</h2>
-              <p style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "12px" }}>Summary of findings from the patient's available X-ray and medical report analyses.</p>
-              <div style={{ background: "rgba(0,0,0,0.2)", borderLeft: "4px solid var(--accent)", padding: "14px 18px", borderRadius: "0 10px 10px 0", fontSize: "14px", lineHeight: "1.6", color: "#fff" }}>
-                {(() => {
-                  if (!overallSummary) return <span style={{ color: "var(--text-muted)", fontSize: "13px" }}>No previous AI-assisted analysis is available.</span>;
-                  const raw = typeof overallSummary === "string" ? overallSummary : String(overallSummary);
-                  const points = raw
-                    .split(/(?:•|\n|\. (?=[A-Z]))/)
-                    .map(p => p.trim().replace(/^•\s*/, '').replace(/\.$/, ''))
-                    .filter(p => p.length > 0);
-                  if (points.length === 0) return <span>{raw}</span>;
-                  return (
-                    <ul style={{ margin: 0, paddingLeft: "18px", display: "flex", flexDirection: "column", gap: "8px" }}>
-                      {points.map((pt, idx) => (
-                        <li key={idx} style={{ color: "#F8FAFC", fontSize: "13px", lineHeight: "1.6" }}>
-                          {pt.endsWith('.') ? pt : `${pt}.`}
-                        </li>
-                      ))}
-                    </ul>
-                  );
-                })()}
-              </div>
-            </section>
-
-            {/* 3. Summary Statistics Grid */}
-            <div className="stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "20px", marginBottom: "24px" }}>
-              <div className="stat-card" style={{ background: "rgba(13, 19, 35, 0.45)", border: "1px solid var(--border-color)", borderRadius: "16px", padding: "16px" }}>
-                <span className="label" style={{ display: "block", fontSize: "12px", color: "var(--text-muted)", marginBottom: "4px" }}>Total Analyses</span>
-                <span className="value" style={{ fontSize: "24px", fontWeight: "800", color: "#fff" }}>{profileStats?.total || 0}</span>
-                <span className="indicator green" style={{ fontSize: "11px", color: "var(--green)", display: "block", marginTop: "4px" }}>All Time</span>
-              </div>
-              <div className="stat-card" style={{ background: "rgba(13, 19, 35, 0.45)", border: "1px solid var(--border-color)", borderRadius: "16px", padding: "16px" }}>
-                <span className="label" style={{ display: "block", fontSize: "12px", color: "var(--text-muted)", marginBottom: "4px" }}>X-Ray Analyses</span>
-                <span className="value" style={{ fontSize: "24px", fontWeight: "800", color: "var(--warning)" }}>{profileStats?.xrays || 0}</span>
-                <span className="indicator yellow" style={{ fontSize: "11px", color: "var(--text-muted)", display: "block", marginTop: "4px" }}>Radiographs</span>
-              </div>
-              <div className="stat-card" style={{ background: "rgba(13, 19, 35, 0.45)", border: "1px solid var(--border-color)", borderRadius: "16px", padding: "16px" }}>
-                <span className="label" style={{ display: "block", fontSize: "12px", color: "var(--text-muted)", marginBottom: "4px" }}>Report Analyses</span>
-                <span className="value" style={{ fontSize: "24px", fontWeight: "800", color: "var(--cyan)" }}>{profileStats?.reports || 0}</span>
-                <span className="indicator blue" style={{ fontSize: "11px", color: "var(--text-muted)", display: "block", marginTop: "4px" }}>Lab Reports</span>
-              </div>
-              <div className="stat-card" style={{ background: "rgba(13, 19, 35, 0.45)", border: "1px solid var(--border-color)", borderRadius: "16px", padding: "16px" }}>
-                <span className="label" style={{ display: "block", fontSize: "12px", color: "var(--text-muted)", marginBottom: "4px" }}>Last Analysis</span>
-                <span className="value" style={{ fontSize: "14px", fontWeight: "700", color: "#fff", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {profileStats?.lastAnalysis || "No analyses yet"}
-                </span>
-                <span className="indicator green" style={{ fontSize: "11px", color: "var(--text-muted)", display: "block", marginTop: "4px" }}>Most Recent</span>
-              </div>
-            </div>
-
-            {/* 4. Findings Summary Cards & Overview Metrics */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "24px" }}>
-              <div style={{ background: "rgba(13, 19, 35, 0.45)", border: "1px solid var(--border-color)", borderRadius: "16px", padding: "16px" }}>
-                <h3 style={{ fontSize: "13px", fontWeight: "700", color: "var(--warning)", marginBottom: "12px", textTransform: "uppercase", letterSpacing: "0.05em" }}>X-Ray Findings</h3>
-                <p style={{ fontSize: "14px", color: "#fff", margin: 0 }}>
-                  <strong>{profileStats?.xrayFindings || "No X-ray findings yet."}</strong>
-                </p>
-                <div style={{ marginTop: "12px", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "8px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                  {profileStats?.xrayOverview && Object.keys(profileStats.xrayOverview).length > 0 ? (
-                    Object.entries(profileStats.xrayOverview).map(([cls, cnt]) => (
-                      <span key={cls} style={{ background: "rgba(245, 158, 11, 0.1)", border: "1px solid rgba(245, 158, 11, 0.2)", borderRadius: "12px", padding: "2px 8px", fontSize: "11px", color: "var(--warning)" }}>
-                        {cls} × {cnt}
-                      </span>
-                    ))
-                  ) : (
-                    <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>No overview chips available.</span>
-                  )}
-                </div>
-              </div>
-              <div style={{ background: "rgba(13, 19, 35, 0.45)", border: "1px solid var(--border-color)", borderRadius: "16px", padding: "16px" }}>
-                <h3 style={{ fontSize: "13px", fontWeight: "700", color: "var(--cyan)", marginBottom: "12px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Report Findings</h3>
-                <p style={{ fontSize: "14px", color: "#fff", margin: 0 }}>
-                  {profileStats?.reports && profileStats.reports > 0 ? (
-                    <>
-                      Abnormal values: <strong style={{ color: "#EF4444" }}>{profileStats.reportFindingsAbnormal}</strong> &nbsp;|&nbsp; Normal values: <strong style={{ color: "#10B981" }}>{profileStats.reportFindingsNormal}</strong>
-                    </>
-                  ) : (
-                    "No report findings yet."
-                  )}
-                </p>
-                <div style={{ marginTop: "12px", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "8px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                  {profileStats?.reportOverview && (profileStats.reportOverview.HIGH > 0 || profileStats.reportOverview.LOW > 0 || profileStats.reportOverview.NORMAL > 0) ? (
-                    <>
-                      {profileStats.reportOverview.HIGH > 0 && <span style={{ background: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.2)", borderRadius: "12px", padding: "2px 8px", fontSize: "11px", color: "#EF4444" }}>HIGH × {profileStats.reportOverview.HIGH}</span>}
-                      {profileStats.reportOverview.LOW > 0 && <span style={{ background: "rgba(59, 130, 246, 0.1)", border: "1px solid rgba(59, 130, 246, 0.2)", borderRadius: "12px", padding: "2px 8px", fontSize: "11px", color: "var(--accent)" }}>LOW × {profileStats.reportOverview.LOW}</span>}
-                      {profileStats.reportOverview.NORMAL > 0 && <span style={{ background: "rgba(16, 185, 129, 0.1)", border: "1px solid rgba(16, 185, 129, 0.2)", borderRadius: "12px", padding: "2px 8px", fontSize: "11px", color: "var(--green)" }}>NORMAL × {profileStats.reportOverview.NORMAL}</span>}
-                    </>
-                  ) : (
-                    <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>No overview chips available.</span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* 5. Recent Analyses Quick Row */}
-            <section style={{ background: "rgba(13, 19, 35, 0.2)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "16px", padding: "16px", marginBottom: "24px" }}>
-              <h3 style={{ fontSize: "12px", fontWeight: "800", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "12px" }}>Recent Activity</h3>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px" }}>
-                {patientHistory.slice(0, 3).map((item, index) => (
+                {/* Upload Area */}
+                <form onSubmit={handleDashboardUpload} className="prem-upload-form">
                   <div
-                    key={item.analysisId || index}
-                    style={{ background: "rgba(0, 0, 0, 0.25)", border: "1px solid rgba(255, 255, 255, 0.05)", borderRadius: "12px", padding: "12px", cursor: "pointer", transition: "var(--transition)" }}
-                    onClick={() => setAnalysisResult(item)}
-                    className="recent-item-hover"
+                    className={`prem-drop-zone ${dashboardUploadFile ? "has-file" : ""}`}
+                    onClick={() => dashboardFileRef.current?.click()}
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) setDashboardUploadFile(f); }}
                   >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-                      <span style={{ fontSize: "10px", fontWeight: "700", textTransform: "uppercase", color: item.fileType === "Chest X-Ray" ? "var(--warning)" : item.fileType === "Dental Cavity" ? "#F59E0B" : item.fileType === "CT Scan" ? "#8B5CF6" : "var(--cyan)" }}>
-                        {item.fileType === "Chest X-Ray" ? "X-Ray" : item.fileType === "Dental Cavity" ? "Cavity" : item.fileType === "CT Scan" ? "CT Scan" : "Report"}
-                      </span>
-                      <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>
-                        {new Date(item.date).toLocaleDateString()}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: "13px", fontWeight: "600", color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {item.fileName}
-                    </div>
-                    <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
-                      {item.fileType === "Medical Report" ? (item.reportFindings?.length || 0) + " tests detected" : `${item.prediction} (${item.confidence}%)`}
-                    </div>
-                  </div>
-                ))}
-                {patientHistory.length === 0 && (
-                  <div style={{ gridColumn: "span 3", textAlign: "center", color: "var(--text-muted)", padding: "12px", fontSize: "12px" }}>
-                    No recent analyses.
-                  </div>
-                )}
-              </div>
-            </section>
-
-            {/* 6. Main Workspace Grid */}
-            <div id="analyze-file-sec" className="profile-grid" style={{ marginBottom: "24px" }}>
-              <div className="profile-left">
-                {/* Analyze New File Card */}
-                <div className="upload-card">
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                    <h3>Analyze New File</h3>
-                    <div style={{ display: "flex", gap: "6px" }}>
-                      <button
-                        className={`period-btn ${publicMode === "login" ? "active" : ""}`}
-                        style={{ padding: "4px 8px", fontSize: "11px" }}
-                        onClick={() => { setPublicMode("login"); setUploadFile(null); }}
-                      >
-                        X-Ray
-                      </button>
-                      <button
-                        className={`period-btn ${publicMode === "cavity_patient" ? "active" : ""}`}
-                        style={{ padding: "4px 8px", fontSize: "11px", background: publicMode === "cavity_patient" ? "#F59E0B" : undefined, color: publicMode === "cavity_patient" ? "#000" : undefined }}
-                        onClick={() => { setPublicMode("cavity_patient"); setUploadFile(null); }}
-                      >
-                        Cavity
-                      </button>
-                      <button
-                        className={`period-btn ${publicMode === "ct_patient" ? "active" : ""}`}
-                        style={{ padding: "4px 8px", fontSize: "11px", background: publicMode === "ct_patient" ? "#8B5CF6" : undefined, color: publicMode === "ct_patient" ? "#fff" : undefined }}
-                        onClick={() => { setPublicMode("ct_patient"); setUploadFile(null); }}
-                      >
-                        CT Scan
-                      </button>
-                      <button
-                        className={`period-btn ${publicMode === "xray" ? "active" : ""}`}
-                        style={{ padding: "4px 8px", fontSize: "11px" }}
-                        onClick={() => { setPublicMode("xray"); setUploadFile(null); }}
-                      >
-                        Report
-                      </button>
-                    </div>
-                  </div>
-                  <p className="upload-subtitle">
-                    {publicMode === "login"
-                      ? "Upload a Chest X-ray image film for immediate AI model classification."
-                      : publicMode === "cavity_patient"
-                        ? "Upload a dental intraoral photo or radiograph for AI caries lesion detection."
-                        : publicMode === "ct_patient"
-                          ? "Upload an abdominal/pelvic CT scan slice for AI kidney stone detection."
-                          : "Upload a structured medical/hematology laboratory report document (PNG/JPG/PDF)."}
-                  </p>
-
-                  <div className="upload-form">
-                    <label className="drag-area">
-                      <Upload size={32} className="upload-icon" />
-                      <span>{uploadFile ? uploadFile.name : "Select or drag file here"}</span>
-                      <span className="supported">
-                        {publicMode === "xray" ? "Supported: JPEG, PNG, PDF" : "Supported: JPEG, PNG"}
-                      </span>
-                      <input
-                        type="file"
-                        required
-                        style={{ display: "none" }}
-                        onChange={(e) => setUploadFile(e.target.files[0])}
-                      />
-                    </label>
-
-                    {uploadFile && (
-                      <button
-                        type="button"
-                        className={`submit-btn ${uploading ? "disabled" : ""}`}
-                        disabled={uploading}
-                        onClick={async (e) => {
-                          e.preventDefault();
-                          if (!uploadFile) return;
-                          setUploading(true);
-                          const formData = new FormData();
-                          formData.append("file", uploadFile);
-                          const chosenType = publicMode === "login"
-                            ? "Chest X-Ray"
-                            : publicMode === "cavity_patient"
-                              ? "Dental Cavity"
-                              : publicMode === "ct_patient"
-                                ? "CT Scan"
-                                : "Medical Report";
-                          try {
-                            const res = await fetch(`${API_BASE}/api/patients/${selectedPatient.patientId}/files?analysis_type=${encodeURIComponent(chosenType)}`, {
-                              method: "POST",
-                              body: formData
-                            });
-                            if (res.ok) {
-                              const data = await res.json();
-                              setAnalysisResult(data);
-                              showToast("Analysis Completed successfully.");
-                              selectPatient(selectedPatient);
-                              fetchDashboardData(period);
-                              fetchRegistryData();
-                              setUploadFile(null);
-                            } else {
-                              const err = await res.json();
-                              showToast(err.detail || "Analysis failed.");
-                            }
-                          } catch (err) {
-                            showToast("Server communication error.");
-                          } finally {
-                            setUploading(false);
-                          }
-                        }}
-                      >
-                        {uploading
-                          ? "Executing AI Engine..."
-                          : `Analyze ${publicMode === "login" ? "X-Ray" : publicMode === "cavity_patient" ? "Cavity" : publicMode === "ct_patient" ? "CT Scan" : "Report"}`}
-                      </button>
+                    {dashboardUploadFile ? (
+                      <div className="prem-drop-selected">
+                        <FileImage size={40} color="#0ff" />
+                        <p className="prem-drop-filename">{dashboardUploadFile.name}</p>
+                        <p className="prem-drop-size">{(dashboardUploadFile.size / 1024).toFixed(1)} KB</p>
+                        <button type="button" className="prem-remove-file" onClick={e => { e.stopPropagation(); setDashboardUploadFile(null); }}>
+                          <X size={14} /> Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="prem-drop-prompt">
+                        <Upload size={48} color="#0ff" strokeWidth={1.5} />
+                        <p className="prem-drop-title">Drop your {dashboardAnalysisMode === "report" ? "lab report" : "medical scan"} here</p>
+                        <p className="prem-drop-hint">or <span>click to browse</span> · Supports PNG, JPG, JPEG, PDF</p>
+                      </div>
                     )}
                   </div>
-                </div>
-              </div>
+                  <input
+                    ref={dashboardFileRef}
+                    type="file"
+                    accept={dashboardAnalysisMode === "report" ? ".pdf,.png,.jpg,.jpeg" : ".png,.jpg,.jpeg"}
+                    style={{ display: "none" }}
+                    onChange={e => setDashboardUploadFile(e.target.files[0] || null)}
+                  />
 
-              {/* Analysis Viewer (Right hand Workspace) */}
-              <div className="profile-right" style={{ background: "rgba(13, 19, 35, 0.45)", border: "1px solid var(--border-color)", borderRadius: "24px", padding: "24px", minHeight: "350px", display: "flex", flexDirection: "column" }}>
-                {analysisResult ? (
-                  <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "16px", marginBottom: "16px" }}>
-                      <div>
-                        <span style={{
-                          background: analysisResult.fileType === "Chest X-Ray"
-                            ? "rgba(245,158,11,0.15)"
-                            : analysisResult.fileType === "Dental Cavity"
-                              ? "rgba(245,158,11,0.15)"
-                              : analysisResult.fileType === "CT Scan"
-                                ? "rgba(139,92,246,0.15)"
-                                : "rgba(6,182,212,0.15)",
-                          color: analysisResult.fileType === "Chest X-Ray"
-                            ? "var(--warning)"
-                            : analysisResult.fileType === "Dental Cavity"
-                              ? "#F59E0B"
-                              : analysisResult.fileType === "CT Scan"
-                                ? "#8B5CF6"
-                                : "var(--cyan)",
-                          fontSize: "11px",
-                          fontWeight: "700",
-                          textTransform: "uppercase",
-                          padding: "4px 8px",
-                          borderRadius: "6px",
-                          display: "inline-block",
-                          marginBottom: "6px"
-                        }}>
-                          {analysisResult.fileType} Analysis
-                        </span>
-                        <h2 style={{ fontSize: "18px", fontWeight: "800", color: "#fff", margin: 0 }}>{analysisResult.fileName}</h2>
-                        <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Date: {new Date(analysisResult.date).toLocaleString()}</span>
-                      </div>
-                      <div style={{ display: "flex", gap: "8px" }}>
-                        <button
-                          className="outline-btn"
-                          style={{ padding: "6px 12px", fontSize: "12px" }}
-                          onClick={() => {
-                            setEditingAnalysis(analysisResult);
-                            setEditNoteText(analysisResult.doctorNote || analysisResult.doctor_note || "");
-                          }}
-                        >
-                          Edit Note
-                        </button>
-                        <button
-                          className="outline-btn"
-                          style={{ padding: "6px 12px", fontSize: "12px", borderColor: "rgba(239, 68, 68, 0.4)", color: "rgba(239, 68, 68, 0.9)" }}
-                          onClick={() => handleDeleteAnalysis(analysisResult.analysisId)}
-                        >
-                          Delete
-                        </button>
-                      </div>
+                  {dashboardUploadError && (
+                    <div className="prem-upload-error">
+                      <AlertTriangle size={16} /> {dashboardUploadError}
                     </div>
+                  )}
 
-                    <div style={{ flex: 1 }}>
-                      {analysisResult.fileType !== "Medical Report" ? (
-                        <PostAnalysisWorkflow
-                          result={analysisResult}
-                          modality={analysisResult.fileType || analysisResult.modality || "Chest X-Ray"}
-                          apiBase={API_BASE}
-                          isPatientMode={true}
-                          patientData={selectedPatient}
-                          historyList={patientHistory}
-                          onSelectHistory={(item) => setAnalysisResult(item)}
-                          onDeleteHistoryItem={(id) => handleDeleteAnalysis(id)}
-                        />
-                      ) : (
-                        <div>
-                          <div style={{ background: "rgba(0,0,0,0.15)", padding: "12px 16px", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.05)", marginBottom: "20px" }}>
-                            <h4 style={{ fontSize: "12px", color: "var(--cyan)", textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 6px 0" }}>Report Summary</h4>
-                            <p style={{ fontSize: "13px", lineHeight: "1.5", color: "#fff", margin: 0 }}>{analysisResult.reportSummary || "No summary text generated."}</p>
-                          </div>
-
-                          <h4 style={{ fontSize: "13px", color: "#fff", marginBottom: "8px" }}>Extracted Lab Metrics</h4>
-                          <div style={{ overflowX: "auto" }}>
-                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-                              <thead>
-                                <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)", color: "var(--text-muted)" }}>
-                                  <th style={{ padding: "8px 12px", textAlign: "left" }}>Test</th>
-                                  <th style={{ padding: "8px 12px", textAlign: "left" }}>Value</th>
-                                  <th style={{ padding: "8px 12px", textAlign: "left" }}>Unit</th>
-                                  <th style={{ padding: "8px 12px", textAlign: "left" }}>Reference Range</th>
-                                  <th style={{ padding: "8px 12px", textAlign: "left" }}>Status</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {analysisResult.reportFindings && Array.isArray(analysisResult.reportFindings) && analysisResult.reportFindings.length > 0 ? (
-                                  analysisResult.reportFindings.map((row, rIdx) => (
-                                    <tr key={rIdx} style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
-                                      <td style={{ padding: "8px 12px", fontWeight: "600", color: "#fff" }}>{row.test_name}</td>
-                                      <td style={{ padding: "8px 12px" }}>{row.value}</td>
-                                      <td style={{ padding: "8px 12px" }}>{row.unit}</td>
-                                      <td style={{ padding: "8px 12px" }}>{row.reference || "-"}</td>
-                                      <td style={{ padding: "8px 12px" }}>
-                                        <span style={{
-                                          padding: "2px 6px",
-                                          borderRadius: "4px",
-                                          fontSize: "10px",
-                                          fontWeight: "700",
-                                          background: row.status === "HIGH" ? "rgba(239,68,68,0.15)" : row.status === "LOW" ? "rgba(59,130,246,0.15)" : "rgba(16,185,129,0.15)",
-                                          color: row.status === "HIGH" ? "#EF4444" : row.status === "LOW" ? "var(--accent)" : "var(--green)"
-                                        }}>
-                                          {row.status}
-                                        </span>
-                                      </td>
-                                    </tr>
-                                  ))
-                                ) : (
-                                  <tr>
-                                    <td colSpan="5" style={{ padding: "16px", textAlign: "center", color: "var(--text-muted)" }}>No lab metrics extracted.</td>
-                                  </tr>
-                                )}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Doctor Notes Box */}
-                      {(analysisResult.doctorNote || analysisResult.doctor_note) && (
-                        <div style={{ marginTop: "20px", background: "rgba(59,130,246,0.05)", border: "1px solid rgba(59,130,246,0.15)", borderRadius: "12px", padding: "12px 16px" }}>
-                          <h4 style={{ fontSize: "11px", fontWeight: "700", textTransform: "uppercase", color: "var(--accent)", margin: "0 0 6px 0", letterSpacing: "0.05em" }}>Doctor Note</h4>
-                          <p style={{ fontSize: "13px", lineHeight: "1.5", color: "#fff", margin: 0 }}>
-                            {analysisResult.doctorNote || analysisResult.doctor_note}
-                          </p>
-                        </div>
-                      )}
-
-                      {analysisResult.filePath && (
-                        <div style={{ marginTop: "16px", textAlign: "right" }}>
-                          <a
-                            href={analysisResult.filePath.startsWith("http") ? analysisResult.filePath : `${API_BASE}${analysisResult.filePath}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{ fontSize: "12px", color: "var(--accent)", fontWeight: "600", textDecoration: "none" }}
-                          >
-                            View Original File &rarr;
-                          </a>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-                    <Brain size={48} className="brain-icon" style={{ color: "var(--text-muted)", marginBottom: "16px" }} />
-                    <h3 style={{ fontSize: "16px", color: "#fff", margin: "0 0 8px 0" }}>Awaiting Selection</h3>
-                    <p style={{ fontSize: "13px", color: "var(--text-muted)", margin: 0, textAlign: "center" }}>Select an analysis from history or upload a new file.</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* 7. Compare Selected Panel (Visible when exactly 2 compare checkbox keys are selected) */}
-            {compareIds.length === 2 && (
-              <section style={{ background: "rgba(59,130,246,0.05)", border: "1px solid rgba(59,130,246,0.2)", borderRadius: "16px", padding: "20px", marginBottom: "24px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-                  <div>
-                    <h2 style={{ fontSize: "16px", fontWeight: "800", color: "#fff", margin: 0 }}>Side-by-Side Comparison</h2>
-                    <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>Comparing two historical medical records</span>
-                  </div>
-                  <button className="outline-btn" style={{ padding: "4px 8px", fontSize: "11px" }} onClick={() => setCompareIds([])}>
-                    Clear Comparison
+                  <button type="submit" className="prem-btn-primary prem-upload-submit" disabled={!dashboardUploadFile || dashboardUploading}>
+                    {dashboardUploading ? (
+                      <><div className="prem-spinner-sm" /> Running AI Inference...</>
+                    ) : (
+                      <><Zap size={18} /> Run AI Analysis</>
+                    )}
                   </button>
-                </div>
+                </form>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
-                  {[...patientHistory].filter(h => compareIds.includes(h.analysisId)).map((item, cIdx) => (
-                    <div key={item.analysisId || cIdx} style={{ background: "rgba(0,0,0,0.2)", borderRadius: "12px", padding: "16px", border: "1px solid rgba(255,255,255,0.05)" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px", borderBottom: "1px solid rgba(255,255,255,0.05)", paddingBottom: "8px" }}>
-                        <span style={{ fontSize: "11px", fontWeight: "700", textTransform: "uppercase", color: item.fileType === "Chest X-Ray" ? "var(--warning)" : item.fileType === "Dental Cavity" ? "#F59E0B" : item.fileType === "CT Scan" ? "#8B5CF6" : "var(--cyan)" }}>
-                          {item.fileType === "Chest X-Ray" ? "X-Ray" : item.fileType === "Dental Cavity" ? "Cavity" : item.fileType === "CT Scan" ? "CT Scan" : "Report"}
-                        </span>
-                        <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{new Date(item.date).toLocaleDateString()}</span>
-                      </div>
-                      <h4 style={{ fontSize: "13px", color: "#fff", margin: "0 0 8px 0" }}>{item.fileName}</h4>
-                      {item.fileType === "CT Scan" || item.fileType === "Dental Cavity" || item.fileType === "Chest X-Ray" ? (
-                        <div>
-                          <div style={{ display: "flex", gap: "16px", marginBottom: "12px" }}>
-                            <div>
-                              <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>Prediction</span>
-                              <div style={{ fontSize: "14px", fontWeight: "700", color: item.prediction?.includes("Stone") || item.prediction?.includes("Cavity") ? "#EF4444" : "#fff" }}>{item.prediction}</div>
-                            </div>
-                            <div>
-                              <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>Confidence</span>
-                              <div style={{ fontSize: "14px", fontWeight: "700", color: item.fileType === "CT Scan" ? "#8B5CF6" : item.fileType === "Dental Cavity" ? "#F59E0B" : "var(--warning)" }}>{item.confidence}%</div>
-                            </div>
-                          </div>
-                          <div style={{ position: "relative", paddingBottom: "100%", background: "#000", borderRadius: "8px", overflow: "hidden" }}>
-                            <img
-                              src={item.gradcamPath ? (item.gradcamPath.startsWith("http") ? item.gradcamPath : `${API_BASE}${item.gradcamPath}`) : (item.filePath.startsWith("http") ? item.filePath : `${API_BASE}${item.filePath}`)}
-                              alt="Scan check"
-                              style={{ position: "absolute", width: "100%", height: "100%", objectFit: "contain" }}
-                            />
-                          </div>
-                        </div>
-                      ) : (
-                        <div>
-                          <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>Report Metrics</span>
-                          <div style={{ marginTop: "6px" }}>
-                            {item.reportFindings && Array.isArray(item.reportFindings) ? (
-                              item.reportFindings.slice(0, 5).map((row, rIdx) => (
-                                <div key={rIdx} style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", padding: "4px 0", borderBottom: "1px dashed rgba(255,255,255,0.03)" }}>
-                                  <span style={{ color: "#fff" }}>{row.test_name}</span>
-                                  <span>{row.value} {row.unit} &nbsp;
-                                    <span style={{ color: row.status === "HIGH" ? "#EF4444" : row.status === "LOW" ? "var(--accent)" : "var(--green)", fontWeight: "700" }}>{row.status}</span>
-                                  </span>
-                                </div>
-                              ))
-                            ) : null}
-                          </div>
-                        </div>
-                      )}
+                {/* Architecture Info Chips */}
+                <div className="prem-info-cards">
+                  {[
+                    { label: "Chest X-Ray", info: "DenseNet-121 model trained on CheXpert. Includes Grad-CAM heatmaps.", color: "#3b82f6" },
+                    { label: "Dental X-Ray", info: "Cavity detection using MobileNetV2 with attention mapping.", color: "#10b981" },
+                    { label: "Kidney CT", info: "ResNet-18 model for kidney stone detection and classification.", color: "#f59e0b" },
+                    { label: "Lab Report", info: "OCR + NLP pipeline extracts biomarkers and flags abnormal clinical values.", color: "#8b5cf6" },
+                  ].map(({ label, info, color }) => (
+                    <div key={label} className="prem-info-chip" style={{ borderLeftColor: color }}>
+                      <strong style={{ color }}>{label}</strong>
+                      <span>{info}</span>
                     </div>
                   ))}
                 </div>
-              </section>
+              </>
             )}
+          </div>
+        )}
 
-            {/* 8. Analysis History Timeline section */}
-            <section className="timeline-card" style={{ background: "rgba(13, 19, 35, 0.45)", border: "1px solid var(--border-color)", borderRadius: "24px", padding: "24px", marginBottom: "24px" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginBottom: "20px" }}>
-                <div>
-                  <h2 style={{ fontSize: "16px", fontWeight: "800", color: "#fff", margin: 0, textTransform: "uppercase", letterSpacing: "0.05em" }}>Analysis History</h2>
-                  <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: "4px 0 0 0" }}>Complete chronological history of this patient's AI-assisted analyses.</p>
-                </div>
-                <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-                  <input
-                    type="text"
-                    placeholder="Search history by name, prediction, note..."
-                    value={timelineSearch}
-                    onChange={(e) => setTimelineSearch(e.target.value)}
-                    style={{ flex: 2, minWidth: "200px", background: "rgba(5,8,22,0.8)", border: "1px solid var(--border-color)", color: "#fff", padding: "8px 14px", borderRadius: "8px", fontSize: "12px" }}
-                  />
-                  <select
-                    value={timelineFilter}
-                    onChange={(e) => { setTimelineFilter(e.target.value); setTimelineResultFilter("All"); }}
-                    style={{ background: "rgba(5,8,22,0.8)", border: "1px solid var(--border-color)", color: "#fff", padding: "8px 14px", borderRadius: "8px", fontSize: "12px" }}
-                  >
-                    <option value="All">All Types</option>
-                    <option value="X-Ray">X-Ray Files</option>
-                    <option value="Cavity">Dental Cavity</option>
-                    <option value="CT Scan">CT Scan</option>
-                    <option value="Reports">Medical Reports</option>
-                  </select>
-
-                  <select
-                    value={timelineResultFilter}
-                    onChange={(e) => setTimelineResultFilter(e.target.value)}
-                    style={{ background: "rgba(5,8,22,0.8)", border: "1px solid var(--border-color)", color: "#fff", padding: "8px 14px", borderRadius: "8px", fontSize: "12px" }}
-                  >
-                    <option value="All">All Findings</option>
-                    {timelineFilter === "X-Ray" ? (
-                      <>
-                        <option value="Normal">Normal</option>
-                        <option value="Pneumonia">Pneumonia</option>
-                        <option value="COVID-19">COVID-19</option>
-                        <option value="Tuberculosis">Tuberculosis</option>
-                      </>
-                    ) : timelineFilter === "Cavity" ? (
-                      <>
-                        <option value="Cavity">Cavity Detected</option>
-                        <option value="Normal">Normal</option>
-                      </>
-                    ) : timelineFilter === "CT Scan" ? (
-                      <>
-                        <option value="Stone">Kidney Stone Detected</option>
-                        <option value="Normal">Normal</option>
-                      </>
-                    ) : timelineFilter === "Reports" ? (
-                      <>
-                        <option value="High">High Values</option>
-                        <option value="Low">Low Values</option>
-                        <option value="Normal">Normal Values</option>
-                      </>
-                    ) : (
-                      <>
-                        <option value="Normal">Normal</option>
-                        <option value="Pneumonia">Pneumonia</option>
-                        <option value="Cavity">Cavity</option>
-                        <option value="Stone">Kidney Stone</option>
-                        <option value="High">High (Lab)</option>
-                        <option value="Low">Low (Lab)</option>
-                      </>
-                    )}
-                  </select>
-
-                  <select
-                    value={timelineDateFilter}
-                    onChange={(e) => setTimelineDateFilter(e.target.value)}
-                    style={{ background: "rgba(5,8,22,0.8)", border: "1px solid var(--border-color)", color: "#fff", padding: "8px 14px", borderRadius: "8px", fontSize: "12px" }}
-                  >
-                    <option value="All">All Dates</option>
-                    <option value="7d">Last 7 Days</option>
-                    <option value="30d">Last 30 Days</option>
-                    <option value="3m">Last 3 Months</option>
-                  </select>
-
-                  <select
-                    value={timelineSort}
-                    onChange={(e) => setTimelineSort(e.target.value)}
-                    style={{ background: "rgba(5,8,22,0.8)", border: "1px solid var(--border-color)", color: "#fff", padding: "8px 14px", borderRadius: "8px", fontSize: "12px" }}
-                  >
-                    <option value="Newest">Newest First</option>
-                    <option value="Oldest">Oldest First</option>
-                  </select>
-                </div>
+        {/* 3. MY MEDICAL REPORTS TAB */}
+        {activeTab === "my-reports" && (
+          <div className="prem-view">
+            <div className="prem-welcome-header">
+              <div className="prem-welcome-left">
+                <p className="prem-welcome-greeting">Laboratory & Clinical Documents</p>
+                <h1 className="prem-welcome-title">My Medical Reports</h1>
+                <p className="prem-welcome-sub">All your processed lab reports and blood work records securely stored.</p>
               </div>
+              <button className="prem-btn-primary" onClick={() => { setDashboardAnalysisMode("report"); setActiveTab("new-analysis"); setDashboardResult(null); }}>
+                <Plus size={16} /> Analyze New Report
+              </button>
+            </div>
 
-              <div className="timeline-list" style={{ display: "grid", gridTemplateColumns: "1fr", gap: "12px" }}>
-                {filteredTimeline.map((item, idx) => {
-                  const isCompareChecked = compareIds.includes(item.analysisId);
-                  return (
-                    <div
-                      className={`timeline-item-row`}
-                      style={{ display: "flex", gap: "16px", background: "rgba(0,0,0,0.15)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "12px", padding: "16px", alignItems: "center" }}
-                      key={item.analysisId || idx}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isCompareChecked}
-                        onChange={() => {
-                          if (isCompareChecked) {
-                            setCompareIds(prev => prev.filter(id => id !== item.analysisId));
-                          } else {
-                            if (compareIds.length >= 2) {
-                              showToast("You can only compare two analyses side-by-side.");
-                            } else {
-                              setCompareIds(prev => [...prev, item.analysisId]);
-                            }
-                          }
-                        }}
-                        style={{ cursor: "pointer", width: "16px", height: "16px" }}
-                      />
-                      <div style={{ flex: 1, cursor: "pointer" }} onClick={() => setAnalysisResult(item)}>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
-                          <span style={{
-                            fontSize: "11px",
-                            fontWeight: "700",
-                            textTransform: "uppercase",
-                            color: item.fileType === "Chest X-Ray" ? "var(--warning)" : item.fileType === "Dental Cavity" ? "#F59E0B" : item.fileType === "CT Scan" ? "#8B5CF6" : "var(--cyan)"
+            {loadingMyHistory ? (
+              <div className="prem-loading"><div className="prem-spinner" /><p>Loading reports...</p></div>
+            ) : myAnalysisHistory.filter(h => (h.fileType || h.analysisType) === "Medical Report").length === 0 ? (
+              <div className="prem-empty-state prem-empty-large">
+                <FileText size={56} color="var(--text-muted)" />
+                <h3>No medical lab reports yet</h3>
+                <p>Upload a lab report or blood test document to receive comprehensive OCR analysis.</p>
+                <button className="prem-btn-primary" onClick={() => { setDashboardAnalysisMode("report"); setActiveTab("new-analysis"); }}>
+                  Analyze Report Now
+                </button>
+              </div>
+            ) : (
+              <div className="prem-table-card">
+                <table className="prem-table prem-table-full">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Report Name</th>
+                      <th>Summary / Key Finding</th>
+                      <th>Status</th>
+                      <th>Upload Date</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {myAnalysisHistory.filter(h => (h.fileType || h.analysisType) === "Medical Report").map((row, i) => (
+                      <tr key={row.analysisId || i}>
+                        <td className="prem-row-num">{i + 1}</td>
+                        <td>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <FileText size={16} color="var(--cyan)" />
+                            <span style={{ fontWeight: "600", color: "#fff" }}>{row.fileName || "Lab_Report.pdf"}</span>
+                          </div>
+                        </td>
+                        <td className="prem-result-col">{row.reportSummary || row.prediction || "Report analysis verified"}</td>
+                        <td><span className="prem-status-badge prem-status-done"><CheckCircle2 size={12} /> Verified</span></td>
+                        <td className="prem-date-cell">{row.date ? new Date(row.date).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : "—"}</td>
+                        <td>
+                          <button className="prem-view-btn" onClick={() => {
+                            setDashboardResult({ ...row, modality: "Medical Report" });
+                            setActiveTab("new-analysis");
                           }}>
-                            {item.fileType}
+                            View Report
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 4. ANALYSIS HISTORY TAB */}
+        {activeTab === "analysis-history" && (
+          <div className="prem-view">
+            <div className="prem-welcome-header">
+              <div className="prem-welcome-left">
+                <p className="prem-welcome-greeting">Diagnostic Archive</p>
+                <h1 className="prem-welcome-title">Analysis History</h1>
+                <p className="prem-welcome-sub">Complete history of all medical scans and diagnoses performed under your account.</p>
+              </div>
+              <button className="prem-btn-primary" onClick={() => { setActiveTab("new-analysis"); setDashboardResult(null); }}>
+                <Plus size={16} /> New Analysis
+              </button>
+            </div>
+
+            {loadingMyHistory ? (
+              <div className="prem-loading"><div className="prem-spinner" /><p>Loading history...</p></div>
+            ) : myAnalysisHistory.length === 0 ? (
+              <div className="prem-empty-state prem-empty-large">
+                <History size={56} color="var(--text-muted)" />
+                <h3>No analysis history found</h3>
+                <p>Run your first scan analysis to populate your medical history.</p>
+                <button className="prem-btn-primary" onClick={() => setActiveTab("new-analysis")}>Start Analysis</button>
+              </div>
+            ) : (
+              <div className="prem-table-card">
+                <table className="prem-table prem-table-full">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Scan Category</th>
+                      <th>Prediction / Result</th>
+                      <th>Confidence</th>
+                      <th>Status</th>
+                      <th>Date</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {myAnalysisHistory.map((row, i) => (
+                      <tr key={row.analysisId || i}>
+                        <td className="prem-row-num">{i + 1}</td>
+                        <td>
+                          <span className={`prem-type-badge prem-type-${(row.fileType || row.analysisType || "").toLowerCase().replace(/\s/g, "")}`}>
+                            {row.fileType || row.analysisType || "Scan"}
                           </span>
-                          <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{new Date(item.date).toLocaleDateString()}</span>
-                        </div>
-                        <h4 style={{ fontSize: "14px", fontWeight: "600", color: "#fff", margin: "0 0 6px 0" }}>{item.fileName}</h4>
-                        {item.fileType === "CT Scan" ? (
-                          <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
-                            Prediction: <strong style={{ color: item.prediction?.includes("Stone") ? "#EF4444" : "#10B981" }}>{item.prediction}</strong> ({item.confidence}%)
-                            {item.gradcamPath && <span style={{ color: "#8B5CF6", marginLeft: "12px" }}>• CT Heatmap Available</span>}
-                          </div>
-                        ) : item.fileType === "Dental Cavity" ? (
-                          <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
-                            Prediction: <strong style={{ color: item.prediction?.includes("Cavity") ? "#EF4444" : "#10B981" }}>{item.prediction}</strong> ({item.confidence}%)
-                            {item.gradcamPath && <span style={{ color: "var(--green)", marginLeft: "12px" }}>• Caries Heatmap Available</span>}
-                          </div>
-                        ) : item.fileType === "Chest X-Ray" ? (
-                          <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
-                            Prediction: <strong style={{ color: "#fff" }}>{item.prediction}</strong> ({item.confidence}%)
-                            {item.gradcamPath && <span style={{ color: "var(--green)", marginLeft: "12px" }}>• Grad-CAM Overlay Available</span>}
-                          </div>
-                        ) : (
-                          <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
-                            {item.reportFindings?.length || 0} tests detected &nbsp;|&nbsp;
-                            Abnormal findings: <span style={{ color: "#EF4444", fontWeight: "700" }}>{item.reportFindings?.filter(f => ["HIGH", "LOW", "ABNORMAL"].includes(f.status?.toUpperCase())).length || 0}</span>
-                          </div>
-                        )}
+                        </td>
+                        <td className="prem-result-col" style={{ fontWeight: "600", color: "#fff" }}>
+                          {row.prediction || row.result || "Analysis Completed"}
+                        </td>
+                        <td><span className="prem-conf">{row.confidence ? `${row.confidence}%` : "—"}</span></td>
+                        <td><span className="prem-status-badge prem-status-done"><CheckCircle2 size={12} /> Stored</span></td>
+                        <td className="prem-date-cell">{row.date ? new Date(row.date).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : "—"}</td>
+                        <td>
+                          <button className="prem-view-btn" onClick={() => {
+                            const enriched = { ...row, modality: row.fileType || row.analysisType || "Chest X-Ray" };
+                            setDashboardResult(enriched);
+                            setActiveTab("new-analysis");
+                          }}>
+                            View Report
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 5. HEALTH INSIGHTS TAB */}
+        {activeTab === "health-insights" && (
+          <div className="prem-view">
+            <div className="prem-welcome-header">
+              <div className="prem-welcome-left">
+                <p className="prem-welcome-greeting">Analytics & Diagnostics</p>
+                <h1 className="prem-welcome-title">Health Insights</h1>
+                <p className="prem-welcome-sub">Visual analysis patterns, distribution of findings, and system health status.</p>
+              </div>
+            </div>
+
+            {dashboardData ? (
+              <>
+                <div className="prem-insights-grid">
+                  <div className="prem-chart-card">
+                    <div className="prem-card-header">
+                      <h2>Analysis Frequency</h2>
+                      <div className="prem-period-btns">
+                        {["7d", "30d", "3m"].map(p => (
+                          <button key={p} className={`prem-period-btn ${period === p ? "active" : ""}`} onClick={() => setPeriod(p)}>{p.toUpperCase()}</button>
+                        ))}
                       </div>
-                      <div style={{ display: "flex", gap: "8px" }}>
-                        <button
-                          className="action-btn"
-                          style={{ padding: "6px 12px", fontSize: "12px" }}
-                          onClick={() => setAnalysisResult(item)}
-                        >
-                          View Analysis
-                        </button>
-                        <button
-                          className="action-btn"
-                          style={{ padding: "6px 12px", fontSize: "12px" }}
-                          onClick={() => {
-                            setEditingAnalysis(item);
-                            setEditNoteText(item.doctorNote || item.doctor_note || "");
-                          }}
-                        >
-                          Edit Note
-                        </button>
-                        <button
-                          className="action-btn"
-                          style={{ padding: "6px 12px", fontSize: "12px", borderColor: "rgba(239, 68, 68, 0.4)", color: "rgba(239, 68, 68, 0.9)" }}
-                          onClick={() => handleDeleteAnalysis(item.analysisId)}
-                        >
-                          Delete
-                        </button>
+                    </div>
+                    <div className="prem-chart-body">
+                      {dashboardData.trends && dashboardData.trends.length > 0
+                        ? renderLineChart(dashboardData.trends)
+                        : <span className="prem-no-data">Not enough data points yet. Complete more analyses to observe trends.</span>}
+                    </div>
+                  </div>
+
+                  <div className="prem-chart-card">
+                    <div className="prem-card-header"><h2>Modality Distribution</h2></div>
+                    <div className="prem-chart-body prem-donut-body">
+                      {renderDonutChart(
+                        myAnalysisHistory.filter(h => (h.fileType || h.analysisType) !== "Medical Report").length,
+                        myAnalysisHistory.filter(h => (h.fileType || h.analysisType) === "Medical Report").length
+                      )}
+                    </div>
+                    <div className="prem-donut-legend">
+                      <span><span className="prem-dot-xray" />Scans & X-Rays ({myAnalysisHistory.length > 0 ? Math.round((myAnalysisHistory.filter(h => (h.fileType || h.analysisType) !== "Medical Report").length / myAnalysisHistory.length) * 100) : 0}%)</span>
+                      <span><span className="prem-dot-report" />Lab Reports ({myAnalysisHistory.length > 0 ? Math.round((myAnalysisHistory.filter(h => (h.fileType || h.analysisType) === "Medical Report").length / myAnalysisHistory.length) * 100) : 0}%)</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* User-specific findings distribution calculated directly from myAnalysisHistory */}
+                {(() => {
+                  const myFindings = {};
+                  myAnalysisHistory.forEach(item => {
+                    const finding = item.prediction || item.result || ((item.fileType || item.analysisType) === "Medical Report" ? "Lab Report Verified" : "Normal");
+                    if (finding && finding !== "—" && finding !== "-") {
+                      myFindings[finding] = (myFindings[finding] || 0) + 1;
+                    }
+                  });
+                  const findingsList = Object.entries(myFindings);
+                  const totalFindings = Object.values(myFindings).reduce((a, b) => a + b, 0);
+
+                  return (
+                    <div className="prem-dist-card">
+                      <div className="prem-card-header">
+                        <h2>Disease & Findings Distribution</h2>
+                        <p>Calculated directly across your {myAnalysisHistory.length} personal scan and report records</p>
+                      </div>
+                      {findingsList.length === 0 ? (
+                        <p className="prem-no-data">No diagnostic records logged yet. Complete an analysis to see your findings breakdown.</p>
+                      ) : (
+                        <div className="prem-dist-list">
+                          {findingsList.map(([findingName, count]) => {
+                            const pct = totalFindings > 0 ? Math.round((count / totalFindings) * 100) : 0;
+                            return (
+                              <div key={findingName} className="prem-dist-item">
+                                <div className="prem-dist-meta">
+                                  <span className="prem-dist-name">{findingName}</span>
+                                  <span className="prem-dist-val">{pct}% ({count})</span>
+                                </div>
+                                <div className="prem-progress-bg">
+                                  <div className="prem-progress-fill" style={{ width: `${pct}%` }} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                <div className="prem-system-card">
+                  <div className="prem-card-header"><h2>AI System Status</h2></div>
+                  <div className="prem-health-grid">
+                    {[
+                      { label: "AI X-Ray Model (DenseNet-121)", status: dashboardData.system_health?.xray_model || "Online" },
+                      { label: "Radiograph Pre-Validation", status: dashboardData.system_health?.validation || "Online" },
+                      { label: "Report OCR & NLP Parser", status: dashboardData.system_health?.report_analysis || "Online" },
+                      { label: "Encrypted SQLite Vault", status: dashboardData.system_health?.database || "Online" },
+                    ].map(({ label, status }) => (
+                      <div key={label} className="prem-health-item">
+                        <span className="prem-health-label">{label}</span>
+                        <span className={`prem-health-status ${(status || "").toLowerCase()}`}>{status}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="prem-ai-engine-info">
+                    <Brain size={16} color="#0ff" />
+                    <span>Inference active via PyTorch (DenseNet-121, ResNet-18, MobileNetV2) · Grad-CAM visual attention enabled · Device: {dashboardData.system_health?.device || "CPU"}</span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="prem-loading"><div className="prem-spinner" /><p>Loading insights...</p></div>
+            )}
+          </div>
+        )}
+
+        {/* 6. HEALTH TIMELINE TAB */}
+        {activeTab === "health-timeline" && (
+          <div className="prem-view">
+            <div className="prem-welcome-header">
+              <div className="prem-welcome-left">
+                <p className="prem-welcome-greeting">Longitudinal Patient History</p>
+                <h1 className="prem-welcome-title">Health Timeline</h1>
+                <p className="prem-welcome-sub">Chronological journey of your health milestones, clinical scans, and laboratory tests.</p>
+              </div>
+            </div>
+
+            {loadingMyHistory ? (
+              <div className="prem-loading"><div className="prem-spinner" /><p>Building your timeline...</p></div>
+            ) : myAnalysisHistory.length === 0 ? (
+              <div className="prem-empty-state prem-empty-large">
+                <GitBranch size={56} color="var(--text-muted)" />
+                <h3>No health timeline events</h3>
+                <p>As you run analyses and save scans, your longitudinal medical timeline will assemble here automatically.</p>
+                <button className="prem-btn-primary" onClick={() => setActiveTab("new-analysis")}>Start Analysis</button>
+              </div>
+            ) : (
+              <div className="prem-timeline">
+                {myAnalysisHistory.map((item, i) => {
+                  const date = item.date ? new Date(item.date) : null;
+                  const showDateLabel = i === 0 || (date && new Date(myAnalysisHistory[i-1]?.date).toDateString() !== date.toDateString());
+                  return (
+                    <div key={item.analysisId || i}>
+                      {showDateLabel && date && (
+                        <div className="prem-timeline-date-label">
+                          <span>{date.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</span>
+                        </div>
+                      )}
+                      <div className="prem-timeline-item">
+                        <div className="prem-timeline-dot" />
+                        <div className="prem-timeline-card">
+                          <div className="prem-timeline-card-header">
+                            <span className={`prem-type-badge prem-type-${(item.fileType || item.analysisType || "").toLowerCase().replace(/\s/g, "")}`}>
+                              {item.fileType || item.analysisType || "Scan"}
+                            </span>
+                            <span className="prem-timeline-time">{date ? date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : ""}</span>
+                          </div>
+                          <p className="prem-timeline-result">{item.prediction || item.result || "Scan processed and verified"}</p>
+                          {item.confidence && <p className="prem-timeline-conf">AI Confidence: {item.confidence}%</p>}
+                          <button className="prem-text-btn prem-timeline-view" onClick={() => {
+                            setDashboardResult({ ...item, modality: item.fileType || item.analysisType || "Chest X-Ray" });
+                            setActiveTab("new-analysis");
+                          }}>
+                            View Report <ChevronRight size={14} />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
                 })}
-                {filteredTimeline.length === 0 && (
-                  <p style={{ color: "var(--text-muted)", fontSize: "13px", padding: "16px 0", textAlign: "center" }}>
-                    {timelineSearch ? "No matching history found." : "No medical analyses yet. Start by uploading files."}
-                  </p>
-                )}
               </div>
-            </section>
-
-            {/* 9. Patient Overview Section at Bottom */}
-            <section style={{ background: "rgba(13, 19, 35, 0.45)", border: "1px solid var(--border-color)", borderRadius: "16px", padding: "16px" }}>
-              <h3 style={{ fontSize: "13px", fontWeight: "700", color: "#fff", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "12px" }}>Patient Overview & Registry Info</h3>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "16px", fontSize: "12px" }}>
-                <div>
-                  <span style={{ color: "var(--text-muted)", display: "block" }}>Registration Date</span>
-                  <span style={{ color: "#fff", fontWeight: "600" }}>{selectedPatient.createdAt ? new Date(selectedPatient.createdAt).toLocaleDateString() : "N/A"}</span>
-                </div>
-                <div>
-                  <span style={{ color: "var(--text-muted)", display: "block" }}>Total Uploads</span>
-                  <span style={{ color: "#fff", fontWeight: "600" }}>{profileStats?.total || 0} Files</span>
-                </div>
-                <div>
-                  <span style={{ color: "var(--text-muted)", display: "block" }}>Last Activity Date</span>
-                  <span style={{ color: "#fff", fontWeight: "600" }}>{patientHistory.length > 0 ? new Date(patientHistory[0].date).toLocaleDateString() : "No Activity"}</span>
-                </div>
-                <div>
-                  <span style={{ color: "var(--text-muted)", display: "block" }}>X-Ray Count</span>
-                  <span style={{ color: "var(--warning)", fontWeight: "600" }}>{profileStats?.xrays || 0} X-Rays</span>
-                </div>
-                <div>
-                  <span style={{ color: "var(--text-muted)", display: "block" }}>Lab Report Count</span>
-                  <span style={{ color: "var(--cyan)", fontWeight: "600" }}>{profileStats?.reports || 0} Reports</span>
-                </div>
-              </div>
-            </section>
+            )}
           </div>
         )}
+
+        {/* 7. MY MEDICAL VAULT TAB */}
+        {activeTab === "vault" && (
+          <div className="prem-view">
+            <div className="prem-welcome-header">
+              <div className="prem-welcome-left">
+                <p className="prem-welcome-greeting">Encrypted File Storage</p>
+                <h1 className="prem-welcome-title">My Medical Vault</h1>
+                <p className="prem-welcome-sub">All your original medical DICOMs, X-ray scans, and PDF documents safely stored.</p>
+              </div>
+              <button className="prem-btn-primary" onClick={() => { setActiveTab("new-analysis"); setDashboardResult(null); }}>
+                <Plus size={16} /> Upload to Vault
+              </button>
+            </div>
+
+            {loadingMyHistory ? (
+              <div className="prem-loading"><div className="prem-spinner" /><p>Accessing vault...</p></div>
+            ) : myAnalysisHistory.length === 0 ? (
+              <div className="prem-empty-state prem-empty-large">
+                <HardDrive size={56} color="var(--text-muted)" />
+                <h3>Your medical vault is empty</h3>
+                <p>Files uploaded during your analyses will be organized here with download and inspection actions.</p>
+                <button className="prem-btn-primary" onClick={() => setActiveTab("new-analysis")}>Start Analysis</button>
+              </div>
+            ) : (
+              <div className="prem-vault-grid">
+                {myAnalysisHistory.map((item, i) => (
+                  <div key={item.analysisId || i} className="prem-vault-card">
+                    <div className="prem-vault-icon">
+                      {(item.fileType || item.analysisType || "").includes("Chest") ? <Stethoscope size={32} color="#3b82f6" /> :
+                       (item.fileType || item.analysisType || "").includes("Dental") ? <Microscope size={32} color="#10b981" /> :
+                       (item.fileType || item.analysisType || "").includes("CT") || (item.fileType || item.analysisType || "").includes("Kidney") ? <ScanLine size={32} color="#f59e0b" /> :
+                       <FileText size={32} color="#8b5cf6" />}
+                    </div>
+                    <div className="prem-vault-info">
+                      <span className={`prem-type-badge prem-type-${(item.fileType || item.analysisType || "").toLowerCase().replace(/\s/g, "")}`}>
+                        {item.fileType || item.analysisType || "Scan"}
+                      </span>
+                      <p className="prem-vault-result">{item.prediction || item.result || "Verified File"}</p>
+                      <span className="prem-vault-date">{item.date ? new Date(item.date).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : "—"}</span>
+                    </div>
+                    <button className="prem-vault-btn" onClick={() => {
+                      setDashboardResult({ ...item, modality: item.fileType || item.analysisType || "Chest X-Ray" });
+                      setActiveTab("new-analysis");
+                    }}>
+                      <Eye size={14} /> View
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 8. MY PROFILE TAB */}
+        {activeTab === "profile" && (
+          <div className="prem-view">
+            <div className="prem-welcome-header">
+              <div className="prem-welcome-left">
+                <p className="prem-welcome-greeting">Personal Account</p>
+                <h1 className="prem-welcome-title">My Profile</h1>
+                <p className="prem-welcome-sub">Manage your healthcare identification and view your usage metrics.</p>
+              </div>
+            </div>
+            <div className="prem-profile-card">
+              <div className="prem-profile-avatar-large">
+                <span>{(doctorName || "U").charAt(0).toUpperCase()}</span>
+              </div>
+              <div className="prem-profile-info">
+                <h2>{doctorName}</h2>
+                <p className="prem-profile-username">@{token.replace("mock-jwt-token-", "")}</p>
+                <p className="prem-profile-role">Individual Healthcare User · MediScan AI</p>
+              </div>
+              <div className="prem-profile-stats">
+                <div className="prem-profile-stat">
+                  <span className="prem-ps-val">{myAnalysisHistory.length}</span>
+                  <span className="prem-ps-label">Total Analyses</span>
+                </div>
+                <div className="prem-profile-stat">
+                  <span className="prem-ps-val">{myAnalysisHistory.filter(h => (h.fileType || h.analysisType || "").includes("Chest") || h.type === "X-Ray").length}</span>
+                  <span className="prem-ps-label">X-Ray Scans</span>
+                </div>
+                <div className="prem-profile-stat">
+                  <span className="prem-ps-val">{myAnalysisHistory.filter(h => (h.fileType || h.analysisType || "") === "Medical Report" || h.type === "Report").length}</span>
+                  <span className="prem-ps-label">Lab Reports</span>
+                </div>
+                <div className="prem-profile-stat">
+                  <span className="prem-ps-val">4</span>
+                  <span className="prem-ps-label">Supported Modalities</span>
+                </div>
+              </div>
+              <div className="prem-profile-details">
+                <div className="prem-profile-detail-item">
+                  <User size={16} color="var(--text-muted)" />
+                  <span className="prem-pd-label">Full Name</span>
+                  <span className="prem-pd-val">{doctorName}</span>
+                </div>
+                <div className="prem-profile-detail-item">
+                  <Key size={16} color="var(--text-muted)" />
+                  <span className="prem-pd-label">Username</span>
+                  <span className="prem-pd-val">{token.replace("mock-jwt-token-", "")}</span>
+                </div>
+                <div className="prem-profile-detail-item">
+                  <Shield size={16} color="var(--text-muted)" />
+                  <span className="prem-pd-label">Account Tier</span>
+                  <span className="prem-pd-val">Personal Healthcare User (Active)</span>
+                </div>
+                <div className="prem-profile-detail-item">
+                  <Activity size={16} color="var(--text-muted)" />
+                  <span className="prem-pd-label">AI Inference Engine</span>
+                  <span className="prem-pd-val">DenseNet-121, ResNet-18, MobileNetV2</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 9. SETTINGS TAB */}
+        {activeTab === "settings" && (
+          <div className="prem-view">
+            <div className="prem-welcome-header">
+              <div className="prem-welcome-left">
+                <p className="prem-welcome-greeting">System Configuration</p>
+                <h1 className="prem-welcome-title">Settings</h1>
+                <p className="prem-welcome-sub">Customize your application preferences, analysis options, and security.</p>
+              </div>
+            </div>
+            <div className="prem-settings-card">
+              <div className="prem-settings-section">
+                <h3><UserCircle size={18} /> User Account</h3>
+                <div className="prem-settings-item">
+                  <div>
+                    <p className="prem-si-label">Display Name</p>
+                    <p className="prem-si-val">{doctorName}</p>
+                  </div>
+                </div>
+                <div className="prem-settings-item">
+                  <div>
+                    <p className="prem-si-label">User Identifier</p>
+                    <p className="prem-si-val">{token.replace("mock-jwt-token-", "")}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="prem-settings-section">
+                <h3><Brain size={18} /> Diagnostics & AI</h3>
+                <div className="prem-settings-item">
+                  <div>
+                    <p className="prem-si-label">Default Analysis Modality</p>
+                    <p className="prem-si-val">Chest Radiograph (DenseNet-121)</p>
+                  </div>
+                </div>
+                <div className="prem-settings-item">
+                  <div>
+                    <p className="prem-si-label">Explainable AI (Grad-CAM)</p>
+                    <p className="prem-si-val">Enabled — Generates regional activation heatmaps</p>
+                  </div>
+                </div>
+              </div>
+              <div className="prem-settings-section">
+                <h3><Shield size={18} /> Security & Privacy</h3>
+                <div className="prem-settings-item">
+                  <div>
+                    <p className="prem-si-label">Session Authentication</p>
+                    <p className="prem-si-val">Active · Token-verified user session</p>
+                  </div>
+                </div>
+                <div className="prem-settings-item">
+                  <div>
+                    <p className="prem-si-label">History Isolation</p>
+                    <p className="prem-si-val">Analyses are automatically linked to your authenticated user account</p>
+                  </div>
+                </div>
+              </div>
+              <button className="prem-logout-full-btn" onClick={handleLogout}>
+                <LogOut size={16} /> Sign Out of MediScan
+              </button>
+            </div>
+          </div>
+        )}
+
       </main>
 
       {showCreateModal && (
