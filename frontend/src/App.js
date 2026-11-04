@@ -28,7 +28,6 @@ import {
   Clock,
   Key,
   FileCheck,
-  Server,
   Bell,
   Settings,
   TrendingUp,
@@ -313,6 +312,10 @@ function App() {
   const [notifOpen, setNotifOpen] = useState(false);
   const dashboardFileRef = useRef(null);
 
+  // Dashboard navigation drawer + About panel
+  const [navDrawerOpen, setNavDrawerOpen] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
+
   const getAuthHeaders = () => {
     const headers = { "Content-Type": "application/json" };
     if (token) {
@@ -536,6 +539,27 @@ function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, period]);
+
+  // Close navigation overlays with Escape, and lock background scrolling while open
+  useEffect(() => {
+    if (!navDrawerOpen && !showAbout) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setNavDrawerOpen(false);
+        setShowAbout(false);
+      }
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [navDrawerOpen, showAbout]);
 
   const handleRegister = async (e) => {
     e.preventDefault();
@@ -1327,25 +1351,33 @@ function App() {
     return (
       <div className="portal-landing-bg">
         {/* Top Navbar */}
-        <header className="portal-navbar">
-          <div
-            className="portal-nav-brand"
-            style={{ cursor: "pointer" }}
-            onClick={() => setPublicMode("login")}
-            title="Doctor Portal Login"
-          >
-            <div className="portal-logo-orb">
-              <Sparkles size={20} color="#2DD4BF" />
-            </div>
-            <div>
-              <div className="portal-brand-title">
-                MediScan <span className="brand-ai">AI</span>
-                <span className="portal-system-badge">
-                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#10B981", display: "inline-block", boxShadow: "0 0 6px #10B981" }}></span>
-                  SYSTEM ONLINE
-                </span>
+        <header className="portal-navbar portal-home-navbar">
+          <div className="portal-nav-left">
+            <button
+              type="button"
+              className="portal-hamburger"
+              onClick={() => setNavDrawerOpen(true)}
+              aria-label="Open navigation menu"
+              aria-expanded={navDrawerOpen}
+              title="Open menu"
+            >
+              <Menu size={20} />
+            </button>
+
+            <div className="portal-nav-brand">
+              <div className="portal-logo-orb">
+                <Sparkles size={20} color="#2DD4BF" />
               </div>
-              <div className="portal-brand-sub">Clinical Decision Support & Patient Management System</div>
+              <div>
+                <div className="portal-brand-title">
+                  MediScan <span className="brand-ai">AI</span>
+                  <span className="portal-system-badge">
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#10B981", display: "inline-block", boxShadow: "0 0 6px #10B981" }}></span>
+                    SYSTEM ONLINE
+                  </span>
+                </div>
+                <div className="portal-brand-sub">Clinical Decision Support & Patient Management System</div>
+              </div>
             </div>
           </div>
 
@@ -1358,6 +1390,212 @@ function App() {
             </button>
           </div>
         </header>
+
+        {/* ===== SLIDE-OUT NAVIGATION DRAWER ===== */}
+        <div
+          className={`portal-drawer-overlay ${navDrawerOpen ? "open" : ""}`}
+          onClick={() => setNavDrawerOpen(false)}
+          aria-hidden={!navDrawerOpen}
+        >
+          <aside
+            className="portal-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label="MediScan AI navigation"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="portal-drawer-head">
+              <div className="portal-drawer-brand">
+                <div className="portal-logo-orb">
+                  <Sparkles size={18} color="#2DD4BF" />
+                </div>
+                <div>
+                  <div className="portal-brand-title">
+                    MediScan <span className="brand-ai">AI</span>
+                  </div>
+                  <div className="portal-brand-sub">Platform Navigation</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="portal-drawer-close"
+                onClick={() => setNavDrawerOpen(false)}
+                aria-label="Close navigation menu"
+                title="Close menu"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="portal-drawer-label">NAVIGATION</div>
+
+            <nav className="portal-drawer-nav">
+              <button
+                type="button"
+                className="portal-drawer-item"
+                onClick={() => {
+                  setNavDrawerOpen(false);
+                  setAuthError("");
+                  setPublicMode("login");
+                }}
+              >
+                <span className="portal-drawer-item-icon"><Zap size={17} /></span>
+                <span className="portal-drawer-item-text">
+                  <span className="portal-drawer-item-title">Portal Logic</span>
+                  <span className="portal-drawer-item-sub">Doctor portal · secure sign in</span>
+                </span>
+                <ChevronRight size={16} className="portal-drawer-chevron" />
+              </button>
+
+              <button
+                type="button"
+                className="portal-drawer-item"
+                onClick={() => {
+                  setNavDrawerOpen(false);
+                  setShowAbout(true);
+                }}
+              >
+                <span className="portal-drawer-item-icon"><Brain size={17} /></span>
+                <span className="portal-drawer-item-text">
+                  <span className="portal-drawer-item-title">About MediScan AI</span>
+                  <span className="portal-drawer-item-sub">Purpose, modules &amp; capabilities</span>
+                </span>
+                <ChevronRight size={16} className="portal-drawer-chevron" />
+              </button>
+            </nav>
+
+            <div className="portal-drawer-footer">
+              <span className="portal-drawer-status">
+                <span className="portal-drawer-status-dot" /> Neural engines online
+              </span>
+              <span className="portal-drawer-version">v2.8</span>
+            </div>
+          </aside>
+        </div>
+
+        {/* ===== ABOUT MEDISCAN AI PANEL ===== */}
+        {showAbout && (
+          <div
+            className="about-overlay"
+            onClick={() => setShowAbout(false)}
+            role="dialog"
+            aria-modal="true"
+            aria-label="About MediScan AI"
+          >
+            <div className="about-panel" onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                className="about-close"
+                onClick={() => setShowAbout(false)}
+                aria-label="Close about panel"
+                title="Close"
+              >
+                <X size={18} />
+              </button>
+
+              <div className="about-hero">
+                <div className="about-orb">
+                  <Sparkles size={24} color="#2DD4BF" />
+                </div>
+                <span className="about-eyebrow">ABOUT THE PLATFORM</span>
+                <h2>About MediScan AI</h2>
+                <p>
+                  An AI-powered clinical decision-support platform that brings explainable,
+                  multi-modal diagnostic intelligence to everyday medical imaging workflows.
+                </p>
+              </div>
+
+              <div className="about-section">
+                <h3><Activity size={17} color="#2DD4BF" /> Our Purpose</h3>
+                <p>
+                  MediScan AI was built to assist clinicians and individuals by turning raw medical
+                  images and laboratory documents into structured, explainable insights. It acts as a
+                  second set of eyes — highlighting likely findings, severity and recommended next
+                  steps — while leaving final clinical judgement to licensed professionals.
+                </p>
+              </div>
+
+              <div className="about-section">
+                <h3><Brain size={17} color="#2DD4BF" /> AI-Powered Diagnostic Modules</h3>
+                <div className="about-modules-grid">
+                  {[
+                    {
+                      icon: <Stethoscope size={19} color="#3B82F6" />,
+                      title: "Chest X-Ray Analysis",
+                      tag: "DenseNet-121",
+                      desc: "Multi-class thoracic screening for pneumonia, tuberculosis, effusion and cardiomegaly, with Grad-CAM heatmaps."
+                    },
+                    {
+                      icon: <Microscope size={19} color="#10B981" />,
+                      title: "Dental Cavity Detection",
+                      tag: "EfficientNet-B0",
+                      desc: "Detects interproximal caries, enamel demineralization and structural dental defects from radiographs."
+                    },
+                    {
+                      icon: <ScanLine size={19} color="#F59E0B" />,
+                      title: "Kidney Stone CT",
+                      tag: "MobileNetV2",
+                      desc: "Evaluates abdominal CT slices for hyperdense renal calculi and urolithiasis patterns."
+                    },
+                    {
+                      icon: <FileText size={19} color="#8B5CF6" />,
+                      title: "Lab Report Analyzer",
+                      tag: "OCR + NLP",
+                      desc: "Parses CBC, lipid and metabolic panels, normalizes biomarkers and flags out-of-range values."
+                    }
+                  ].map(({ icon, title, tag, desc }) => (
+                    <div key={title} className="about-module-card">
+                      <div className="about-module-top">
+                        <span className="about-module-icon">{icon}</span>
+                        <span className="about-module-tag">{tag}</span>
+                      </div>
+                      <h4>{title}</h4>
+                      <p>{desc}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="about-section">
+                <h3><ScanLine size={17} color="#2DD4BF" /> Supported Medical Imaging Types</h3>
+                <ul className="about-imaging-list">
+                  <li><Check size={14} color="#2DD4BF" /> Posteroanterior (PA) and anteroposterior (AP) chest radiographs — PNG, JPG, JPEG</li>
+                  <li><Check size={14} color="#2DD4BF" /> Panoramic, bitewing and periapical dental radiographs and intraoral photos</li>
+                  <li><Check size={14} color="#2DD4BF" /> Unenhanced helical abdominal CT axial slices for renal calculi evaluation</li>
+                  <li><Check size={14} color="#2DD4BF" /> Laboratory reports, hematology panels and metabolic profiles — PDF or image</li>
+                </ul>
+              </div>
+
+              <div className="about-section">
+                <h3><Zap size={17} color="#2DD4BF" /> Key Platform Capabilities</h3>
+                <div className="about-cap-grid">
+                  {[
+                    "Instant AI inference with confidence scoring",
+                    "Explainable AI via Grad-CAM attention maps",
+                    "Patient registry and longitudinal health timeline",
+                    "Secure authenticated practitioner sessions",
+                    "Encrypted medical vault and report history",
+                    "Exportable clinical summaries and reports"
+                  ].map((capability) => (
+                    <div key={capability} className="about-cap-item">
+                      <CheckCircle2 size={15} color="#2DD4BF" />
+                      <span>{capability}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="about-disclaimer">
+                <ShieldCheck size={18} color="#F59E0B" />
+                <p>
+                  MediScan AI is an algorithmic decision-support tool. It does not replace
+                  professional medical judgement, diagnosis or clinical evaluation by a licensed
+                  physician.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Main Content - Full Width */}
         <main className="portal-home-main">
@@ -1611,83 +1849,6 @@ function App() {
 </section>
 
 {/* ============================================================ */}
-{/* SECTION 2: HOW MEDISCAN WORKS (4-STEP WORKFLOW)              */}
-{/* ============================================================ */}
-<section className="portal-landing-section" id="how-it-works">
-  <div className="section-header-tag">
-    <span className="dot-teal"></span>
-    <span>METHODOLOGY & EXECUTION</span>
-  </div>
-  <h2 className="section-main-title">
-    How MediScan AI <span className="highlight-cyan">Processes Every Scan</span>
-  </h2>
-  <p className="section-main-desc">
-    From raw radiograph ingestion to synthesized diagnostic narratives in four automated, auditable phases.
-  </p>
-
-  <div className="workflow-steps-container">
-    <div className="workflow-track-line"></div>
-    
-    <div className="workflow-step-card">
-      <div className="step-badge-number">01</div>
-      <div className="step-icon-wrap"><Upload size={22} color="#2DD4BF" /></div>
-      <h3 className="step-title">Multimodal Ingestion</h3>
-      <p className="step-desc">
-        Upload raw DICOM exports, high-resolution radiographs (JPEG/PNG), or photographic/scanned blood lab documents.
-      </p>
-      <div className="step-tags">
-        <span>Chest X-Ray</span>
-        <span>Dental OPG</span>
-        <span>CT Slices</span>
-        <span>PDF / Images</span>
-      </div>
-    </div>
-
-    <div className="workflow-step-card">
-      <div className="step-badge-number">02</div>
-      <div className="step-icon-wrap"><Layers size={22} color="#38BDF8" /></div>
-      <h3 className="step-title">Adaptive Preprocessing</h3>
-      <p className="step-desc">
-        Bicubic interpolation, normalization to ImageNet manifolds, contrast balancing (CLAHE), and modality authentication check.
-      </p>
-      <div className="step-tags">
-        <span>224×224 Normalization</span>
-        <span>Artifact Filtering</span>
-        <span>Modality Validation</span>
-      </div>
-    </div>
-
-    <div className="workflow-step-card">
-      <div className="step-badge-number">03</div>
-      <div className="step-icon-wrap"><Brain size={22} color="#A78BFA" /></div>
-      <h3 className="step-title">Deep Inference & XAI</h3>
-      <p className="step-desc">
-        Target neural backbones compute class probabilities while Grad-CAM traces activations back to critical anatomical regions.
-      </p>
-      <div className="step-tags">
-        <span>Probability Distribution</span>
-        <span>Grad-CAM Activation</span>
-        <span>Biomarker OCR</span>
-      </div>
-    </div>
-
-    <div className="workflow-step-card">
-      <div className="step-badge-number">04</div>
-      <div className="step-icon-wrap"><FileCheck size={22} color="#34D399" /></div>
-      <h3 className="step-title">Clinical Synthesis</h3>
-      <p className="step-desc">
-        Generates severity ratings, secondary finding highlights, customized physician guidance, and downloadable PDF clinical summaries.
-      </p>
-      <div className="step-tags">
-        <span>Severity Categorization</span>
-        <span>Actionable Guidance</span>
-        <span>PDF Clinical Export</span>
-      </div>
-    </div>
-  </div>
-</section>
-
-{/* ============================================================ */}
 {/* SECTION 3: AI TECHNOLOGY SHOWCASE (GENUINE MODELS)           */}
 {/* ============================================================ */}
 <section className="portal-landing-section" id="technology-showcase">
@@ -1840,92 +2001,6 @@ function App() {
           <span>Launch Report Analyzer</span>
           <ArrowRight size={14} />
         </button>
-      </div>
-    </div>
-  </div>
-</section>
-
-{/* ============================================================ */}
-{/* SECTION 4: EXPLAINABLE AI (XAI) & GRAD-CAM SHOWCASE          */}
-{/* ============================================================ */}
-<section className="portal-landing-section" id="explainable-ai">
-  <div className="section-header-tag">
-    <span className="dot-teal"></span>
-    <span>EXPLAINABILITY & VISUAL EVIDENCE</span>
-  </div>
-  <h2 className="section-main-title">
-    Explainable AI: <span className="highlight-cyan">Grad-CAM Heatmaps</span>
-  </h2>
-  <p className="section-main-desc">
-    Black-box AI is unacceptable in healthcare. MediScan AI traces gradient flows from the final convolutional layers directly back to anatomical coordinates.
-  </p>
-
-  <div className="xai-showcase-box">
-    <div className="xai-visual-side">
-      <div className="xai-image-comparison">
-        <div className="xai-image-panel">
-          <div className="xai-panel-tag">ORIGINAL RADIOGRAPH</div>
-          <img src="/assets/modules/chest_xray.jpg" alt="Original Scan" className="xai-img" />
-          <span className="xai-img-sub">Raw Patient Exposure</span>
-        </div>
-
-        <div className="xai-divider-arrow">
-          <div className="arrow-pulse-orb"><Cpu size={16} color="#2DD4BF" /></div>
-          <span>Grad-CAM</span>
-        </div>
-
-        <div className="xai-image-panel">
-          <div className="xai-panel-tag active-tag">GRAD-CAM ACTIVATION MAP</div>
-          <div className="xai-heatmap-wrap">
-            <img src="/assets/modules/chest_xray.jpg" alt="Grad-CAM Overlay" className="xai-img heatmap-base" />
-            <div className="xai-heat-sim-overlay"></div>
-            <div className="xai-heat-hotspot"></div>
-          </div>
-          <span className="xai-img-sub">Feature Weight Focus: Lower Lobes</span>
-        </div>
-      </div>
-
-      <div className="xai-spectrum-bar">
-        <span className="spectrum-label">Low Attention (0.0)</span>
-        <div className="spectrum-gradient"></div>
-        <span className="spectrum-label">High Diagnostic Impact (1.0)</span>
-      </div>
-    </div>
-
-    <div className="xai-content-side">
-      <div className="xai-pill-feature">
-        <Sparkles size={14} color="#2DD4BF" />
-        <span>Transparent Decision Pathways</span>
-      </div>
-      <h3 className="xai-feature-title">Why Gradient-weighted Class Activation Mapping Matters</h3>
-      <p className="xai-feature-desc">
-        Grad-CAM uses the gradients of any target concept, flowing into the final convolutional layer to produce a coarse localization map highlighting the important regions in the image for predicting the concept.
-      </p>
-
-      <div className="xai-feature-bullets">
-        <div className="xai-bullet-item">
-          <div className="bullet-check"><Check size={14} color="#2DD4BF" /></div>
-          <div>
-            <strong>Eliminates Hallucinations:</strong>
-            <p>Clinicians can instantly verify that the prediction is based on genuine physiological abnormalities, not imaging artifacts or hospital markers.</p>
-          </div>
-        </div>
-
-        <div className="xai-bullet-item">
-          <div className="bullet-check"><Check size={14} color="#2DD4BF" /></div>
-          <div>
-            <strong>Pinpoints Focal Lesions:</strong>
-            <p>Highlights localized consolidations, dental proximal cavities, or hyperdense kidney calculi with pixel-level coordinate heatmaps.</p>
-          </div>
-        </div>
-
-        <div className="xai-bullet-item">
-          <div className="bullet-check"><Check size={14} color="#2DD4BF" /></div>
-          <div>
-            <strong>Assists Peer Review & Second Opinions:</strong>
-            <p>Enables multidisciplinary medical teams to cross-examine algorithmic reasoning before finalizing reports.</p>
-          </div>
-        </div>
       </div>
     </div>
   </div>
@@ -2092,51 +2167,6 @@ function App() {
 </section>
 
 {/* ============================================================ */}
-{/* SECTION 7: SECURITY & DATA PROTECTION                        */}
-{/* ============================================================ */}
-<section className="portal-landing-section" id="security-section">
-  <div className="section-header-tag">
-    <span className="dot-teal"></span>
-    <span>PATIENT DATA PRIVACY & ACCESS CONTROL</span>
-  </div>
-  <h2 className="section-main-title">
-    Built with Modern <span className="highlight-cyan">Security & Integrity Standards</span>
-  </h2>
-  <p className="section-main-desc">
-    Designed for clinical confidentiality, authenticated practitioner access, and isolated memory processing.
-  </p>
-
-  <div className="security-cards-grid">
-    <div className="security-feature-card">
-      <div className="sec-icon-circle"><Key size={22} color="#2DD4BF" /></div>
-      <h3 className="sec-title">Authenticated Practitioner Sessions</h3>
-      <p className="sec-desc">
-        Doctor credential authorization powered by salted SHA-256 password hashing, tokenized session headers, and scoped role privileges for clinical portals.
-      </p>
-      <div className="sec-tag">SHA-256 & JWT Tokens</div>
-    </div>
-
-    <div className="security-feature-card">
-      <div className="sec-icon-circle"><Server size={22} color="#38BDF8" /></div>
-      <h3 className="sec-title">In-Memory Tensor Transformation</h3>
-      <p className="sec-desc">
-        Incoming clinical images are transformed straight into volatile memory tensors during inference, minimizing permanent disk exposure for anonymous public uploads.
-      </p>
-      <div className="sec-tag">Ephemeral Processing</div>
-    </div>
-
-    <div className="security-feature-card">
-      <div className="sec-icon-circle"><ShieldCheck size={22} color="#34D399" /></div>
-      <h3 className="sec-title">AI-Assisted Decision Support Boundary</h3>
-      <p className="sec-desc">
-        System strictly operates as secondary clinical decision support. Final diagnostic determinations always remain exclusively with licensed medical specialists.
-      </p>
-      <div className="sec-tag">Human-In-The-Loop AI</div>
-    </div>
-  </div>
-</section>
-
-{/* ============================================================ */}
 {/* SECTION 8: COMPREHENSIVE PLATFORM FOOTER                    */}
 {/* ============================================================ */}
 <footer className="portal-landing-footer">
@@ -2179,7 +2209,6 @@ function App() {
         <li><a href="#technology-showcase">DenseNet-121 Architecture</a></li>
         <li><a href="#technology-showcase">EfficientNet-B0 Caries</a></li>
         <li><a href="#technology-showcase">MobileNetV2 CT Engine</a></li>
-        <li><a href="#explainable-ai">Grad-CAM Explainable AI</a></li>
         <li><a href="#clinical-workflow">Clinical Pipeline</a></li>
       </ul>
     </div>
@@ -2189,7 +2218,6 @@ function App() {
       <ul className="footer-nav-list">
         <li><button onClick={() => { setPublicMode("login"); setAuthError(""); }}>Doctor Sign In</button></li>
         <li><button onClick={() => { setPublicMode("history"); setAuthError(""); }}>Audit History Log</button></li>
-        <li><a href="#security-section">Security &amp; Privacy</a></li>
         <li>
           <button onClick={() => alert("MediScan Clinical Support Portal\n24/7 Hotline: +1 (800) 555-MEDI\nEmail: clinical.support@mediscan.ai")}>
             Clinical Support
