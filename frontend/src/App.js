@@ -3,48 +3,36 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   Upload,
   Activity,
-  ShieldAlert,
   ArrowRight,
   Search,
   Plus,
   User,
   LogOut,
-  Layers,
   Brain,
   History,
   Sparkles,
   Eye,
-  EyeOff,
-  Lock,
   Mail,
   Zap,
   Check,
   HelpCircle,
   AlertTriangle,
   ShieldCheck,
-  Cpu,
   FileText,
   ChevronRight,
   Clock,
   Key,
-  FileCheck,
   Bell,
   Settings,
-  TrendingUp,
-  HeartPulse,
   Calendar,
   Download,
   CheckCircle2,
-  Database,
-  FileUp,
   LayoutDashboard,
   Stethoscope,
   FolderOpen,
-  BarChart2,
   GitBranch,
   HardDrive,
   UserCircle,
-  ChevronLeft,
   Menu,
   X,
   RefreshCw,
@@ -52,11 +40,21 @@ import {
   Microscope,
   ScanLine,
   Shield,
-  Heart,
-  FileCheck2
+  ChevronDown,
+  Phone
 } from "lucide-react";
 import "./App.css";
 import PostAnalysisWorkflow from "./components/PostAnalysisWorkflow";
+import {
+  PublicHome,
+  PublicFeatures,
+  PublicHowItWorks,
+  PublicAbout,
+  PublicSupport,
+  AuthPage,
+  AboutContent,
+  SupportContent
+} from "./components/PublicSite";
 
 const API_BASE = process.env.REACT_APP_API_URL || (typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") ? "http://localhost:5000" : "https://mediscan-ai-backend.onrender.com");
 
@@ -64,18 +62,13 @@ function App() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const [token, setToken] = useState(localStorage.getItem("doctor_token") || "");
-  const [doctorName, setDoctorName] = useState(localStorage.getItem("doctor_name") || "");
-  const [activeTab, setActiveTab] = useState("dashboard"); // dashboard, patients, patient-profile
+  const [token, setToken] = useState(localStorage.getItem("doctor_token") || sessionStorage.getItem("doctor_token") || "");
+  const [doctorName, setDoctorName] = useState(localStorage.getItem("doctor_name") || sessionStorage.getItem("doctor_name") || "");
+  const [activeTab, setActiveTab] = useState("dashboard");
 
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [keepSessionActive, setKeepSessionActive] = useState(true);
   const [authError, setAuthError] = useState("");
-  const [isRegistering, setIsRegistering] = useState(false);
-  const [regName, setRegName] = useState("");
-  const [publicMode, setPublicMode] = useState("home"); // home, login, xray, cavity, ct_scan, report, history
+  const [authNotice, setAuthNotice] = useState("");
+  const [publicMode, setPublicMode] = useState("home"); // home, features, how-it-works, about, support, login, register, forgot-password, xray, cavity, ct_scan, report, history
   const [publicResult, setPublicResult] = useState(null);
   const [publicHistory, setPublicHistory] = useState(() => {
     try {
@@ -86,6 +79,25 @@ function App() {
     }
   });
 
+  // Authenticated analysis state (declared early so route helpers can read it)
+  const [dashboardAnalysisMode, setDashboardAnalysisMode] = useState("xray");
+  const [dashboardResult, setDashboardResult] = useState(null);
+
+  // Authenticated application shell + personal workspace UI state
+  const [appDrawerOpen, setAppDrawerOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [historySearch, setHistorySearch] = useState("");
+  const [historyTypeFilter, setHistoryTypeFilter] = useState("All");
+  const [historyDateFilter, setHistoryDateFilter] = useState("All");
+  const [historyStatusFilter, setHistoryStatusFilter] = useState("All");
+  const [recordsSearch, setRecordsSearch] = useState("");
+  const [recordsTypeFilter, setRecordsTypeFilter] = useState("All");
+  const [recordsSort, setRecordsSort] = useState("Newest");
+  const [profileForm, setProfileForm] = useState({ name: "", age: "", gender: "Other", contact: "" });
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileSaved, setProfileSaved] = useState("");
+  const [recordPreview, setRecordPreview] = useState(null);
+
   const [patients, setPatients] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPatient, setSelectedPatient] = useState(null);
@@ -95,37 +107,98 @@ function App() {
   const getPathForState = useCallback((mode, tab, patient) => {
     if (token) {
       if (tab === "dashboard") return "/dashboard";
+      if (tab === "portal-logic") return "/portal-logic";
+      if (tab === "health-history") return "/health-history";
+      if (tab === "medical-records") return "/medical-records";
+      if (tab === "profile") return "/profile";
+      if (tab === "about") return "/about";
+      if (tab === "settings") return "/settings";
+      if (tab === "support") return "/support";
+      if (tab === "new-analysis") {
+        if (dashboardResult) return "/analysis/results";
+        if (dashboardAnalysisMode === "cavity") return "/analysis/dental";
+        if (dashboardAnalysisMode === "ct_scan") return "/analysis/kidney-ct";
+        if (dashboardAnalysisMode === "report") return "/analysis/blood-report";
+        return "/analysis/chest-xray";
+      }
       if (tab === "patients") return "/patients";
       if (tab === "patient-profile") return `/patients/${patient?.patientId || patient?.id || "profile"}`;
-      if (tab === "new-analysis") return "/new-analysis";
       if (tab === "my-reports") return "/my-reports";
       if (tab === "analysis-history") return "/analysis-history";
       if (tab === "health-insights") return "/health-insights";
       if (tab === "health-timeline") return "/health-timeline";
       if (tab === "vault") return "/vault";
-      if (tab === "profile") return "/profile";
-      if (tab === "settings") return "/settings";
     }
     if (mode === "xray") return "/analysis/chest-xray";
-    if (mode === "cavity") return "/analysis/dental-cavity";
-    if (mode === "ct_scan") return "/analysis/kidney-stone";
+    if (mode === "cavity") return "/analysis/dental";
+    if (mode === "ct_scan") return "/analysis/kidney-ct";
     if (mode === "report") return "/analysis/blood-report";
     if (mode === "history") return "/history";
+    if (mode === "features") return "/features";
+    if (mode === "how-it-works") return "/how-it-works";
+    if (mode === "about") return "/about";
+    if (mode === "support") return "/support";
+    if (mode === "register") return "/register";
+    if (mode === "forgot-password") return "/forgot-password";
     if (mode === "login") return "/login";
     if (mode === "home") return "/";
     return "/";
-  }, [token]);
+  }, [token, dashboardResult, dashboardAnalysisMode]);
 
   // Sync state from URL location on direct page loads and browser Back/Forward
   useEffect(() => {
     const path = location.pathname;
-    // When navigating to a new URL, clear publicResult so the page view updates
+    // When navigating to a new URL, clear the transient public result so the page view updates
     setPublicResult(null);
     setUploadFile(null);
+    setProfileMenuOpen(false);
+
+    const enterAnalysis = (analysisMode) => {
+      if (token) {
+        setDashboardResult(null);
+        setActiveTab("new-analysis");
+        setDashboardAnalysisMode(analysisMode);
+      } else {
+        setPublicMode(analysisMode);
+      }
+    };
 
     if (path === "/dashboard") {
       if (token) setActiveTab("dashboard");
       else setPublicMode("login");
+    } else if (path === "/portal-logic") {
+      if (token) setActiveTab("portal-logic");
+      else setPublicMode("login");
+    } else if (path === "/health-history") {
+      if (token) setActiveTab("health-history");
+      else setPublicMode("login");
+    } else if (path === "/medical-records") {
+      if (token) setActiveTab("medical-records");
+      else setPublicMode("login");
+    } else if (path === "/profile") {
+      if (token) setActiveTab("profile");
+      else setPublicMode("login");
+    } else if (path === "/settings") {
+      if (token) setActiveTab("settings");
+      else setPublicMode("login");
+    } else if (path === "/about") {
+      if (token) setActiveTab("about");
+      else setPublicMode("about");
+    } else if (path === "/support") {
+      if (token) setActiveTab("support");
+      else setPublicMode("support");
+    } else if (path === "/features") {
+      if (token) setActiveTab("dashboard");
+      else setPublicMode("features");
+    } else if (path === "/how-it-works") {
+      if (token) setActiveTab("dashboard");
+      else setPublicMode("how-it-works");
+    } else if (path === "/register") {
+      if (token) setActiveTab("dashboard");
+      else setPublicMode("register");
+    } else if (path === "/forgot-password") {
+      if (token) setActiveTab("dashboard");
+      else setPublicMode("forgot-password");
     } else if (path === "/patients") {
       if (token) setActiveTab("patients");
       else setPublicMode("login");
@@ -133,15 +206,34 @@ function App() {
       if (token) setActiveTab("patient-profile");
       else setPublicMode("login");
     } else if (path === "/analysis/chest-xray") {
-      setPublicMode("xray");
-    } else if (path === "/analysis/dental-cavity") {
-      setPublicMode("cavity");
-    } else if (path === "/analysis/kidney-stone") {
-      setPublicMode("ct_scan");
+      enterAnalysis("xray");
+    } else if (path === "/analysis/dental" || path === "/analysis/dental-cavity") {
+      enterAnalysis("cavity");
+    } else if (path === "/analysis/kidney-ct" || path === "/analysis/kidney-stone") {
+      enterAnalysis("ct_scan");
     } else if (path === "/analysis/blood-report") {
-      setPublicMode("report");
-    } else if (path === "/history") {
-      setPublicMode("history");
+      enterAnalysis("report");
+    } else if (path === "/analysis/results") {
+      if (token) setActiveTab("new-analysis");
+      else setPublicMode("xray");
+    } else if (path === "/new-analysis") {
+      if (token) setActiveTab("new-analysis");
+      else setPublicMode("login");
+    } else if (path === "/my-reports") {
+      if (token) setActiveTab("my-reports");
+      else setPublicMode("login");
+    } else if (path === "/analysis-history" || path === "/history") {
+      if (token) setActiveTab("health-history");
+      else setPublicMode("history");
+    } else if (path === "/health-insights") {
+      if (token) setActiveTab("health-insights");
+      else setPublicMode("login");
+    } else if (path === "/health-timeline") {
+      if (token) setActiveTab("health-timeline");
+      else setPublicMode("login");
+    } else if (path === "/vault") {
+      if (token) setActiveTab("medical-records");
+      else setPublicMode("login");
     } else if (path === "/login") {
       if (token) setActiveTab("dashboard");
       else setPublicMode("login");
@@ -158,7 +250,7 @@ function App() {
       navigate(targetPath, { replace: false });
     }
       // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [publicMode, activeTab, selectedPatient, getPathForState]);
+  }, [publicMode, activeTab, selectedPatient, dashboardResult, dashboardAnalysisMode, getPathForState]);
 
   const [newPatient, setNewPatient] = useState({ name: "", age: "", gender: "Male", contact: "" });
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -300,15 +392,12 @@ function App() {
   const [compareIds, setCompareIds] = useState([]);
 
   // NEW INDIVIDUAL HEALTHCARE DASHBOARD STATES
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [myPatientId, setMyPatientId] = useState(null);
   const [myAnalysisHistory, setMyAnalysisHistory] = useState([]);
   const [loadingMyHistory, setLoadingMyHistory] = useState(false);
   const [dashboardUploadFile, setDashboardUploadFile] = useState(null);
   const [dashboardUploading, setDashboardUploading] = useState(false);
   const [dashboardUploadError, setDashboardUploadError] = useState("");
-  const [dashboardResult, setDashboardResult] = useState(null);
-  const [dashboardAnalysisMode, setDashboardAnalysisMode] = useState("xray");
   const [notifOpen, setNotifOpen] = useState(false);
   const dashboardFileRef = useRef(null);
 
@@ -542,13 +631,16 @@ function App() {
 
   // Close navigation overlays with Escape, and lock background scrolling while open
   useEffect(() => {
-    if (!navDrawerOpen && !showAbout) return undefined;
+    if (!navDrawerOpen && !showAbout && !appDrawerOpen && !profileMenuOpen && !notifOpen) return undefined;
 
     const previousOverflow = document.body.style.overflow;
     const handleKeyDown = (event) => {
       if (event.key === "Escape") {
         setNavDrawerOpen(false);
         setShowAbout(false);
+        setAppDrawerOpen(false);
+        setProfileMenuOpen(false);
+        setNotifOpen(false);
       }
     };
 
@@ -559,91 +651,177 @@ function App() {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [navDrawerOpen, showAbout]);
+  }, [navDrawerOpen, showAbout, appDrawerOpen, profileMenuOpen, notifOpen]);
 
-  const handleRegister = async (e) => {
-    e.preventDefault();
+  // Keep the editable profile form in sync with the authenticated user's patient record.
+  useEffect(() => {
+    if (!token) return;
+    const uname = token.replace("mock-jwt-token-", "").toLowerCase();
+    const mine = patients.find((p) => p.patientId === myPatientId)
+      || patients.find((p) => (p.doctorUsername || "").toLowerCase() === uname)
+      || patients[0];
+    if (mine) {
+      setProfileForm({
+        name: mine.name || doctorName || "",
+        age: mine.age !== undefined && mine.age !== null ? String(mine.age) : "",
+        gender: mine.gender || "Other",
+        contact: mine.contact || ""
+      });
+    } else if (doctorName) {
+      setProfileForm((prev) => ({ ...prev, name: prev.name || doctorName }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, patients, myPatientId, doctorName]);
+
+  const persistSession = (data, remember = true) => {
+    const primary = remember ? localStorage : sessionStorage;
+    const secondary = remember ? sessionStorage : localStorage;
+    secondary.removeItem("doctor_token");
+    secondary.removeItem("doctor_name");
+    primary.setItem("doctor_token", data.token);
+    primary.setItem("doctor_name", data.name);
+    setToken(data.token);
+    setDoctorName(data.name);
+    setActiveTab("dashboard");
+    setPublicMode("home");
     setAuthError("");
-    const cleanUsername = username.trim();
-    const cleanName = regName.trim();
-    if (!cleanUsername || !password || !cleanName) {
-      setAuthError("Please fill in all registration fields.");
-      return;
+    setAuthNotice("");
+  };
+
+  const attachPhoneToProfile = async (phone, authToken, accountName) => {
+    if (!phone) return;
+    try {
+      const headers = { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` };
+      const res = await fetch(`${API_BASE}/api/patients`, { headers });
+      if (!res.ok) return;
+      const list = await res.json();
+      const patient = Array.isArray(list) ? list[0] : null;
+      if (!patient?.patientId) {
+        await fetch(`${API_BASE}/api/patients`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            name: accountName || "MediScan AI User",
+            age: 0,
+            gender: "Other",
+            contact: phone
+          })
+        });
+        return;
+      }
+      await fetch(`${API_BASE}/api/patients/${patient.patientId}`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({
+          name: patient.name,
+          age: patient.age,
+          gender: patient.gender || "Other",
+          contact: phone
+        })
+      });
+    } catch (err) {
+      console.warn("Could not attach phone number to profile.", err);
+    }
+  };
+
+  const handleRegister = async ({ name, username: rawUsername, password: rawPassword, phone }) => {
+    setAuthError("");
+    setAuthNotice("");
+    const cleanUsername = (rawUsername || "").trim();
+    const cleanName = (name || "").trim();
+    if (!cleanUsername || !rawPassword || !cleanName) {
+      return { ok: false, error: "Please fill in all required registration fields." };
     }
     try {
       const res = await fetch(`${API_BASE}/api/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: cleanUsername, password, name: cleanName })
+        body: JSON.stringify({ username: cleanUsername, password: rawPassword, name: cleanName })
       });
-      if (res.ok) {
-        // Auto log in newly registered doctor
-        const loginRes = await fetch(`${API_BASE}/api/auth/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username: cleanUsername, password })
-        });
-        if (loginRes.ok) {
-          const data = await loginRes.json();
-          localStorage.setItem("doctor_token", data.token);
-          localStorage.setItem("doctor_name", data.name);
-          setToken(data.token);
-          setDoctorName(data.name);
-          setIsRegistering(false);
-          setRegName("");
-          showToast(`Welcome, ${data.name}. Account created and authenticated.`);
-        } else {
-          showToast("Registration successful. Please sign in.");
-          setIsRegistering(false);
-          setRegName("");
-        }
-      } else {
-        const err = await res.json();
-        setAuthError(err.detail || "Registration failed.");
+      if (!res.ok) {
+        let detail = "Registration failed.";
+        try { const err = await res.json(); detail = err.detail || err.error || detail; } catch (_) {}
+        return { ok: false, error: detail };
       }
+
+      // Auto sign in with the existing login endpoint after successful registration.
+      const loginRes = await fetch(`${API_BASE}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: cleanUsername, password: rawPassword })
+      });
+      if (!loginRes.ok) {
+        setPublicMode("login");
+        return {
+          ok: false,
+          error: "Account created, but automatic sign-in failed. Please sign in with your new credentials."
+        };
+      }
+      const data = await loginRes.json();
+      persistSession(data, true);
+      attachPhoneToProfile(phone, data.token, cleanName);
+      showToast(`Welcome, ${data.name}. Your personal healthcare workspace is ready.`);
+      return { ok: true };
     } catch (err) {
-      setAuthError("Failed to connect to authentication server.");
+      return { ok: false, error: "Failed to connect to the authentication server." };
     }
   };
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
+  const handleLogin = async ({ username: rawUsername, password: rawPassword, remember = true }) => {
     setAuthError("");
-    const cleanUsername = username.trim();
-    if (!cleanUsername || !password) {
-      setAuthError("Please enter both username and password.");
-      return;
+    setAuthNotice("");
+    const cleanUsername = (rawUsername || "").trim();
+    if (!cleanUsername || !rawPassword) {
+      return { ok: false, error: "Please enter both your email and password." };
     }
     try {
       const res = await fetch(`${API_BASE}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: cleanUsername, password })
+        body: JSON.stringify({ username: cleanUsername, password: rawPassword })
       });
       if (res.ok) {
         const data = await res.json();
-        localStorage.setItem("doctor_token", data.token);
-        localStorage.setItem("doctor_name", data.name);
-        setToken(data.token);
-        setDoctorName(data.name);
-        showToast("Welcome back, Doctor.");
-      } else {
-        const err = await res.json();
-        setAuthError(err.detail || "Authentication failed.");
+        persistSession(data, remember);
+        showToast(`Welcome back, ${data.name || "there"}.`);
+        return { ok: true };
       }
+      let detail = "Authentication failed. Check your credentials and try again.";
+      try { const err = await res.json(); detail = err.detail || err.error || detail; } catch (_) {}
+      return { ok: false, error: detail };
     } catch (err) {
-      setAuthError("Failed to connect to authentication server.");
+      return { ok: false, error: "Failed to connect to the authentication server." };
     }
   };
 
+  const handleForgotPassword = async ({ email }) => {
+    setAuthError("");
+    setAuthNotice(
+      `Password recovery is not available through the current backend. No reset email was sent to ${email}. ` +
+      "Please contact the MediScan AI administrator or support to reset access for your registered account."
+    );
+    return { ok: true };
+  };
 
   const handleLogout = () => {
     localStorage.removeItem("doctor_token");
     localStorage.removeItem("doctor_name");
+    sessionStorage.removeItem("doctor_token");
+    sessionStorage.removeItem("doctor_name");
     setToken("");
     setDoctorName("");
     setSelectedPatient(null);
     setActiveTab("dashboard");
+    setPublicMode("home");
+    setAppDrawerOpen(false);
+    setProfileMenuOpen(false);
+    setNotifOpen(false);
+    setDashboardResult(null);
+    setDashboardUploadFile(null);
+    setDashboardUploadError("");
+    setMyAnalysisHistory([]);
+    setMyPatientId(null);
+    setPatients([]);
   };
 
   const handleCreatePatient = async (e) => {
@@ -1170,1075 +1348,55 @@ function App() {
     }
 
     // Show login form page at /login
-    if (publicMode === "login") {
+    if (publicMode === "login" || publicMode === "register" || publicMode === "forgot-password") {
       return (
-        <div className="portal-landing-bg">
-          <header className="portal-navbar">
-            <div
-              className="portal-nav-brand"
-              style={{ cursor: "pointer" }}
-              onClick={() => { setPublicMode("home"); }}
-              title="Back to Homepage"
-            >
-              <div className="portal-logo-orb">
-                <Sparkles size={20} color="#2DD4BF" />
-              </div>
-              <div>
-                <div className="portal-brand-title">
-                  MediScan <span className="brand-ai">AI</span>
-                  <span className="portal-system-badge">
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#10B981", display: "inline-block", boxShadow: "0 0 6px #10B981" }}></span>
-                    SYSTEM ONLINE
-                  </span>
-                </div>
-                <div className="portal-brand-sub">Clinical Decision Support & Patient Management System</div>
-              </div>
-            </div>
-            <div className="portal-nav-right">
-              <button
-                className="portal-support-link"
-                onClick={() => alert("MediScan Clinical Support Portal\n24/7 Hotline: +1 (800) 555-MEDI\nEmail: clinical.support@mediscan.ai\nStatus: All neural inference engines operating nominal.")}
-              >
-                <HelpCircle size={14} /> Clinical Support
-              </button>
-            </div>
-          </header>
-
-          <main style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1, padding: "40px 20px" }}>
-            <div className="portal-auth-card" style={{ position: "relative", zIndex: 1 }}>
-              <div className="portal-auth-header">
-                <div className="portal-auth-icon-orb">
-                  <Zap size={22} color="#2DD4BF" />
-                </div>
-                <div className="portal-auth-title">
-                  {isRegistering ? "Register Doctor Account" : "MediScan AI Portal"}
-                </div>
-                <div className="portal-auth-sub">
-                  {isRegistering
-                    ? "Create your practitioner credentials"
-                    : "Clinical Decision Support & Patient Management System"}
-                </div>
-                <div className="portal-gateway-tag">• SECURE PRACTITIONER GATEWAY •</div>
-              </div>
-
-              <form onSubmit={isRegistering ? handleRegister : handleLogin}>
-                {authError && <div className="error-alert">{authError}</div>}
-
-                {isRegistering && (
-                  <div className="portal-input-group">
-                    <label className="portal-input-label">Practitioner Full Name</label>
-                    <div className="portal-input-wrap">
-                      <User size={15} className="portal-input-icon" />
-                      <input
-                        type="text"
-                        required
-                        className="portal-input"
-                        value={regName}
-                        onChange={(e) => setRegName(e.target.value)}
-                        placeholder="e.g. Dr. Varsha Gowda"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <div className="portal-input-group">
-                  <label className="portal-input-label">Username / Clinical Email</label>
-                  <div className="portal-input-wrap">
-                    <Mail size={15} className="portal-input-icon" />
-                    <input
-                      type="text"
-                      required
-                      className="portal-input"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      placeholder="doctor.id@hospital-network.org"
-                    />
-                  </div>
-                </div>
-
-                <div className="portal-input-group">
-                  <label className="portal-input-label">Security Passcode</label>
-                  <div className="portal-input-wrap">
-                    <Lock size={15} className="portal-input-icon" />
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      required
-                      className="portal-input"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••••••"
-                    />
-                    <button
-                      type="button"
-                      className="portal-pass-toggle"
-                      onClick={() => setShowPassword(!showPassword)}
-                      tabIndex="-1"
-                    >
-                      {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="portal-form-options">
-                  <label className="portal-checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={keepSessionActive}
-                      onChange={(e) => setKeepSessionActive(e.target.checked)}
-                    />
-                    <span>Keep session active (24h)</span>
-                  </label>
-
-                  <div className="portal-ssl-link">
-                    <span
-                      className="link"
-                      onClick={() => alert("Institutional password recovery: Please contact IT security at security@hospital-network.org")}
-                    >
-                      Forgot password?
-                    </span>
-                    &nbsp;• 256-Bit SSL
-                  </div>
-                </div>
-
-                <button type="submit" className="portal-submit-btn">
-                  {isRegistering ? "Register Account" : "Authenticate Portal"}
-                  <ArrowRight size={15} />
-                </button>
-              </form>
-
-              <div className="portal-mode-toggle">
-                {isRegistering ? (
-                  <span>
-                    Already have an account?
-                    <button onClick={() => { setIsRegistering(false); setAuthError(""); }}>
-                      Sign In
-                    </button>
-                  </span>
-                ) : (
-                  <span>
-                    Need an account?
-                    <button onClick={() => { setIsRegistering(true); setAuthError(""); }}>
-                      Sign Up
-                    </button>
-                  </span>
-                )}
-              </div>
-
-              <div style={{ textAlign: "center", marginTop: "16px" }}>
-                <button
-                  onClick={() => setPublicMode("home")}
-                  style={{ background: "none", border: "none", color: "#2DD4BF", fontSize: "13px", cursor: "pointer", textDecoration: "underline" }}
-                >
-                  ← Back to Homepage
-                </button>
-              </div>
-            </div>
-          </main>
-
-                  <footer className="portal-footer">
-          <div className="portal-footer-left">
-            <span style={{width:6,height:6,borderRadius:"50%",background:"#2DD4BF",display:"inline-block"}}></span>
-            <span>MediScan.AI Clinical Portal Authentication</span>
-          </div>
-          <div className="portal-footer-right"></div>
-        </footer>
-
-        </div>
+        <AuthPage
+          mode={publicMode}
+          onNavigate={(mode) => { setAuthError(""); setAuthNotice(""); setPublicMode(mode); }}
+          onLogin={handleLogin}
+          onRegister={handleRegister}
+          onForgotPassword={handleForgotPassword}
+          authError={authError}
+          authNotice={authNotice}
+          onClearAuthMessages={() => { setAuthError(""); setAuthNotice(""); }}
+        />
       );
+    }
+
+    const goPublic = (mode) => {
+      setAuthError("");
+      setAuthNotice("");
+      setPublicResult(null);
+      setPublicMode(mode);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+
+    if (publicMode === "features") {
+      return <PublicFeatures onNavigate={goPublic} />;
+    }
+
+    if (publicMode === "how-it-works") {
+      return <PublicHowItWorks onNavigate={goPublic} />;
+    }
+
+    if (publicMode === "about") {
+      return <PublicAbout onNavigate={goPublic} />;
+    }
+
+    if (publicMode === "support") {
+      return <PublicSupport onNavigate={goPublic} />;
     }
 
     // Homepage (publicMode === "home" or default)
     return (
-      <div className="portal-landing-bg">
-        {/* Top Navbar */}
-        <header className="portal-navbar portal-home-navbar">
-          <div className="portal-nav-left">
-            <button
-              type="button"
-              className="portal-hamburger"
-              onClick={() => setNavDrawerOpen(true)}
-              aria-label="Open navigation menu"
-              aria-expanded={navDrawerOpen}
-              title="Open menu"
-            >
-              <Menu size={20} />
-            </button>
-
-            <div className="portal-nav-brand">
-              <div className="portal-logo-orb">
-                <Sparkles size={20} color="#2DD4BF" />
-              </div>
-              <div>
-                <div className="portal-brand-title">
-                  MediScan <span className="brand-ai">AI</span>
-                  <span className="portal-system-badge">
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#10B981", display: "inline-block", boxShadow: "0 0 6px #10B981" }}></span>
-                    SYSTEM ONLINE
-                  </span>
-                </div>
-                <div className="portal-brand-sub">Clinical Decision Support & Patient Management System</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="portal-nav-right">
-            <button
-              className="portal-support-link"
-              onClick={() => alert("MediScan Clinical Support Portal\n24/7 Hotline: +1 (800) 555-MEDI\nEmail: clinical.support@mediscan.ai\nStatus: All neural inference engines operating nominal.")}
-            >
-              <HelpCircle size={14} /> Clinical Support
-            </button>
-          </div>
-        </header>
-
-        {/* ===== SLIDE-OUT NAVIGATION DRAWER ===== */}
-        <div
-          className={`portal-drawer-overlay ${navDrawerOpen ? "open" : ""}`}
-          onClick={() => setNavDrawerOpen(false)}
-          aria-hidden={!navDrawerOpen}
-        >
-          <aside
-            className="portal-drawer"
-            role="dialog"
-            aria-modal="true"
-            aria-label="MediScan AI navigation"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="portal-drawer-head">
-              <div className="portal-drawer-brand">
-                <div className="portal-logo-orb">
-                  <Sparkles size={18} color="#2DD4BF" />
-                </div>
-                <div>
-                  <div className="portal-brand-title">
-                    MediScan <span className="brand-ai">AI</span>
-                  </div>
-                  <div className="portal-brand-sub">Platform Navigation</div>
-                </div>
-              </div>
-              <button
-                type="button"
-                className="portal-drawer-close"
-                onClick={() => setNavDrawerOpen(false)}
-                aria-label="Close navigation menu"
-                title="Close menu"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="portal-drawer-label">NAVIGATION</div>
-
-            <nav className="portal-drawer-nav">
-              <button
-                type="button"
-                className="portal-drawer-item"
-                onClick={() => {
-                  setNavDrawerOpen(false);
-                  setAuthError("");
-                  setPublicMode("login");
-                }}
-              >
-                <span className="portal-drawer-item-icon"><Zap size={17} /></span>
-                <span className="portal-drawer-item-text">
-                  <span className="portal-drawer-item-title">Portal Logic</span>
-                  <span className="portal-drawer-item-sub">Doctor portal · secure sign in</span>
-                </span>
-                <ChevronRight size={16} className="portal-drawer-chevron" />
-              </button>
-
-              <button
-                type="button"
-                className="portal-drawer-item"
-                onClick={() => {
-                  setNavDrawerOpen(false);
-                  setShowAbout(true);
-                }}
-              >
-                <span className="portal-drawer-item-icon"><Brain size={17} /></span>
-                <span className="portal-drawer-item-text">
-                  <span className="portal-drawer-item-title">About MediScan AI</span>
-                  <span className="portal-drawer-item-sub">Purpose, modules &amp; capabilities</span>
-                </span>
-                <ChevronRight size={16} className="portal-drawer-chevron" />
-              </button>
-            </nav>
-
-            <div className="portal-drawer-footer">
-              <span className="portal-drawer-status">
-                <span className="portal-drawer-status-dot" /> Neural engines online
-              </span>
-              <span className="portal-drawer-version">v2.8</span>
-            </div>
-          </aside>
-        </div>
-
-        {/* ===== ABOUT MEDISCAN AI PANEL ===== */}
-        {showAbout && (
-          <div
-            className="about-overlay"
-            onClick={() => setShowAbout(false)}
-            role="dialog"
-            aria-modal="true"
-            aria-label="About MediScan AI"
-          >
-            <div className="about-panel" onClick={(e) => e.stopPropagation()}>
-              <button
-                type="button"
-                className="about-close"
-                onClick={() => setShowAbout(false)}
-                aria-label="Close about panel"
-                title="Close"
-              >
-                <X size={18} />
-              </button>
-
-              <div className="about-hero">
-                <div className="about-orb">
-                  <Sparkles size={24} color="#2DD4BF" />
-                </div>
-                <span className="about-eyebrow">ABOUT THE PLATFORM</span>
-                <h2>About MediScan AI</h2>
-                <p>
-                  An AI-powered clinical decision-support platform that brings explainable,
-                  multi-modal diagnostic intelligence to everyday medical imaging workflows.
-                </p>
-              </div>
-
-              <div className="about-section">
-                <h3><Activity size={17} color="#2DD4BF" /> Our Purpose</h3>
-                <p>
-                  MediScan AI was built to assist clinicians and individuals by turning raw medical
-                  images and laboratory documents into structured, explainable insights. It acts as a
-                  second set of eyes — highlighting likely findings, severity and recommended next
-                  steps — while leaving final clinical judgement to licensed professionals.
-                </p>
-              </div>
-
-              <div className="about-section">
-                <h3><Brain size={17} color="#2DD4BF" /> AI-Powered Diagnostic Modules</h3>
-                <div className="about-modules-grid">
-                  {[
-                    {
-                      icon: <Stethoscope size={19} color="#3B82F6" />,
-                      title: "Chest X-Ray Analysis",
-                      tag: "DenseNet-121",
-                      desc: "Multi-class thoracic screening for pneumonia, tuberculosis, effusion and cardiomegaly, with Grad-CAM heatmaps."
-                    },
-                    {
-                      icon: <Microscope size={19} color="#10B981" />,
-                      title: "Dental Cavity Detection",
-                      tag: "EfficientNet-B0",
-                      desc: "Detects interproximal caries, enamel demineralization and structural dental defects from radiographs."
-                    },
-                    {
-                      icon: <ScanLine size={19} color="#F59E0B" />,
-                      title: "Kidney Stone CT",
-                      tag: "MobileNetV2",
-                      desc: "Evaluates abdominal CT slices for hyperdense renal calculi and urolithiasis patterns."
-                    },
-                    {
-                      icon: <FileText size={19} color="#8B5CF6" />,
-                      title: "Lab Report Analyzer",
-                      tag: "OCR + NLP",
-                      desc: "Parses CBC, lipid and metabolic panels, normalizes biomarkers and flags out-of-range values."
-                    }
-                  ].map(({ icon, title, tag, desc }) => (
-                    <div key={title} className="about-module-card">
-                      <div className="about-module-top">
-                        <span className="about-module-icon">{icon}</span>
-                        <span className="about-module-tag">{tag}</span>
-                      </div>
-                      <h4>{title}</h4>
-                      <p>{desc}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="about-section">
-                <h3><ScanLine size={17} color="#2DD4BF" /> Supported Medical Imaging Types</h3>
-                <ul className="about-imaging-list">
-                  <li><Check size={14} color="#2DD4BF" /> Posteroanterior (PA) and anteroposterior (AP) chest radiographs — PNG, JPG, JPEG</li>
-                  <li><Check size={14} color="#2DD4BF" /> Panoramic, bitewing and periapical dental radiographs and intraoral photos</li>
-                  <li><Check size={14} color="#2DD4BF" /> Unenhanced helical abdominal CT axial slices for renal calculi evaluation</li>
-                  <li><Check size={14} color="#2DD4BF" /> Laboratory reports, hematology panels and metabolic profiles — PDF or image</li>
-                </ul>
-              </div>
-
-              <div className="about-section">
-                <h3><Zap size={17} color="#2DD4BF" /> Key Platform Capabilities</h3>
-                <div className="about-cap-grid">
-                  {[
-                    "Instant AI inference with confidence scoring",
-                    "Explainable AI via Grad-CAM attention maps",
-                    "Patient registry and longitudinal health timeline",
-                    "Secure authenticated practitioner sessions",
-                    "Encrypted medical vault and report history",
-                    "Exportable clinical summaries and reports"
-                  ].map((capability) => (
-                    <div key={capability} className="about-cap-item">
-                      <CheckCircle2 size={15} color="#2DD4BF" />
-                      <span>{capability}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="about-disclaimer">
-                <ShieldCheck size={18} color="#F59E0B" />
-                <p>
-                  MediScan AI is an algorithmic decision-support tool. It does not replace
-                  professional medical judgement, diagnosis or clinical evaluation by a licensed
-                  physician.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Main Content - Full Width */}
-        <main className="portal-home-main">
-          {/* === HERO ROW === */}
-          <div className="portal-hero-row">
-            <div className="portal-hero-text">
-              <div className="portal-top-pill">
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2DD4BF", display: "inline-block", boxShadow: "0 0 6px #2DD4BF" }}></span>
-                NEXT-GEN NEURAL DIAGNOSTIC SUITE
-              </div>
-
-              <h1 className="portal-hero-title">
-                Intelligent Medical<br />Imaging.<br />
-                <span className="highlight-cyan">Smarter Clinical<br />Decisions.</span>
-              </h1>
-              <p className="portal-hero-desc">
-                MediScan AI ingests multi-modal radiological scans, synthesizes contextual
-                patient records, and delivers instant, explainable deep learning decision
-                support directly to your clinical workflow.
-              </p>
-              <div className="portal-feature-pills">
-                <div className="portal-feature-pill cyan-border">
-                  <Check size={13} color="#2DD4BF" /><span>AI-Powered Clinical Analysis</span>
-                </div>
-                <div className="portal-feature-pill">
-                  <Layers size={13} color="#38BDF8" /><span>Multimodal Medical Imaging</span>
-                </div>
-                <div className="portal-feature-pill">
-                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#34D399", display: "inline-block" }}></span>
-                  <span>99.4% Model Confidence</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Right: Medical imaging illustration - Floating Multi-Screen Hologram matching reference */}
-            <div className="portal-hero-illus">
-              <div className="illus-hologram-wrap">
-                {/* Glowing neon teal circular halo */}
-                <div className="illus-hologram-ring"></div>
-
-                {/* Main Floating Chest Radiograph Panel */}
-                <div className="illus-screen illus-screen-main">
-                  <div className="screen-header">
-                    <span className="dot-teal"></span>
-                    <span className="screen-title">THORACIC DIGITAL RADIOGRAPHY</span>
-                    <span className="screen-tag">PA HIGH-RES</span>
-                  </div>
-                  <div className="screen-img-wrap">
-                    <img src="/assets/modules/chest_xray.jpg" alt="Chest Radiograph" className="screen-img" />
-                    {/* Scanning laser beam overlay */}
-                    <div className="screen-scan-line"></div>
-                    {/* Diagnostic HUD crosshair target */}
-                    <div className="screen-hud-reticle">
-                      <div className="reticle-ring"></div>
-                      <div className="reticle-dot"></div>
-                      <span className="reticle-text">TARGET: RLL 99.4%</span>
-                    </div>
-                  </div>
-                  <div className="screen-footer-metrics">
-                    <span>120 kVp · 4.2 mAs</span>
-                    <span className="metric-cyan">AI SEGMENTATION ACTIVE</span>
-                  </div>
-                </div>
-
-                {/* Floating Mid-Right Dental Panoramic Panel */}
-                <div className="illus-screen illus-screen-dental">
-                  <div className="screen-header mini">
-                    <span className="screen-title">PANORAMIC DENTAL</span>
-                  </div>
-                  <div className="screen-img-wrap mini">
-                    <img src="/assets/modules/dental_panoramic.jpg" alt="Dental OPG" className="screen-img" />
-                  </div>
-                </div>
-
-                {/* Floating Bottom-Right Kidney CT Panel */}
-                <div className="illus-screen illus-screen-kidney">
-                  <div className="screen-header mini">
-                    <span className="screen-title">ABDOMINAL CT SCAN</span>
-                  </div>
-                  <div className="screen-img-wrap mini">
-                    <img src="/assets/modules/kidney_ct.jpg" alt="Kidney CT" className="screen-img" />
-                  </div>
-                </div>
-
-                {/* Anatomical Holographic Body Silhouette (SVG wireframe on right) */}
-                <div className="illus-body-wireframe">
-                  <svg viewBox="0 0 160 320" className="wireframe-svg" fill="none" stroke="#2DD4BF" strokeWidth="1.2">
-                    {/* Head & Neck */}
-                    <ellipse cx="80" cy="32" rx="18" ry="22" stroke="#2DD4BF" strokeWidth="1.4" opacity="0.8" />
-                    <line x1="74" y1="54" x2="74" y2="68" stroke="#2DD4BF" opacity="0.6" />
-                    <line x1="86" y1="54" x2="86" y2="68" stroke="#2DD4BF" opacity="0.6" />
-                    {/* Shoulders & Torso Outline */}
-                    <path d="M40 76 Q80 66 120 76 L130 140 Q118 190 108 240 L114 310 M40 76 L30 140 Q42 190 52 240 L46 310" stroke="#2DD4BF" strokeWidth="1.2" opacity="0.75" />
-                    {/* Chest / Lungs Hologram Glow */}
-                    <path d="M56 88 Q46 112 48 142 Q52 162 66 166 Q74 150 72 120 Z" fill="rgba(45,212,191,0.18)" stroke="#2DD4BF" strokeWidth="1.2" opacity="0.85" />
-                    <path d="M104 88 Q114 112 112 142 Q108 162 94 166 Q86 150 88 120 Z" fill="rgba(45,212,191,0.18)" stroke="#2DD4BF" strokeWidth="1.2" opacity="0.85" />
-                    {/* Spine / Vertebrae */}
-                    <line x1="80" y1="68" x2="80" y2="235" stroke="#38BDF8" strokeWidth="1.5" strokeDasharray="3 3" opacity="0.7" />
-                    {/* Circulatory / Target Rings */}
-                    <circle cx="80" cy="180" r="14" stroke="#2DD4BF" strokeWidth="1" strokeDasharray="2 3" opacity="0.6">
-                      <animateTransform attributeName="transform" type="rotate" from="0 80 180" to="360 80 180" dur="10s" repeatCount="indefinite" />
-                    </circle>
-                    <circle cx="80" cy="180" r="6" stroke="#38BDF8" strokeWidth="1.2" opacity="0.8" />
-                    <circle cx="80" cy="180" r="2" fill="#2DD4BF" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* === MODULES + PIPELINE === */}
-          <div className="portal-modules-section">
-            <div className="portal-modules-header">
-              <div className="portal-modules-title">
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2DD4BF", display: "inline-block", boxShadow: "0 0 6px #2DD4BF" }}></span>
-                AI Diagnostic Modules <span className="sub">| Multimodal medical imaging analysis</span>
-              </div>
-              <div className="portal-types-badge">4 ANALYSIS TYPES</div>
-            </div>
-
-            <div className="portal-modules-row5">
-              <div className="pmod5" onClick={() => { setPublicMode("xray"); setAuthError(""); setPublicResult(null); }}>
-                <div className="pmod5-bg pmod5-bg-xray"></div><div className="pmod5-overlay"></div>
-                <div className="pmod5-content">
-                  <div className="portal-mod-top">
-                    <div className="portal-mod-icon-box"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4v16"/><path d="M7 6a5 5 0 0 0-4 4.5c0 3.5 2.5 6.5 5 7.5"/><path d="M17 6a5 5 0 0 1 4 4.5c0 3.5-2.5 6.5-5 7.5"/><path d="M8 10h8"/><path d="M8 14h8"/></svg></div>
-                    <span className="portal-mod-ready-badge"><span style={{width:4,height:4,borderRadius:"50%",background:"#34D399",display:"inline-block"}}></span> Ready to Analyze</span>
-                  </div>
-                  <div className="portal-mod-name">Chest X-Ray</div>
-                  <div className="portal-mod-sub">AI-powered chest abnormality analysis</div>
-                </div>
-              </div>
-
-              <div className="pmod5" onClick={() => { setPublicMode("cavity"); setAuthError(""); setPublicResult(null); }}>
-                <div className="pmod5-bg pmod5-bg-dental"></div><div className="pmod5-overlay"></div>
-                <div className="pmod5-content">
-                  <div className="portal-mod-top">
-                    <div className="portal-mod-icon-box"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 3C4.2 3 2 8 2 10.5c0 3.8 2 7 4 10.5 1 1.8 2 1.8 3 0 .8-1.5 1.5-3.5 2.5-3.5s1.7 2 2.5 3.5c1 1.8 2 1.8 3 0 2-3.5 4-6.7 4-10.5C20.5 8 18.3 3 15.5 3c-2 0-3 1-4.2 2-1.2-1-2.2-2-4.3-2z"/></svg></div>
-                    <span className="portal-mod-ready-badge"><span style={{width:4,height:4,borderRadius:"50%",background:"#34D399",display:"inline-block"}}></span> Ready to Analyze</span>
-                  </div>
-                  <div className="portal-mod-name">Dental Analysis</div>
-                  <div className="portal-mod-sub">AI cavity and dental condition analysis</div>
-                </div>
-              </div>
-
-              <div className="pmod5" onClick={() => { setPublicMode("ct_scan"); setAuthError(""); setPublicResult(null); }}>
-                <div className="pmod5-bg pmod5-bg-kidney"></div><div className="pmod5-overlay"></div>
-                <div className="pmod5-content">
-                  <div className="portal-mod-top">
-                    <div className="portal-mod-icon-box"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="2" r="1.5"/></svg></div>
-                    <span className="portal-mod-ready-badge"><span style={{width:4,height:4,borderRadius:"50%",background:"#34D399",display:"inline-block"}}></span> Ready to Analyze</span>
-                  </div>
-                  <div className="portal-mod-name">Kidney Stone CT</div>
-                  <div className="portal-mod-sub">Kidney stone detection and analysis</div>
-                </div>
-              </div>
-
-              <div className="pmod5" onClick={() => { setPublicMode("report"); setAuthError(""); setPublicResult(null); }}>
-                <div className="pmod5-bg pmod5-bg-blood"></div><div className="pmod5-overlay"></div>
-                <div className="pmod5-content">
-                  <div className="portal-mod-top">
-                    <div className="portal-mod-icon-box"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg></div>
-                    <span className="portal-mod-ready-badge"><span style={{width:4,height:4,borderRadius:"50%",background:"#34D399",display:"inline-block"}}></span> Ready to Analyze</span>
-                  </div>
-                  <div className="portal-mod-name">Blood Report Analysis</div>
-                  <div className="portal-mod-sub">AI hematology &amp; biomarker lab report analysis</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="portal-pipeline-bar">
-              <div className="portal-pipeline-steps">
-                <span style={{color:"#64748B",fontSize:"10px",letterSpacing:"0.5px",fontWeight:700}}>PIPELINE:</span>
-                <span className="portal-pipe-chip active">Prediction</span>
-                <span className="portal-pipe-arrow">—</span>
-                <span className="portal-pipe-chip">Explanation</span>
-                <span className="portal-pipe-arrow">—</span>
-                <span className="portal-pipe-chip">Severity</span>
-                <span className="portal-pipe-arrow">—</span>
-                <span className="portal-pipe-chip">Recommendation</span>
-                <span className="portal-pipe-arrow">—</span>
-                <span className="portal-pipe-chip">Report</span>
-              </div>
-              <button className="portal-history-btn" onClick={() => { setPublicMode("history"); setAuthError(""); }}>
-                <History size={13}/><span>Analysis History</span>
-              </button>
-            </div>
-          </div>
-        </main>
-
-        {/* ============================================================ */}
-{/* SECTION 1: PLATFORM REAL-TIME SYSTEM ARCHITECTURE & STATS     */}
-{/* ============================================================ */}
-<section className="portal-landing-section" id="platform-stats">
-  <div className="section-header-tag">
-    <span className="dot-teal"></span>
-    <span>PLATFORM ARCHITECTURE & CAPABILITIES</span>
-  </div>
-  <h2 className="section-main-title">
-    Engineered for High-Precision <span className="highlight-cyan">Clinical Intelligence</span>
-  </h2>
-  <p className="section-main-desc">
-    State-of-the-art vision models and automated OCR hematology processors, calibrated for radiographical transparency and instant diagnostic assistance.
-  </p>
-
-  <div className="stats-metric-grid">
-    <div className="stat-metric-card">
-      <div className="stat-card-glow"></div>
-      <div className="stat-card-icon"><Activity size={24} color="#2DD4BF" /></div>
-      <div className="stat-card-val"><span className="stat-number">4</span><span className="stat-suffix">/4</span></div>
-      <div className="stat-card-label">Diagnostic Modalities</div>
-      <p className="stat-card-sub">Chest X-Ray, Dental Panoramic, Kidney CT, and Hematology Reports</p>
-      <div className="stat-card-footer">
-        <span className="status-pill-online"><span className="tiny-dot"></span> Active & Online</span>
-      </div>
-    </div>
-
-    <div className="stat-metric-card">
-      <div className="stat-card-glow"></div>
-      <div className="stat-card-icon"><Cpu size={24} color="#38BDF8" /></div>
-      <div className="stat-card-val"><span className="stat-number">3</span><span className="stat-plus">+</span></div>
-      <div className="stat-card-label">Neural Architectures</div>
-      <p className="stat-card-sub">DenseNet-121, EfficientNet-B0, MobileNetV2 & Tesseract OCR</p>
-      <div className="stat-card-footer">
-        <span className="status-pill-info">PyTorch & TorchVision</span>
-      </div>
-    </div>
-
-    <div className="stat-metric-card">
-      <div className="stat-card-glow"></div>
-      <div className="stat-card-icon"><Zap size={24} color="#F59E0B" /></div>
-      <div className="stat-card-val"><span className="stat-number">&lt;2.4</span><span className="stat-suffix">s</span></div>
-      <div className="stat-card-label">Median Inference Speed</div>
-      <p className="stat-card-sub">Direct tensor transformation, Grad-CAM generation and clinical scoring</p>
-      <div className="stat-card-footer">
-        <span className="status-pill-online"><span className="tiny-dot"></span> Low-Latency Engine</span>
-      </div>
-    </div>
-
-    <div className="stat-metric-card">
-      <div className="stat-card-glow"></div>
-      <div className="stat-card-icon"><History size={24} color="#A78BFA" /></div>
-      <div className="stat-card-val"><span className="stat-number">{publicHistory.length}</span></div>
-      <div className="stat-card-label">Saved Audit Records</div>
-      <p className="stat-card-sub">Verified local diagnostic runs ready for interactive review</p>
-      <div className="stat-card-footer">
-        <span className="status-pill-info">Local Audit Trail</span>
-      </div>
-    </div>
-  </div>
-</section>
-
-{/* ============================================================ */}
-{/* SECTION 3: AI TECHNOLOGY SHOWCASE (GENUINE MODELS)           */}
-{/* ============================================================ */}
-<section className="portal-landing-section" id="technology-showcase">
-  <div className="section-header-tag">
-    <span className="dot-teal"></span>
-    <span>SPECIALIZED NEURAL ENGINES</span>
-  </div>
-  <h2 className="section-main-title">
-    Deep Learning <span className="highlight-cyan">Architectures & OCR</span>
-  </h2>
-  <p className="section-main-desc">
-    Trained deep networks tailored for specific diagnostic visual patterns rather than generic black-box heuristics.
-  </p>
-
-  <div className="tech-models-grid">
-    {/* DenseNet-121 */}
-    <div className="tech-model-card">
-      <div className="tech-card-header">
-        <div className="tech-header-icon"><Brain size={24} color="#2DD4BF" /></div>
-        <div className="tech-header-meta">
-          <span className="tech-modality">Thoracic Imaging</span>
-          <h3 className="tech-title">DenseNet-121</h3>
-        </div>
-        <span className="tech-badge-primary">Dense Connectivity</span>
-      </div>
-      <p className="tech-description">
-        Connects each layer to every other layer in a feed-forward fashion to preserve maximum feature propagation for thoracic pathologies (Pneumonia, Tuberculosis, Normal).
-      </p>
-      <div className="tech-specs-table">
-        <div className="tech-spec-row">
-          <span className="spec-label">Input Shape</span>
-          <span className="spec-val">3 × 224 × 224 RGB</span>
-        </div>
-        <div className="tech-spec-row">
-          <span className="spec-label">Key Pathologies</span>
-          <span className="spec-val">Normal vs. Abnormality</span>
-        </div>
-        <div className="tech-spec-row">
-          <span className="spec-label">Explainability</span>
-          <span className="spec-val">Grad-CAM (Layer norm5)</span>
-        </div>
-      </div>
-      <div className="tech-card-action">
-        <button className="tech-btn" onClick={() => { setPublicMode("xray"); setAuthError(""); setPublicResult(null); }}>
-          <span>Launch Chest X-Ray Module</span>
-          <ArrowRight size={14} />
-        </button>
-      </div>
-    </div>
-
-    {/* EfficientNet-B0 / Cavity */}
-    <div className="tech-model-card">
-      <div className="tech-card-header">
-        <div className="tech-header-icon"><Activity size={24} color="#F59E0B" /></div>
-        <div className="tech-header-meta">
-          <span className="tech-modality">Dental Radiography</span>
-          <h3 className="tech-title">EfficientNet-B0</h3>
-        </div>
-        <span className="tech-badge-warning">Compound Scaling</span>
-      </div>
-      <p className="tech-description">
-        Balanced depth, width, and resolution scaling specifically optimized to spot subtle interproximal demineralization, enamel degradation, and deep dental caries.
-      </p>
-      <div className="tech-specs-table">
-        <div className="tech-spec-row">
-          <span className="spec-label">Input Shape</span>
-          <span className="spec-val">3 × 224 × 224 Bitewing/OPG</span>
-        </div>
-        <div className="tech-spec-row">
-          <span className="spec-label">Target Finding</span>
-          <span className="spec-val">Active Caries vs. Healthy</span>
-        </div>
-        <div className="tech-spec-row">
-          <span className="spec-label">Visual Focus</span>
-          <span className="spec-val">Enamel / Dentin Boundaries</span>
-        </div>
-      </div>
-      <div className="tech-card-action">
-        <button className="tech-btn" onClick={() => { setPublicMode("cavity"); setAuthError(""); setPublicResult(null); }}>
-          <span>Launch Dental Module</span>
-          <ArrowRight size={14} />
-        </button>
-      </div>
-    </div>
-
-    {/* MobileNetV2 / CT Scan */}
-    <div className="tech-model-card">
-      <div className="tech-card-header">
-        <div className="tech-header-icon"><Cpu size={24} color="#38BDF8" /></div>
-        <div className="tech-header-meta">
-          <span className="tech-modality">Abdominal Helical CT</span>
-          <h3 className="tech-title">MobileNetV2</h3>
-        </div>
-        <span className="tech-badge-cyan">Inverted Residuals</span>
-      </div>
-      <p className="tech-description">
-        Lightweight depthwise separable convolutions capable of rapid axial CT cross-section evaluation for hyperdense renal calculi and stone manifestations.
-      </p>
-      <div className="tech-specs-table">
-        <div className="tech-spec-row">
-          <span className="spec-label">Input Shape</span>
-          <span className="spec-val">Axial CT Contrast / Non-Contrast</span>
-        </div>
-        <div className="tech-spec-row">
-          <span className="spec-label">Target Finding</span>
-          <span className="spec-val">Kidney Calculi Detection</span>
-        </div>
-        <div className="tech-spec-row">
-          <span className="spec-label">Heatmap Overlay</span>
-          <span className="spec-val">Renal Parenchyma Attention</span>
-        </div>
-      </div>
-      <div className="tech-card-action">
-        <button className="tech-btn" onClick={() => { setPublicMode("ct_scan"); setAuthError(""); setPublicResult(null); }}>
-          <span>Launch Kidney CT Module</span>
-          <ArrowRight size={14} />
-        </button>
-      </div>
-    </div>
-
-    {/* OCR Hematology Engine */}
-    <div className="tech-model-card">
-      <div className="tech-card-header">
-        <div className="tech-header-icon"><FileText size={24} color="#EC4899" /></div>
-        <div className="tech-header-meta">
-          <span className="tech-modality">Lab Pathology</span>
-          <h3 className="tech-title">OCR-NLP Engine</h3>
-        </div>
-        <span className="tech-badge-pink">Biomarker Extraction</span>
-      </div>
-      <p className="tech-description">
-        Automated textual parser running OCR extraction coupled with clinical range normalization to detect abnormal hemoglobin, platelets, leukocyte counts, and lipids.
-      </p>
-      <div className="tech-specs-table">
-        <div className="tech-spec-row">
-          <span className="spec-label">Document Types</span>
-          <span className="spec-val">CBC, Lipid, Metabolic Panels</span>
-        </div>
-        <div className="tech-spec-row">
-          <span className="spec-label">Range Parsing</span>
-          <span className="spec-val">Reference Range Comparison</span>
-        </div>
-        <div className="tech-spec-row">
-          <span className="spec-label">Clinical Output</span>
-          <span className="spec-val">Highlighting Critical Biomarkers</span>
-        </div>
-      </div>
-      <div className="tech-card-action">
-        <button className="tech-btn" onClick={() => { setPublicMode("report"); setAuthError(""); setPublicResult(null); }}>
-          <span>Launch Report Analyzer</span>
-          <ArrowRight size={14} />
-        </button>
-      </div>
-    </div>
-  </div>
-</section>
-
-{/* ============================================================ */}
-{/* SECTION 5: RECENT ANALYSIS & SCAN AUDIT TRAIL                */}
-{/* ============================================================ */}
-<section className="portal-landing-section" id="recent-analyses">
-  <div className="section-header-tag">
-    <span className="dot-teal"></span>
-    <span>VERIFIED DIAGNOSTIC RUNS</span>
-  </div>
-  <div className="section-title-between">
-    <div>
-      <h2 className="section-main-title">
-        Recent <span className="highlight-cyan">Scan Audit History</span>
-      </h2>
-      <p className="section-main-desc">
-        Inspect your locally performed AI evaluations. Click any record to inspect the complete diagnostic report and recommendation suite.
-      </p>
-    </div>
-    <button className="portal-history-btn" onClick={() => { setPublicMode("history"); setAuthError(""); }}>
-      <History size={14}/><span>View Full History ({publicHistory.length})</span>
-    </button>
-  </div>
-
-  {publicHistory && publicHistory.length > 0 ? (
-    <div className="recent-analyses-table-wrap">
-      <table className="recent-analyses-table">
-        <thead>
-          <tr>
-            <th>Modality</th>
-            <th>Primary Finding</th>
-            <th>Confidence</th>
-            <th>Severity</th>
-            <th>Timestamp</th>
-            <th style={{ textAlign: "right" }}>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {publicHistory.slice(0, 5).map((item, idx) => {
-            const modName = item.modality || item.fileType || "Medical Scan";
-            const sev = item.post_analysis?.severity || "Analyzed";
-            const sevColor = sev === "High" ? "#EF4444" : sev === "Moderate" ? "#F59E0B" : "#10B981";
-            return (
-              <tr key={item.report_id || idx} className="recent-row-hover">
-                <td>
-                  <div className="table-modality-cell">
-                    <span className="modality-indicator-dot"></span>
-                    <strong>{modName}</strong>
-                  </div>
-                </td>
-                <td>
-                  <span className="table-prediction-text">{item.prediction || "Evaluation Complete"}</span>
-                </td>
-                <td>
-                  <span className="table-confidence-val">
-                    {item.confidence ? `${item.confidence}%` : "Processed"}
-                  </span>
-                </td>
-                <td>
-                  <span className="table-sev-badge" style={{ backgroundColor: `${sevColor}20`, color: sevColor, borderColor: `${sevColor}40` }}>
-                    {sev}
-                  </span>
-                </td>
-                <td className="table-timestamp-cell">
-                  <Clock size={12} color="#64748B" style={{ display: "inline-block", marginRight: 4 }} />
-                  {item.date ? new Date(item.date).toLocaleDateString() : "Recent"}
-                </td>
-                <td style={{ textAlign: "right" }}>
-                  <button
-                    className="view-report-pill-btn"
-                    onClick={() => {
-                      setPublicResult(item);
-                      const modLower = modName.toLowerCase();
-                      if (modLower.includes("cavity") || modLower.includes("dental")) setPublicMode("cavity");
-                      else if (modLower.includes("ct") || modLower.includes("kidney") || modLower.includes("stone")) setPublicMode("ct_scan");
-                      else if (modLower.includes("report") || modLower.includes("lab")) setPublicMode("report");
-                      else setPublicMode("xray");
-                    }}
-                  >
-                    <span>Inspect Report</span>
-                    <ChevronRight size={13} />
-                  </button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  ) : (
-    <div className="recent-empty-state">
-      <div className="empty-state-icon"><Activity size={32} color="#2DD4BF" /></div>
-      <h4>No Scans Evaluated Yet</h4>
-      <p>Run your first Chest X-Ray, Dental Panoramic, or Kidney CT analysis using the diagnostic modules above to populate the clinical audit trail.</p>
-      <button
-        className="empty-cta-btn"
-        onClick={() => { setPublicMode("xray"); setAuthError(""); setPublicResult(null); }}
-      >
-        <Upload size={14} /> Start Chest X-Ray Analysis
-      </button>
-    </div>
-  )}
-</section>
-
-{/* ============================================================ */}
-{/* SECTION 6: CLINICAL WORKFLOW ARCHITECTURE                    */}
-{/* ============================================================ */}
-<section className="portal-landing-section" id="clinical-workflow">
-  <div className="section-header-tag">
-    <span className="dot-teal"></span>
-    <span>END-TO-END PIPELINE</span>
-  </div>
-  <h2 className="section-main-title">
-    Diagnostic Data <span className="highlight-cyan">Lifecycle & Architecture</span>
-  </h2>
-  <p className="section-main-desc">
-    How patient radiological scans move seamlessly through validation, inference, and clinical synthesis.
-  </p>
-
-  <div className="pipeline-flow-diagram">
-    <div className="pipe-node-box">
-      <div className="pipe-node-icon"><Upload size={20} color="#2DD4BF" /></div>
-      <h4>1. Clinical Ingestion</h4>
-      <p>Input radiograph or report uploaded via HTTPS interface.</p>
-      <div className="pipe-node-meta">Raw Pixels / Scans</div>
-    </div>
-
-    <div className="pipe-connector-line">
-      <div className="pipe-flow-pulse"></div>
-    </div>
-
-    <div className="pipe-node-box">
-      <div className="pipe-node-icon"><ShieldAlert size={20} color="#38BDF8" /></div>
-      <h4>2. Scan Validator</h4>
-      <p>ResNet validator screens for authentic radiograph modality.</p>
-      <div className="pipe-node-meta">Anomaly Rejection</div>
-    </div>
-
-    <div className="pipe-connector-line">
-      <div className="pipe-flow-pulse"></div>
-    </div>
-
-    <div className="pipe-node-box highlighted-node">
-      <div className="pipe-node-icon"><Cpu size={20} color="#A78BFA" /></div>
-      <h4>3. PyTorch Neural Engine</h4>
-      <p>DenseNet / EfficientNet / MobileNet generates class probability.</p>
-      <div className="pipe-node-meta">Grad-CAM Extraction</div>
-    </div>
-
-    <div className="pipe-connector-line">
-      <div className="pipe-flow-pulse"></div>
-    </div>
-
-    <div className="pipe-node-box">
-      <div className="pipe-node-icon"><FileCheck size={20} color="#34D399" /></div>
-      <h4>4. Clinical Decision Support</h4>
-      <p>Synthesizes severity, clinical explanation &amp; physician notes.</p>
-      <div className="pipe-node-meta">Actionable Guidance</div>
-    </div>
-  </div>
-</section>
-
-{/* ============================================================ */}
-{/* SECTION 8: COMPREHENSIVE PLATFORM FOOTER                    */}
-{/* ============================================================ */}
-<footer className="portal-landing-footer">
-  <div className="footer-top-grid">
-    <div className="footer-brand-col">
-      <div className="portal-nav-brand">
-        <div className="portal-logo-orb">
-          <Sparkles size={18} color="#2DD4BF" />
-        </div>
-        <div>
-          <div className="portal-brand-title">
-            MediScan <span className="brand-ai">AI</span>
-          </div>
-          <div className="portal-brand-sub" style={{ fontSize: "11px" }}>Clinical Decision Support System</div>
-        </div>
-      </div>
-      <p className="footer-brand-bio">
-        Next-generation multimodal radiological analysis platform combining deep neural classification, automated laboratory OCR, and explainable Grad-CAM visualization for clinical workflows.
-      </p>
-      <div className="footer-social-meta">
-        <span className="footer-status-indicator">
-          <span className="dot-green-pulse"></span> PyTorch Inference Engine Online
-        </span>
-      </div>
-    </div>
-
-    <div className="footer-links-col">
-      <h4 className="footer-heading">Diagnostic Modules</h4>
-      <ul className="footer-nav-list">
-        <li><button onClick={() => { setPublicMode("xray"); setAuthError(""); setPublicResult(null); }}>Chest Radiograph (X-Ray)</button></li>
-        <li><button onClick={() => { setPublicMode("cavity"); setAuthError(""); setPublicResult(null); }}>Dental Cavity Detection</button></li>
-        <li><button onClick={() => { setPublicMode("ct_scan"); setAuthError(""); setPublicResult(null); }}>Abdominal CT (Kidney Stone)</button></li>
-        <li><button onClick={() => { setPublicMode("report"); setAuthError(""); setPublicResult(null); }}>Blood &amp; Lab Report OCR</button></li>
-      </ul>
-    </div>
-
-    <div className="footer-links-col">
-      <h4 className="footer-heading">Technology &amp; Models</h4>
-      <ul className="footer-nav-list">
-        <li><a href="#technology-showcase">DenseNet-121 Architecture</a></li>
-        <li><a href="#technology-showcase">EfficientNet-B0 Caries</a></li>
-        <li><a href="#technology-showcase">MobileNetV2 CT Engine</a></li>
-        <li><a href="#clinical-workflow">Clinical Pipeline</a></li>
-      </ul>
-    </div>
-
-    <div className="footer-links-col">
-      <h4 className="footer-heading">Practitioner Portal</h4>
-      <ul className="footer-nav-list">
-        <li><button onClick={() => { setPublicMode("login"); setAuthError(""); }}>Doctor Sign In</button></li>
-        <li><button onClick={() => { setPublicMode("history"); setAuthError(""); }}>Audit History Log</button></li>
-        <li>
-          <button onClick={() => alert("MediScan Clinical Support Portal\n24/7 Hotline: +1 (800) 555-MEDI\nEmail: clinical.support@mediscan.ai")}>
-            Clinical Support
-          </button>
-        </li>
-      </ul>
-    </div>
-  </div>
-
-  <div className="footer-bottom-bar">
-    <div className="footer-copyright">
-      © {new Date().getFullYear()} MediScan AI Platform. All rights reserved. Designed for professional clinical decision support.
-    </div>
-    <div className="footer-disclaimer">
-      Notice: MediScan AI is an algorithmic decision-support tool. It does not substitute professional medical judgment, diagnosis, or clinical evaluation by a board-certified physician.
-    </div>
-  </div>
-</footer>
-      </div>
+      <PublicHome
+        onNavigate={goPublic}
+        onLogin={() => goPublic("login")}
+        onRegister={() => goPublic("register")}
+      />
     );
   }
+
 
   const formatRelativeTime = (isoString) => {
     try {
@@ -2396,16 +1554,21 @@ function App() {
   };
 
   const handleDeleteAnalysis = async (analysisId) => {
-    if (!window.confirm("Delete this analysis?\n\nThis will permanently remove this analysis from the patient's history.")) return;
+    if (!analysisId) return;
+    if (!window.confirm("Delete this analysis?\n\nThis will permanently remove this analysis from your medical history.")) return;
     try {
       const res = await fetch(`${API_BASE}/api/analyses/${analysisId}`, {
-        method: "DELETE"
+        method: "DELETE",
+        headers: getAuthHeaders()
       });
       if (res.ok) {
         showToast("Analysis deleted successfully.");
-        selectPatient(selectedPatient);
+        if (dashboardResult && (dashboardResult.analysisId === analysisId)) setDashboardResult(null);
+        if (recordPreview && recordPreview.analysisId === analysisId) setRecordPreview(null);
+        await fetchMyAnalyses();
         fetchDashboardData(period);
         fetchRegistryData();
+        if (selectedPatient) selectPatient(selectedPatient);
       } else {
         showToast("Failed to delete analysis.");
       }
@@ -2491,353 +1654,721 @@ function App() {
     return matchSearch && matchFilter;
   });
 
+  /* ============================================================
+     PERSONAL WORKSPACE DERIVED DATA & ACTIONS
+     ============================================================ */
+
+  const myUsername = token.replace("mock-jwt-token-", "");
+  const ownPatient = patients.find((p) => (p.doctorUsername || "").toLowerCase() === myUsername.toLowerCase());
+  const myPatient = patients.find((p) => p.patientId === myPatientId) || ownPatient || patients[0] || null;
+  const isReportRecord = (row) => {
+    const type = (row.fileType || row.analysisType || "").toLowerCase();
+    return type.includes("report") || type.includes("lab") || type.includes("blood");
+  };
+  const recordStatus = (row) => (row.prediction || row.reportSummary || row.reportFindings ? "Completed" : "Pending result");
+  const recordDateValue = (row) => (row.date ? new Date(row.date).getTime() : 0);
+  const savedMedicalReports = myAnalysisHistory.filter(isReportRecord);
+  const recentActivityCount = myAnalysisHistory.filter((row) => {
+    if (!row.date) return false;
+    return Date.now() - new Date(row.date).getTime() <= 30 * 24 * 60 * 60 * 1000;
+  }).length;
+  const lastAnalysis = myAnalysisHistory[0] || null;
+
+  const inDateRange = (row, range) => {
+    if (range === "All") return true;
+    if (!row.date) return false;
+    const time = new Date(row.date).getTime();
+    if (Number.isNaN(time)) return false;
+    const now = Date.now();
+    if (range === "7d") return now - time <= 7 * 24 * 60 * 60 * 1000;
+    if (range === "30d") return now - time <= 30 * 24 * 60 * 60 * 1000;
+    if (range === "year") return new Date(row.date).getFullYear() === new Date().getFullYear();
+    return true;
+  };
+
+  const filteredHistory = myAnalysisHistory.filter((row) => {
+    const query = historySearch.trim().toLowerCase();
+    const type = (row.fileType || row.analysisType || "").toLowerCase();
+    const typeMatch =
+      historyTypeFilter === "All" ||
+      (historyTypeFilter === "xray" && type.includes("chest")) ||
+      (historyTypeFilter === "dental" && (type.includes("dental") || type.includes("cavity"))) ||
+      (historyTypeFilter === "ct" && (type.includes("ct") || type.includes("kidney") || type.includes("stone"))) ||
+      (historyTypeFilter === "report" && isReportRecord(row));
+    const textMatch =
+      !query ||
+      (row.fileName || "").toLowerCase().includes(query) ||
+      (row.prediction || "").toLowerCase().includes(query) ||
+      (row.reportSummary || "").toLowerCase().includes(query);
+    const statusMatch = historyStatusFilter === "All" || recordStatus(row) === historyStatusFilter;
+    return typeMatch && textMatch && statusMatch && inDateRange(row, historyDateFilter);
+  });
+
+  const recordItems = [];
+  myAnalysisHistory.forEach((row, index) => {
+    const key = row.analysisId || `${row.fileName || "record"}-${index}`;
+    recordItems.push({ ...row, recordKey: `${key}-original`, recordKind: "original", recordTitle: row.fileName || "Original medical document" });
+    if (row.prediction || row.reportSummary || row.reportFindings) {
+      recordItems.push({ ...row, recordKey: `${key}-report`, recordKind: "report", recordTitle: row.fileName || "AI analysis report" });
+    }
+  });
+
+  const filteredRecords = recordItems
+    .filter((item) => {
+      const query = recordsSearch.trim().toLowerCase();
+      const type = (item.fileType || item.analysisType || "").toLowerCase();
+      const typeMatch =
+        recordsTypeFilter === "All" ||
+        (recordsTypeFilter === "originals" && item.recordKind === "original") ||
+        (recordsTypeFilter === "reports" && item.recordKind === "report") ||
+        (recordsTypeFilter === "lab" && isReportRecord(item));
+      const textMatch =
+        !query ||
+        (item.recordTitle || "").toLowerCase().includes(query) ||
+        (item.prediction || "").toLowerCase().includes(query) ||
+        (item.reportSummary || "").toLowerCase().includes(query) ||
+        type.includes(query);
+      return typeMatch && textMatch;
+    })
+    .sort((a, b) => (recordsSort === "Oldest" ? recordDateValue(a) - recordDateValue(b) : recordDateValue(b) - recordDateValue(a)));
+
+  const goToTab = (tab) => {
+    setAppDrawerOpen(false);
+    setProfileMenuOpen(false);
+    setNotifOpen(false);
+    if (tab === "health-history" || tab === "medical-records") fetchMyAnalyses();
+    if (tab === "dashboard") { fetchDashboardData(period); fetchMyAnalyses(); }
+    setActiveTab(tab);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const openAnalysis = (mode) => {
+    setDashboardAnalysisMode(mode);
+    setDashboardResult(null);
+    setDashboardUploadFile(null);
+    setDashboardUploadError("");
+    setActiveTab("new-analysis");
+    setAppDrawerOpen(false);
+    setProfileMenuOpen(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const openAnalysisResult = (row) => {
+    const fallbackModality = isReportRecord(row)
+      ? "Medical Report"
+      : (row.fileType || row.analysisType || "Chest X-Ray");
+    const type = (row.fileType || row.analysisType || "").toLowerCase();
+    const mode = type.includes("dental") || type.includes("cavity")
+      ? "cavity"
+      : type.includes("ct") || type.includes("kidney") || type.includes("stone")
+        ? "ct_scan"
+        : isReportRecord(row)
+          ? "report"
+          : "xray";
+    setDashboardAnalysisMode(mode);
+    setDashboardResult({ ...row, modality: row.fileType || row.analysisType || fallbackModality });
+    setActiveTab("new-analysis");
+    setProfileMenuOpen(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const storedFileUrl = (row) => {
+    if (!row?.filePath) return "";
+    if (/^https?:\/\//i.test(row.filePath)) return row.filePath;
+    return `${API_BASE}${row.filePath.startsWith("/") ? "" : "/"}${row.filePath}`;
+  };
+
+  const downloadStoredFile = async (row) => {
+    const url = storedFileUrl(row);
+    if (!url) {
+      showToast("The original file path is not available for this record.");
+      return;
+    }
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("download failed");
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = row.fileName || "medical-record";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 2000);
+    } catch (err) {
+      // Cross-origin or server restrictions: fall back to opening the stored file.
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+  };
+
+  const handleProfileSave = async (event) => {
+    event.preventDefault();
+    const cleanName = profileForm.name.trim();
+    if (!cleanName) {
+      showToast("Please enter your full name.");
+      return;
+    }
+    setProfileSaving(true);
+    setProfileSaved("");
+    try {
+      let patientId = myPatient?.patientId || myPatientId;
+      if (!patientId) patientId = await ensureUserPatient();
+      if (!patientId) {
+        showToast("Your profile record could not be prepared. Please try again in a moment.");
+        return;
+      }
+      const res = await fetch(`${API_BASE}/api/patients/${patientId}`, {
+        method: "PUT",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          name: cleanName,
+          age: parseInt(profileForm.age, 10) || 0,
+          gender: profileForm.gender || "Other",
+          contact: profileForm.contact || ""
+        })
+      });
+      if (res.ok) {
+        setDoctorName(cleanName);
+        if (localStorage.getItem("doctor_token")) localStorage.setItem("doctor_name", cleanName);
+        else sessionStorage.setItem("doctor_name", cleanName);
+        showToast("Profile details updated.");
+        setProfileSaved("Your profile details were saved.");
+        fetchPatients();
+        fetchDashboardData(period);
+      } else {
+        showToast("Could not update your profile details.");
+      }
+    } catch (err) {
+      showToast("Could not connect to update your profile.");
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
   return (
-    <div className={`prem-layout ${sidebarCollapsed ? "collapsed" : ""}`}>
-      {/* ===== SIDEBAR NAVIGATION ===== */}
-      <aside className="prem-sidebar">
-        <div className="prem-sidebar-brand">
-          <div className="prem-brand-icon">
-            <Activity size={22} color="#0ff" />
+    <div className="ms-app-shell">
+      {/* ===== AUTHENTICATED HEADER ===== */}
+      <header className="ms-app-header">
+        <button type="button" className="ms-app-brand" onClick={() => goToTab("dashboard")} aria-label="Go to dashboard">
+          <span className="ms-app-brand-orb"><Sparkles size={20} color="#2DD4BF" /></span>
+          <span className="ms-app-brand-copy">
+            <span className="ms-app-brand-name">MediScan <span>AI</span></span>
+            <span className="ms-app-brand-sub">Personal Healthcare</span>
+          </span>
+        </button>
+
+        <div className="ms-app-header-actions">
+          <button
+            type="button"
+            className="ms-app-icon-btn"
+            onClick={() => { setNotifOpen((open) => !open); setProfileMenuOpen(false); }}
+            aria-label="Recent activity notifications"
+            title="Recent activity"
+          >
+            <Bell size={19} />
+            {myAnalysisHistory.length > 0 && <span className="ms-app-notify-dot" />}
+          </button>
+
+          <div className="ms-app-profile-wrap">
+            <button
+              type="button"
+              className="ms-app-profile-btn"
+              onClick={() => { setProfileMenuOpen((open) => !open); setNotifOpen(false); }}
+              aria-expanded={profileMenuOpen}
+            >
+              <span className="ms-app-avatar">{(doctorName || "U").charAt(0).toUpperCase()}</span>
+              <span className="ms-app-profile-copy">
+                <strong>{doctorName || "User"}</strong>
+                <small>{myUsername || "Signed in"}</small>
+              </span>
+              <ChevronDown size={15} className={profileMenuOpen ? "ms-chevron-open" : ""} />
+            </button>
+
+            {profileMenuOpen && (
+              <div className="ms-app-profile-menu">
+                <div className="ms-app-profile-menu-head">
+                  <span className="ms-app-avatar">{(doctorName || "U").charAt(0).toUpperCase()}</span>
+                  <div>
+                    <strong>{doctorName || "User"}</strong>
+                    <span>{myUsername}</span>
+                  </div>
+                </div>
+                <button type="button" onClick={() => goToTab("profile")}><UserCircle size={16} /> My Profile</button>
+                <button type="button" onClick={() => goToTab("settings")}><Settings size={16} /> Settings</button>
+                <button type="button" onClick={() => goToTab("support")}><HelpCircle size={16} /> Help &amp; Support</button>
+                <button type="button" className="ms-menu-logout" onClick={handleLogout}><LogOut size={16} /> Logout</button>
+              </div>
+            )}
           </div>
-          {!sidebarCollapsed && (
-            <div className="prem-brand-text">
-              <span className="prem-brand-name">MediScan</span>
-              <span className="prem-brand-sub">AI Platform</span>
-            </div>
-          )}
-          <button className="prem-collapse-btn" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} title="Toggle sidebar">
-            {sidebarCollapsed ? <Menu size={16} /> : <X size={16} />}
+
+          <button
+            type="button"
+            className="ms-app-menu-btn"
+            onClick={() => { setAppDrawerOpen(true); setProfileMenuOpen(false); }}
+            aria-label="Open navigation menu"
+            title="Open menu"
+          >
+            <Menu size={21} />
           </button>
         </div>
+      </header>
 
-        {/* Personalized Welcome Widget */}
-        {!sidebarCollapsed && (
-          <div className="prem-user-widget">
-            <div className="prem-avatar">
-              <span>{(doctorName || "U").charAt(0).toUpperCase()}</span>
-            </div>
-            <div className="prem-user-info">
-              <span className="prem-user-name" title={doctorName}>{doctorName || "User"}</span>
-              <span className="prem-user-role">Healthcare User</span>
-            </div>
-            <button className="prem-notif-btn" onClick={() => setNotifOpen(!notifOpen)} title="Notifications">
-              <Bell size={16} />
-              {myAnalysisHistory.length > 0 && <span className="prem-notif-dot" />}
-            </button>
+      {(profileMenuOpen || notifOpen) && (
+        <div
+          className="ms-menu-catcher"
+          onClick={() => { setProfileMenuOpen(false); setNotifOpen(false); }}
+          aria-hidden="true"
+        />
+      )}
+
+      {notifOpen && (
+        <div className="ms-notif-popover">
+          <div className="ms-notif-head">
+            <strong>Recent activity</strong>
+            <button type="button" onClick={() => setNotifOpen(false)} aria-label="Close notifications"><X size={15} /></button>
           </div>
-        )}
-
-        {/* Sidebar Navigation Items */}
-        <nav className="prem-nav">
-          <button className={`prem-nav-item ${activeTab === "dashboard" ? "active" : ""}`}
-            onClick={() => { setActiveTab("dashboard"); fetchDashboardData(period); fetchMyAnalyses(); }}>
-            <LayoutDashboard size={18} />
-            {!sidebarCollapsed && <span>Dashboard</span>}
+          {myAnalysisHistory.length === 0 ? (
+            <p className="ms-notif-empty">No analysis activity yet.</p>
+          ) : (
+            myAnalysisHistory.slice(0, 5).map((row, index) => (
+              <button
+                type="button"
+                key={row.analysisId || index}
+                className="ms-notif-item"
+                onClick={() => { setNotifOpen(false); openAnalysisResult(row); }}
+              >
+                <span className="ms-notif-icon"><Activity size={14} /></span>
+                <span>
+                  <strong>{row.fileType || row.analysisType || "Analysis"}</strong>
+                  <small>{row.prediction || "Result saved"} · {row.date ? formatRelativeTime(row.date) : "Recently"}</small>
+                </span>
+              </button>
+            ))
+          )}
+          <button type="button" className="ms-notif-all" onClick={() => goToTab("health-history")}>
+            View health history <ArrowRight size={14} />
           </button>
+        </div>
+      )}
 
-          <button className={`prem-nav-item ${activeTab === "new-analysis" ? "active" : ""}`}
-            onClick={() => { setActiveTab("new-analysis"); setDashboardResult(null); setDashboardUploadError(""); setDashboardUploadFile(null); }}>
-            <ScanLine size={18} />
-            {!sidebarCollapsed && <span>New Analysis</span>}
-          </button>
+      {/* ===== SLIDE-OUT APPLICATION DRAWER ===== */}
+      {appDrawerOpen && (
+        <div className="ms-app-drawer-overlay" onClick={() => setAppDrawerOpen(false)}>
+          <aside className="ms-app-drawer" onClick={(event) => event.stopPropagation()} aria-label="Application navigation">
+            <div className="ms-app-drawer-head">
+              <div className="ms-app-brand">
+                <span className="ms-app-brand-orb"><Sparkles size={18} color="#2DD4BF" /></span>
+                <span className="ms-app-brand-copy">
+                  <span className="ms-app-brand-name">MediScan <span>AI</span></span>
+                  <span className="ms-app-brand-sub">Personal Healthcare</span>
+                </span>
+              </div>
+              <button type="button" className="ms-app-drawer-close" onClick={() => setAppDrawerOpen(false)} aria-label="Close menu">
+                <X size={18} />
+              </button>
+            </div>
 
-          <button className={`prem-nav-item ${activeTab === "my-reports" ? "active" : ""}`}
-            onClick={() => { setActiveTab("my-reports"); fetchMyAnalyses(); }}>
-            <FileText size={18} />
-            {!sidebarCollapsed && <span>My Medical Reports</span>}
-          </button>
+            <div className="ms-app-drawer-user">
+              <span className="ms-app-avatar">{(doctorName || "U").charAt(0).toUpperCase()}</span>
+              <div>
+                <strong>{doctorName || "User"}</strong>
+                <span>{myUsername}</span>
+              </div>
+            </div>
 
-          <button className={`prem-nav-item ${activeTab === "analysis-history" ? "active" : ""}`}
-            onClick={() => { setActiveTab("analysis-history"); fetchMyAnalyses(); }}>
-            <History size={18} />
-            {!sidebarCollapsed && <span>Analysis History</span>}
-          </button>
+            <div className="ms-app-drawer-label">WORKSPACE</div>
+            <nav className="ms-app-drawer-nav">
+              {[
+                { id: "dashboard", label: "Dashboard", sub: "Your health overview", icon: <LayoutDashboard size={19} /> },
+                { id: "portal-logic", label: "Portal Logic", sub: "Access & session gateway", icon: <Zap size={19} /> },
+                { id: "health-history", label: "Health History", sub: "All previous analyses", icon: <History size={19} /> },
+                { id: "medical-records", label: "My Medical Records", sub: "Documents & AI reports", icon: <FolderOpen size={19} /> },
+                { id: "profile", label: "My Profile", sub: "Personal account details", icon: <UserCircle size={19} /> },
+                { id: "about", label: "About MediScan AI", sub: "Platform & technology", icon: <Brain size={19} /> },
+                { id: "settings", label: "Settings", sub: "Account & privacy", icon: <Settings size={19} /> },
+                { id: "support", label: "Help & Support", sub: "FAQs and guidance", icon: <HelpCircle size={19} /> }
+              ].map((item) => (
+                <button
+                  type="button"
+                  key={item.id}
+                  className={`ms-app-drawer-item ${activeTab === item.id ? "active" : ""}`}
+                  onClick={() => goToTab(item.id)}
+                >
+                  <span className="ms-app-drawer-icon">{item.icon}</span>
+                  <span className="ms-app-drawer-text">
+                    <strong>{item.label}</strong>
+                    <small>{item.sub}</small>
+                  </span>
+                  <ChevronRight size={15} />
+                </button>
+              ))}
+            </nav>
 
-          <button className={`prem-nav-item ${activeTab === "health-insights" ? "active" : ""}`}
-            onClick={() => setActiveTab("health-insights")}>
-            <BarChart2 size={18} />
-            {!sidebarCollapsed && <span>Health Insights</span>}
-          </button>
+            <button type="button" className="ms-app-drawer-logout" onClick={handleLogout}>
+              <LogOut size={18} /> Logout
+            </button>
 
-          <button className={`prem-nav-item ${activeTab === "health-timeline" ? "active" : ""}`}
-            onClick={() => { setActiveTab("health-timeline"); fetchMyAnalyses(); }}>
-            <GitBranch size={18} />
-            {!sidebarCollapsed && <span>Health Timeline</span>}
-          </button>
-
-          <button className={`prem-nav-item ${activeTab === "vault" ? "active" : ""}`}
-            onClick={() => { setActiveTab("vault"); fetchMyAnalyses(); }}>
-            <HardDrive size={18} />
-            {!sidebarCollapsed && <span>My Medical Vault</span>}
-          </button>
-
-          {!sidebarCollapsed && <div className="prem-nav-divider" />}
-
-          <button className={`prem-nav-item ${activeTab === "profile" ? "active" : ""}`}
-            onClick={() => setActiveTab("profile")}>
-            <UserCircle size={18} />
-            {!sidebarCollapsed && <span>My Profile</span>}
-          </button>
-
-          <button className={`prem-nav-item ${activeTab === "settings" ? "active" : ""}`}
-            onClick={() => setActiveTab("settings")}>
-            <Settings size={18} />
-            {!sidebarCollapsed && <span>Settings</span>}
-          </button>
-        </nav>
-
-        <button className="prem-logout-btn" onClick={handleLogout}>
-          <LogOut size={18} />
-          {!sidebarCollapsed && <span>Logout</span>}
-        </button>
-      </aside>
+            <div className="ms-app-drawer-foot">
+              <span><span className="ms-status-dot" /> Signed in</span>
+              <span>v2.8</span>
+            </div>
+          </aside>
+        </div>
+      )}
 
       {/* ===== MAIN CONTENT AREA ===== */}
-      <main className="prem-main">
+      <main className="ms-app-main">
 
         {/* 1. DASHBOARD TAB */}
         {activeTab === "dashboard" && (
-          <div className="prem-view">
-            <div className="prem-welcome-header">
-              <div className="prem-welcome-left">
-                <p className="prem-welcome-greeting">
-                  Good {new Date().getHours() < 12 ? "Morning" : new Date().getHours() < 17 ? "Afternoon" : "Evening"}, <span className="prem-highlight">{doctorName || "User"}</span> 👋
-                </p>
-                <h1 className="prem-welcome-title">Your Health Dashboard</h1>
-                <p className="prem-welcome-sub">AI-powered medical analysis at your fingertips. Track your personal health journey below.</p>
-              </div>
-              <div className="prem-welcome-right">
-                <div className="prem-date-chip">
-                  <Calendar size={14} />
-                  <span>{new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</span>
+          <div className="ms-dash">
+            {/* A. PERSONALIZED WELCOME */}
+            <section className="ms-dash-hero">
+              <div className="ms-dash-hero-copy">
+                <span className="ms-dash-eyebrow"><span className="ms-status-dot" /> PERSONAL HEALTH WORKSPACE</span>
+                <h1>Welcome Back, {doctorName || "there"}!</h1>
+                <p>Your health records, medical scans and AI-powered insights, all in one place.</p>
+                <div className="ms-dash-hero-actions">
+                  <button type="button" className="ms-btn-primary" onClick={() => openAnalysis("xray")}>
+                    <Upload size={17} /> Upload New Scan
+                  </button>
+                  <button type="button" className="ms-btn-secondary" onClick={() => goToTab("health-history")}>
+                    <History size={16} /> View Health History
+                  </button>
                 </div>
-                <button className="prem-refresh-btn" onClick={() => { fetchDashboardData(period); fetchMyAnalyses(); }}>
-                  <RefreshCw size={15} />
-                  <span>Refresh</span>
+              </div>
+              <div className="ms-dash-hero-side">
+                <div className="ms-dash-date-card">
+                  <Calendar size={16} />
+                  <div>
+                    <span>Today</span>
+                    <strong>{new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}</strong>
+                  </div>
+                </div>
+                <div className="ms-dash-date-card">
+                  <Activity size={16} />
+                  <div>
+                    <span>Last analysis</span>
+                    <strong>{lastAnalysis?.date ? new Date(lastAnalysis.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "No analyses yet"}</strong>
+                  </div>
+                </div>
+                <button type="button" className="ms-dash-refresh" onClick={() => { fetchMyAnalyses(); fetchDashboardData(period); }}>
+                  <RefreshCw size={14} /> Refresh data
                 </button>
               </div>
-            </div>
+            </section>
 
-            {dashboardLoading && !dashboardData ? (
-              <div className="prem-loading">
-                <div className="prem-spinner" />
-                <p>Loading your health data...</p>
+            {/* B. QUICK ACTIONS */}
+            <section className="ms-dash-section">
+              <div className="ms-dash-section-head">
+                <div>
+                  <h2>Quick actions</h2>
+                  <p>Start the task you need without navigating through menus.</p>
+                </div>
               </div>
-            ) : dashboardError ? (
-              <div className="prem-error-card">
-                <ShieldAlert size={40} color="#f87171" />
-                <p>{dashboardError}</p>
-                <button className="prem-btn-primary" onClick={() => fetchDashboardData(period)}>Retry</button>
+              <div className="ms-quick-grid">
+                {[
+                  { title: "Upload Medical Scan", desc: "Chest X-ray, dental or kidney CT", icon: <Upload size={21} />, action: () => openAnalysis("xray") },
+                  { title: "Upload Medical Report", desc: "Blood work and laboratory documents", icon: <FileText size={21} />, action: () => openAnalysis("report") },
+                  { title: "View Health History", desc: "Search and reopen previous results", icon: <History size={21} />, action: () => goToTab("health-history") },
+                  { title: "My Medical Records", desc: "Original files and AI reports", icon: <FolderOpen size={21} />, action: () => goToTab("medical-records") }
+                ].map((action) => (
+                  <button type="button" key={action.title} className="ms-quick-card" onClick={action.action}>
+                    <span className="ms-quick-icon">{action.icon}</span>
+                    <span>
+                      <strong>{action.title}</strong>
+                      <small>{action.desc}</small>
+                    </span>
+                    <ChevronRight size={17} />
+                  </button>
+                ))}
               </div>
-            ) : (
-              <>
-                {/* 3. Statistics Cards (User-Specific from DB) */}
-                <div className="prem-stats-grid">
-                  <div className="prem-stat-card prem-stat-blue">
-                    <div className="prem-stat-icon"><ScanLine size={22} /></div>
-                    <div className="prem-stat-body">
-                      <span className="prem-stat-label">Total Analyses</span>
-                      <span className="prem-stat-value">{myAnalysisHistory.length}</span>
-                      <span className="prem-stat-trend">Your records</span>
-                    </div>
-                  </div>
-                  <div className="prem-stat-card prem-stat-teal">
-                    <div className="prem-stat-icon"><FileText size={22} /></div>
-                    <div className="prem-stat-body">
-                      <span className="prem-stat-label">Saved Medical Reports</span>
-                      <span className="prem-stat-value">{myAnalysisHistory.filter(h => (h.fileType || h.analysisType) === "Medical Report").length}</span>
-                      <span className="prem-stat-trend">In your vault</span>
-                    </div>
-                  </div>
-                  <div className="prem-stat-card prem-stat-purple">
-                    <div className="prem-stat-icon"><Layers size={22} /></div>
-                    <div className="prem-stat-body">
-                      <span className="prem-stat-label">Scan Categories</span>
-                      <span className="prem-stat-value">4</span>
-                      <span className="prem-stat-trend">Chest, Dental, Kidney, Lab</span>
-                    </div>
-                  </div>
-                  <div className="prem-stat-card prem-stat-orange">
-                    <div className="prem-stat-icon"><Activity size={22} /></div>
-                    <div className="prem-stat-body">
-                      <span className="prem-stat-label">Recent Activities</span>
-                      <span className="prem-stat-value">{myAnalysisHistory.slice(0, 30).length}</span>
-                      <span className="prem-stat-trend">Completed analyses</span>
-                    </div>
+            </section>
+
+            {/* C. PERSONAL HEALTH OVERVIEW */}
+            <section className="ms-dash-section">
+              <div className="ms-dash-section-head">
+                <div>
+                  <h2>Personal health overview</h2>
+                  <p>All numbers below are calculated from your own account records.</p>
+                </div>
+                {loadingMyHistory && <span className="ms-inline-loading"><span className="ms-spinner" /> Loading records…</span>}
+              </div>
+              <div className="ms-overview-grid">
+                <div className="ms-overview-card">
+                  <span className="ms-overview-icon ms-blue"><ScanLine size={20} /></span>
+                  <div><span>Total Scans Analyzed</span><strong>{myAnalysisHistory.length}</strong><small>Your stored analyses</small></div>
+                </div>
+                <div className="ms-overview-card">
+                  <span className="ms-overview-icon ms-teal"><FileText size={20} /></span>
+                  <div><span>Saved Medical Reports</span><strong>{savedMedicalReports.length}</strong><small>Laboratory documents</small></div>
+                </div>
+                <div className="ms-overview-card">
+                  <span className="ms-overview-icon ms-purple"><Activity size={20} /></span>
+                  <div><span>Recent Analysis Activity</span><strong>{recentActivityCount}</strong><small>In the last 30 days</small></div>
+                </div>
+                <div className="ms-overview-card">
+                  <span className="ms-overview-icon ms-orange"><Clock size={20} /></span>
+                  <div>
+                    <span>Last Analysis Date</span>
+                    <strong className="ms-overview-date">{lastAnalysis?.date ? new Date(lastAnalysis.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}</strong>
+                    <small>{lastAnalysis ? (lastAnalysis.fileType || lastAnalysis.analysisType || "Most recent record") : "No records yet"}</small>
                   </div>
                 </div>
+              </div>
+            </section>
 
-                {/* 4. Quick Analysis Cards */}
-                <div className="prem-section-header">
-                  <h2>Quick Analysis</h2>
-                  <p>Select a scan category to immediately begin analysis without patient creation</p>
+            {/* D. DIAGNOSTIC MODULES */}
+            <section className="ms-dash-section">
+              <div className="ms-dash-section-head">
+                <div>
+                  <h2>Diagnostic modules</h2>
+                  <p>Open an existing analysis workflow for the document you have.</p>
                 </div>
-                <div className="prem-analysis-grid">
-                  {[
-                    { mode: "xray", label: "Chest X-Ray", desc: "Pneumonia, TB, effusion detection via DenseNet-121", icon: <Stethoscope size={28} />, color: "#3b82f6", tag: "DenseNet-121" },
-                    { mode: "cavity", label: "Dental X-Ray", desc: "Cavity and periodontal disease detection", icon: <Microscope size={28} />, color: "#10b981", tag: "MobileNetV2" },
-                    { mode: "ct_scan", label: "Kidney CT", desc: "Kidney stone and renal pathology analysis", icon: <ScanLine size={28} />, color: "#f59e0b", tag: "ResNet-18" },
-                    { mode: "report", label: "Lab Report", desc: "OCR-powered medical report analysis & insights", icon: <FileText size={28} />, color: "#8b5cf6", tag: "OCR + NLP" },
-                  ].map(({ mode, label, desc, icon, color, tag }) => (
-                    <div key={mode} className="prem-analysis-card" style={{ "--card-color": color }}>
-                      <div className="prem-analysis-icon" style={{ color }}>{icon}</div>
-                      <div className="prem-analysis-tag">{tag}</div>
-                      <h3>{label}</h3>
-                      <p>{desc}</p>
-                      <button className="prem-analyze-btn" onClick={() => {
-                        setDashboardAnalysisMode(mode);
-                        setDashboardResult(null);
-                        setDashboardUploadFile(null);
-                        setDashboardUploadError("");
-                        setActiveTab("new-analysis");
-                      }}>
-                        Analyze Now <ArrowRight size={16} />
+              </div>
+              <div className="ms-module-grid">
+                {[
+                  { mode: "xray", title: "Chest X-Ray", desc: "Chest abnormality analysis with explainable visual evidence.", tag: "DenseNet-121", image: "/assets/modules/chest_xray.jpg", icon: <Stethoscope size={20} /> },
+                  { mode: "cavity", title: "Dental Analysis", desc: "Caries and dental condition screening from radiographs.", tag: "EfficientNet-B0", image: "/assets/modules/dental_panoramic.jpg", icon: <Microscope size={20} /> },
+                  { mode: "ct_scan", title: "Kidney Stone CT", desc: "Renal calculi detection from supported CT slices.", tag: "MobileNetV2", image: "/assets/modules/kidney_ct.jpg", icon: <ScanLine size={20} /> },
+                  { mode: "report", title: "Blood Report Analysis", desc: "OCR biomarker extraction and reference range review.", tag: "OCR + NLP", image: "/assets/modules/blood_smear.jpg", icon: <FileText size={20} /> }
+                ].map((module) => (
+                  <article className="ms-module-card" key={module.mode}>
+                    <div className="ms-module-media">
+                      <img src={module.image} alt={module.title} />
+                      <span>{module.tag}</span>
+                    </div>
+                    <div className="ms-module-body">
+                      <span className="ms-module-icon">{module.icon}</span>
+                      <h3>{module.title}</h3>
+                      <p>{module.desc}</p>
+                      <button type="button" className="ms-module-btn" onClick={() => openAnalysis(module.mode)}>
+                        Analyze Now <ArrowRight size={15} />
                       </button>
                     </div>
-                  ))}
-                </div>
+                  </article>
+                ))}
+              </div>
+            </section>
 
-                {/* 5. Recent Analyses Table & 6. Recent Activities */}
-                <div className="prem-bottom-grid">
-                  <div className="prem-recent-card">
-                    <div className="prem-card-header">
-                      <h2>Recent Analyses</h2>
-                      <button className="prem-text-btn" onClick={() => { setActiveTab("analysis-history"); fetchMyAnalyses(); }}>View All</button>
-                    </div>
-                    {loadingMyHistory ? (
-                      <div className="prem-mini-loading"><div className="prem-spinner-sm" /><span>Loading your records...</span></div>
-                    ) : myAnalysisHistory.length === 0 ? (
-                      <div className="prem-empty-state">
-                        <ScanLine size={36} color="var(--text-muted)" />
-                        <p>No analyses yet. Click Analyze Now on any card above to get started.</p>
-                        <button className="prem-btn-primary" onClick={() => setActiveTab("new-analysis")}>Start Analysis</button>
+            {/* E + F + G. ACTIVITY, HISTORY, RECORDS PREVIEWS */}
+            <div className="ms-dash-preview-grid">
+              <section className="ms-dash-panel">
+                <div className="ms-dash-panel-head">
+                  <div><h2>Recent medical activity</h2><p>Your latest AI analyses.</p></div>
+                  <button type="button" className="ms-text-btn" onClick={() => goToTab("health-history")}>View all</button>
+                </div>
+                {loadingMyHistory ? (
+                  <div className="ms-panel-loading"><span className="ms-spinner" /> Loading your medical records…</div>
+                ) : myAnalysisHistory.length === 0 ? (
+                  <div className="ms-panel-empty">
+                    <ScanLine size={30} />
+                    <strong>You haven't uploaded any medical scans yet.</strong>
+                    <p>Start with a chest X-ray, dental image, kidney CT or blood report.</p>
+                    <button type="button" className="ms-btn-primary ms-btn-sm" onClick={() => openAnalysis("xray")}>Start an analysis</button>
+                  </div>
+                ) : (
+                  <div className="ms-activity-list">
+                    {myAnalysisHistory.slice(0, 5).map((row, index) => (
+                      <div className="ms-activity-row" key={row.analysisId || index}>
+                        <span className="ms-activity-icon"><Activity size={15} /></span>
+                        <div className="ms-activity-copy">
+                          <strong>{row.fileName || row.fileType || "Medical analysis"}</strong>
+                          <small>{row.fileType || row.analysisType || "Scan"} · {row.date ? formatRelativeTime(row.date) : "Recently"}</small>
+                        </div>
+                        <span className={`ms-status-pill ${recordStatus(row) === "Completed" ? "done" : "pending"}`}>{recordStatus(row)}</span>
+                        <button type="button" className="ms-text-btn" onClick={() => openAnalysisResult(row)}>View</button>
                       </div>
-                    ) : (
-                      <table className="prem-table">
-                        <thead>
-                          <tr>
-                            <th>Type</th>
-                            <th>Result</th>
-                            <th>Confidence</th>
-                            <th>Date</th>
-                            <th>Action</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {myAnalysisHistory.slice(0, 6).map((row, i) => (
-                            <tr key={row.analysisId || i}>
-                              <td>
-                                <span className={`prem-type-badge prem-type-${(row.fileType || row.analysisType || "").toLowerCase().replace(/\s/g, "")}`}>
-                                  {row.fileType || row.analysisType || "Scan"}
-                                </span>
-                              </td>
-                              <td><span className="prem-result-text">{row.prediction || row.result || "Analyzed"}</span></td>
-                              <td><span className="prem-conf">{row.confidence ? `${row.confidence}%` : "—"}</span></td>
-                              <td className="prem-date-cell">{row.date ? new Date(row.date).toLocaleDateString() : "—"}</td>
-                              <td>
-                                <button className="prem-view-btn" onClick={() => {
-                                  const enriched = { ...row, modality: row.fileType || row.analysisType || "Chest X-Ray" };
-                                  setDashboardResult(enriched);
-                                  setActiveTab("new-analysis");
-                                }}>View</button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
+                    ))}
                   </div>
+                )}
+              </section>
 
-                  <div className="prem-activity-card">
-                    <div className="prem-card-header"><h2>Recent Activities</h2></div>
-                    <div className="prem-activity-list">
-                      {myAnalysisHistory.length === 0 ? (
-                        <p className="prem-no-data">No recent activity logged yet.</p>
-                      ) : (
-                        myAnalysisHistory.slice(0, 8).map((item, i) => (
-                          <div key={item.analysisId || i} className="prem-activity-item">
-                            <div className="prem-activity-dot prem-dot-analysis">
-                              <Brain size={12} />
-                            </div>
-                            <div>
-                              <p className="prem-act-text">
-                                Completed {item.fileType || item.analysisType || "Analysis"}: {item.prediction || item.result || "Result saved"}
-                              </p>
-                              <span className="prem-act-time">{formatRelativeTime(item.date)}</span>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
+              <section className="ms-dash-panel">
+                <div className="ms-dash-panel-head">
+                  <div><h2>Health history preview</h2><p>A compact chronological view.</p></div>
+                  <button type="button" className="ms-text-btn" onClick={() => goToTab("health-history")}>Open history</button>
                 </div>
-              </>
-            )}
+                {myAnalysisHistory.length === 0 ? (
+                  <div className="ms-panel-empty">
+                    <History size={30} />
+                    <strong>No history yet</strong>
+                    <p>Your completed analyses will appear here.</p>
+                  </div>
+                ) : (
+                  <div className="ms-history-mini-list">
+                    {myAnalysisHistory.slice(0, 4).map((row, index) => (
+                      <button type="button" className="ms-history-mini" key={row.analysisId || index} onClick={() => openAnalysisResult(row)}>
+                        <span className="ms-history-mini-dot" />
+                        <span>
+                          <strong>{row.prediction || row.result || "Analysis completed"}</strong>
+                          <small>{(row.fileType || row.analysisType || "Scan")} · {row.date ? new Date(row.date).toLocaleDateString() : "—"}</small>
+                        </span>
+                        <ChevronRight size={15} />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section className="ms-dash-panel">
+                <div className="ms-dash-panel-head">
+                  <div><h2>My medical records</h2><p>Recently stored documents.</p></div>
+                  <button type="button" className="ms-text-btn" onClick={() => goToTab("medical-records")}>View all</button>
+                </div>
+                {myAnalysisHistory.length === 0 ? (
+                  <div className="ms-panel-empty">
+                    <FolderOpen size={30} />
+                    <strong>No medical reports have been saved yet.</strong>
+                    <p>Upload a scan or report to build your records folder.</p>
+                  </div>
+                ) : (
+                  <div className="ms-record-mini-list">
+                    {myAnalysisHistory.slice(0, 3).map((row, index) => (
+                      <div className="ms-record-mini" key={row.analysisId || index}>
+                        <span className="ms-record-mini-icon">{isReportRecord(row) ? <FileText size={17} /> : <FileImage size={17} />}</span>
+                        <div>
+                          <strong>{row.fileName || "Medical document"}</strong>
+                          <small>{row.fileType || row.analysisType || "Record"} · {row.date ? new Date(row.date).toLocaleDateString() : "—"}</small>
+                        </div>
+                        <button type="button" className="ms-icon-link" onClick={() => downloadStoredFile(row)} title="Download original document">
+                          <Download size={15} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </div>
           </div>
         )}
 
         {/* 2. NEW ANALYSIS TAB */}
         {activeTab === "new-analysis" && (
-          <div className={`prem-view ${dashboardResult ? "prem-view-results" : ""}`}>
+          <div className="ms-analysis-page">
             {dashboardResult ? (
-              <div className="prem-results-wrapper">
-                <PostAnalysisWorkflow
-                  result={dashboardResult}
-                  modality={dashboardResult.modality || dashboardResult.fileType || "Chest X-Ray"}
-                  apiBase={API_BASE}
-                  onBack={() => { setDashboardResult(null); }}
-                />
+              <div className="ms-results-page">
+                <div className="ms-result-actionbar">
+                  <div>
+                    <span className="ms-result-saved"><CheckCircle2 size={15} /> Saved to your medical records</span>
+                    <strong>{dashboardResult.fileName || "Analysis result"}</strong>
+                  </div>
+                  <div className="ms-result-actions">
+                    <button type="button" className="ms-btn-secondary ms-btn-sm" onClick={() => goToTab("health-history")}>
+                      <History size={15} /> Analysis History
+                    </button>
+                    <button type="button" className="ms-btn-secondary ms-btn-sm" onClick={() => openAnalysis(dashboardAnalysisMode)}>
+                      <RefreshCw size={15} /> Analyze Another
+                    </button>
+                    <button type="button" className="ms-btn-primary ms-btn-sm" onClick={() => goToTab("dashboard")}>
+                      <LayoutDashboard size={15} /> Dashboard
+                    </button>
+                  </div>
+                </div>
+                <div className="prem-results-wrapper">
+                  <PostAnalysisWorkflow
+                    result={dashboardResult}
+                    modality={dashboardResult.modality || dashboardResult.fileType || "Chest X-Ray"}
+                    apiBase={API_BASE}
+                    historyList={myAnalysisHistory}
+                    onSelectHistory={(item) => openAnalysisResult(item)}
+                    setPublicMode={(mode) => {
+                      if (mode === "history") {
+                        goToTab("health-history");
+                        return;
+                      }
+                      openAnalysis(mode);
+                    }}
+                    onBackToUpload={() => { setDashboardResult(null); setDashboardUploadFile(null); setDashboardUploadError(""); }}
+                  />
+                </div>
               </div>
             ) : (
               <>
-                <div className="prem-welcome-header">
-                  <div className="prem-welcome-left">
-                    <p className="prem-welcome-greeting">Instant Diagnostic AI</p>
-                    <h1 className="prem-welcome-title">New Analysis</h1>
-                    <p className="prem-welcome-sub">Upload your medical scan or laboratory report. Results are immediately associated with your private profile.</p>
+                <header className="ms-page-header">
+                  <div>
+                    <span className="ms-dash-eyebrow"><span className="ms-status-dot" /> NEW MEDICAL ANALYSIS</span>
+                    <h1>Upload a scan or laboratory report</h1>
+                    <p>Select the correct module, add your document and run the existing AI analysis. Results are automatically linked to your account.</p>
                   </div>
+                  <button type="button" className="ms-btn-secondary ms-btn-sm" onClick={() => goToTab("dashboard")}>
+                    <LayoutDashboard size={15} /> Back to Dashboard
+                  </button>
+                </header>
+
+                <div className="ms-analysis-steps">
+                  {[
+                    { n: "1", label: "Select analysis type", active: true },
+                    { n: "2", label: "Add your document", active: true },
+                    { n: "3", label: "Run AI analysis", active: !!dashboardUploadFile },
+                    { n: "4", label: "Review results", active: false }
+                  ].map((step) => (
+                    <div className={`ms-analysis-step ${step.active ? "active" : ""}`} key={step.n}>
+                      <span>{step.n}</span>{step.label}
+                    </div>
+                  ))}
                 </div>
 
                 {/* Modality Selector */}
-                <div className="prem-modality-selector">
+                <div className="ms-modality-grid">
                   {[
-                    { mode: "xray", label: "Chest X-Ray", icon: <Stethoscope size={18} /> },
-                    { mode: "cavity", label: "Dental X-Ray", icon: <Microscope size={18} /> },
-                    { mode: "ct_scan", label: "Kidney CT", icon: <ScanLine size={18} /> },
-                    { mode: "report", label: "Lab Report", icon: <FileText size={18} /> },
-                  ].map(({ mode, label, icon }) => (
+                    { mode: "xray", label: "Chest X-Ray", desc: "Thoracic radiograph", icon: <Stethoscope size={19} /> },
+                    { mode: "cavity", label: "Dental Analysis", desc: "Dental radiograph", icon: <Microscope size={19} /> },
+                    { mode: "ct_scan", label: "Kidney Stone CT", desc: "Abdominal CT slice", icon: <ScanLine size={19} /> },
+                    { mode: "report", label: "Blood Report", desc: "Laboratory document", icon: <FileText size={19} /> }
+                  ].map(({ mode, label, desc, icon }) => (
                     <button
+                      type="button"
                       key={mode}
-                      className={`prem-modality-btn ${dashboardAnalysisMode === mode ? "active" : ""}`}
+                      className={`ms-modality-card ${dashboardAnalysisMode === mode ? "active" : ""}`}
                       onClick={() => { setDashboardAnalysisMode(mode); setDashboardUploadError(""); setDashboardResult(null); }}
                     >
-                      {icon} {label}
+                      <span>{icon}</span>
+                      <strong>{label}</strong>
+                      <small>{desc}</small>
                     </button>
                   ))}
                 </div>
 
                 {/* Upload Area */}
-                <form onSubmit={handleDashboardUpload} className="prem-upload-form">
+                <form onSubmit={handleDashboardUpload} className="ms-upload-card">
                   <div
-                    className={`prem-drop-zone ${dashboardUploadFile ? "has-file" : ""}`}
+                    className={`ms-upload-zone ${dashboardUploadFile ? "has-file" : ""}`}
                     onClick={() => dashboardFileRef.current?.click()}
                     onDragOver={e => e.preventDefault()}
-                    onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) setDashboardUploadFile(f); }}
+                    onDrop={e => {
+                      e.preventDefault();
+                      const file = e.dataTransfer.files && e.dataTransfer.files[0];
+                      if (file) { setDashboardUploadFile(file); setDashboardUploadError(""); }
+                    }}
                   >
                     {dashboardUploadFile ? (
-                      <div className="prem-drop-selected">
-                        <FileImage size={40} color="#0ff" />
-                        <p className="prem-drop-filename">{dashboardUploadFile.name}</p>
-                        <p className="prem-drop-size">{(dashboardUploadFile.size / 1024).toFixed(1)} KB</p>
-                        <button type="button" className="prem-remove-file" onClick={e => { e.stopPropagation(); setDashboardUploadFile(null); }}>
-                          <X size={14} /> Remove
-                        </button>
+                      <div className="ms-upload-selected">
+                        <span className="ms-upload-file-icon"><FileImage size={30} /></span>
+                        <div>
+                          <strong>{dashboardUploadFile.name}</strong>
+                          <small>{(dashboardUploadFile.size / 1024).toFixed(1)} KB · ready to analyze</small>
+                        </div>
+                        <div className="ms-upload-file-actions">
+                          <button type="button" className="ms-btn-secondary ms-btn-sm" onClick={(e) => { e.stopPropagation(); dashboardFileRef.current?.click(); }}>
+                            Replace
+                          </button>
+                          <button type="button" className="ms-btn-danger-ghost ms-btn-sm" onClick={(e) => { e.stopPropagation(); setDashboardUploadFile(null); setDashboardUploadError(""); }}>
+                            <X size={14} /> Remove
+                          </button>
+                        </div>
                       </div>
                     ) : (
-                      <div className="prem-drop-prompt">
-                        <Upload size={48} color="#0ff" strokeWidth={1.5} />
-                        <p className="prem-drop-title">Drop your {dashboardAnalysisMode === "report" ? "lab report" : "medical scan"} here</p>
-                        <p className="prem-drop-hint">or <span>click to browse</span> · Supports PNG, JPG, JPEG, PDF</p>
+                      <div className="ms-upload-prompt">
+                        <span className="ms-upload-orb"><Upload size={28} /></span>
+                        <strong>Drop your {dashboardAnalysisMode === "report" ? "laboratory report" : "medical image"} here</strong>
+                        <p>or click to browse your files</p>
+                        <small>
+                          {dashboardAnalysisMode === "report"
+                            ? "PDF, PNG, JPG or JPEG · the existing backend validates the document"
+                            : "PNG, JPG or JPEG · use a clear image of the correct modality"}
+                        </small>
                       </div>
                     )}
                   </div>
@@ -2846,33 +2377,38 @@ function App() {
                     type="file"
                     accept={dashboardAnalysisMode === "report" ? ".pdf,.png,.jpg,.jpeg" : ".png,.jpg,.jpeg"}
                     style={{ display: "none" }}
-                    onChange={e => setDashboardUploadFile(e.target.files[0] || null)}
+                    onChange={e => { setDashboardUploadFile(e.target.files[0] || null); setDashboardUploadError(""); }}
                   />
 
                   {dashboardUploadError && (
-                    <div className="prem-upload-error">
+                    <div className="ms-upload-error">
                       <AlertTriangle size={16} /> {dashboardUploadError}
                     </div>
                   )}
 
-                  <button type="submit" className="prem-btn-primary prem-upload-submit" disabled={!dashboardUploadFile || dashboardUploading}>
-                    {dashboardUploading ? (
-                      <><div className="prem-spinner-sm" /> Running AI Inference...</>
-                    ) : (
-                      <><Zap size={18} /> Run AI Analysis</>
-                    )}
-                  </button>
+                  <div className="ms-upload-footer">
+                    <span className="ms-upload-hint">
+                      <ShieldCheck size={14} /> Files are processed by the existing analysis API and linked to your account.
+                    </span>
+                    <button type="submit" className="ms-btn-primary" disabled={!dashboardUploadFile || dashboardUploading}>
+                      {dashboardUploading ? (
+                        <><span className="ms-spinner ms-spinner-light" /> Running AI analysis…</>
+                      ) : (
+                        <><Zap size={17} /> Analyze Document</>
+                      )}
+                    </button>
+                  </div>
                 </form>
 
-                {/* Architecture Info Chips */}
-                <div className="prem-info-cards">
+                {/* What this module uses */}
+                <div className="ms-analysis-info-grid">
                   {[
-                    { label: "Chest X-Ray", info: "DenseNet-121 model trained on CheXpert. Includes Grad-CAM heatmaps.", color: "#3b82f6" },
-                    { label: "Dental X-Ray", info: "Cavity detection using MobileNetV2 with attention mapping.", color: "#10b981" },
-                    { label: "Kidney CT", info: "ResNet-18 model for kidney stone detection and classification.", color: "#f59e0b" },
-                    { label: "Lab Report", info: "OCR + NLP pipeline extracts biomarkers and flags abnormal clinical values.", color: "#8b5cf6" },
+                    { label: "Chest X-Ray", info: "DenseNet-121 chest classifier with Grad-CAM heatmap generation where available.", color: "#3b82f6" },
+                    { label: "Dental Analysis", info: "EfficientNet-B0 dental cavity engine with visual attention output where available.", color: "#10b981" },
+                    { label: "Kidney Stone CT", info: "MobileNetV2 CT engine for supported axial kidney stone evaluation.", color: "#f59e0b" },
+                    { label: "Blood Report", info: "EasyOCR extraction with biomarker reference-range comparison and abnormal highlighting.", color: "#8b5cf6" }
                   ].map(({ label, info, color }) => (
-                    <div key={label} className="prem-info-chip" style={{ borderLeftColor: color }}>
+                    <div key={label} className="ms-analysis-info" style={{ borderLeftColor: color }}>
                       <strong style={{ color }}>{label}</strong>
                       <span>{info}</span>
                     </div>
@@ -3247,128 +2783,584 @@ function App() {
           </div>
         )}
 
+        {/* HEALTH HISTORY */}
+        {activeTab === "health-history" && (
+          <div className="ms-app-page">
+            <header className="ms-page-header">
+              <div>
+                <span className="ms-dash-eyebrow"><span className="ms-status-dot" /> PERSONAL DIAGNOSTIC ARCHIVE</span>
+                <h1>Health History</h1>
+                <p>All analyses stored under your account, with search, filters and result actions.</p>
+              </div>
+              <button type="button" className="ms-btn-primary ms-btn-sm" onClick={() => openAnalysis("xray")}>
+                <Plus size={16} /> Start New Analysis
+              </button>
+            </header>
+
+            <div className="ms-filter-bar">
+              <label className="ms-search-field">
+                <Search size={16} />
+                <input
+                  type="search"
+                  placeholder="Search by file name or result…"
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                />
+              </label>
+              <select value={historyTypeFilter} onChange={(e) => setHistoryTypeFilter(e.target.value)} aria-label="Filter by analysis type">
+                <option value="All">All types</option>
+                <option value="xray">Chest X-Ray</option>
+                <option value="dental">Dental</option>
+                <option value="ct">Kidney CT</option>
+                <option value="report">Blood Reports</option>
+              </select>
+              <select value={historyDateFilter} onChange={(e) => setHistoryDateFilter(e.target.value)} aria-label="Filter by date">
+                <option value="All">All time</option>
+                <option value="7d">Last 7 days</option>
+                <option value="30d">Last 30 days</option>
+                <option value="year">This year</option>
+              </select>
+              <select value={historyStatusFilter} onChange={(e) => setHistoryStatusFilter(e.target.value)} aria-label="Filter by status">
+                <option value="All">All statuses</option>
+                <option value="Completed">Completed</option>
+                <option value="Pending result">Pending result</option>
+              </select>
+              {(historySearch || historyTypeFilter !== "All" || historyDateFilter !== "All" || historyStatusFilter !== "All") && (
+                <button type="button" className="ms-text-btn" onClick={() => { setHistorySearch(""); setHistoryTypeFilter("All"); setHistoryDateFilter("All"); setHistoryStatusFilter("All"); }}>
+                  Clear filters
+                </button>
+              )}
+            </div>
+
+            {loadingMyHistory ? (
+              <div className="ms-page-loading"><span className="ms-spinner" /><span>Loading your medical records…</span></div>
+            ) : myAnalysisHistory.length === 0 ? (
+              <div className="ms-empty-state">
+                <span className="ms-empty-icon"><History size={32} /></span>
+                <h2>You haven't performed any medical analyses yet.</h2>
+                <p>Upload your first medical scan to get started.</p>
+                <button type="button" className="ms-btn-primary" onClick={() => openAnalysis("xray")}>
+                  <Upload size={16} /> Start New Analysis
+                </button>
+              </div>
+            ) : filteredHistory.length === 0 ? (
+              <div className="ms-empty-state ms-empty-small">
+                <Search size={28} />
+                <h2>No records match your filters</h2>
+                <p>Try a different search term, analysis type or date range.</p>
+              </div>
+            ) : (
+              <div className="ms-history-timeline">
+                {filteredHistory.map((row, index) => (
+                  <article className="ms-history-card" key={row.analysisId || index}>
+                    <div className="ms-history-card-top">
+                      <span className={`ms-type-badge ${isReportRecord(row) ? "report" : "scan"}`}>
+                        {row.fileType || row.analysisType || "Medical Scan"}
+                      </span>
+                      <span className={`ms-status-pill ${recordStatus(row) === "Completed" ? "done" : "pending"}`}>{recordStatus(row)}</span>
+                      <span className="ms-history-date"><Clock size={13} /> {row.date ? new Date(row.date).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : "Date unavailable"}</span>
+                    </div>
+                    <div className="ms-history-card-main">
+                      <div>
+                        <h3>{row.fileName || "Medical document"}</h3>
+                        <p><strong>{row.prediction || row.result || "Analysis completed"}</strong>{row.confidence ? ` · ${row.confidence}% confidence` : ""}</p>
+                        {row.reportSummary && <p className="ms-history-summary">{row.reportSummary}</p>}
+                      </div>
+                      <div className="ms-history-actions">
+                        <button type="button" className="ms-btn-primary ms-btn-sm" onClick={() => openAnalysisResult(row)}>
+                          <Eye size={15} /> View Result
+                        </button>
+                        <button type="button" className="ms-btn-secondary ms-btn-sm" onClick={() => downloadStoredFile(row)}>
+                          <Download size={15} /> Download
+                        </button>
+                        {row.analysisId && (
+                          <button type="button" className="ms-btn-danger-ghost ms-btn-sm" onClick={() => handleDeleteAnalysis(row.analysisId)}>
+                            <X size={14} /> Delete
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* MEDICAL RECORDS */}
+        {activeTab === "medical-records" && (
+          <div className="ms-app-page">
+            <header className="ms-page-header">
+              <div>
+                <span className="ms-dash-eyebrow"><span className="ms-status-dot" /> PERSONAL DOCUMENT FOLDER</span>
+                <h1>My Medical Records</h1>
+                <p>Original uploads and AI-generated analysis reports, organized in one document workspace.</p>
+              </div>
+              <button type="button" className="ms-btn-primary ms-btn-sm" onClick={() => openAnalysis("report")}>
+                <Plus size={16} /> Add a document
+              </button>
+            </header>
+
+            <div className="ms-records-summary">
+              <div><span>Original documents</span><strong>{myAnalysisHistory.filter((row) => row.filePath).length}</strong></div>
+              <div><span>AI analysis reports</span><strong>{myAnalysisHistory.filter((row) => row.prediction || row.reportSummary || row.reportFindings).length}</strong></div>
+              <div><span>Laboratory records</span><strong>{savedMedicalReports.length}</strong></div>
+            </div>
+
+            <div className="ms-filter-bar">
+              <label className="ms-search-field">
+                <Search size={16} />
+                <input
+                  type="search"
+                  placeholder="Search documents and reports…"
+                  value={recordsSearch}
+                  onChange={(e) => setRecordsSearch(e.target.value)}
+                />
+              </label>
+              <select value={recordsTypeFilter} onChange={(e) => setRecordsTypeFilter(e.target.value)} aria-label="Filter by document type">
+                <option value="All">All document types</option>
+                <option value="originals">Original uploads</option>
+                <option value="reports">AI analysis reports</option>
+                <option value="lab">Laboratory records</option>
+              </select>
+              <select value={recordsSort} onChange={(e) => setRecordsSort(e.target.value)} aria-label="Sort records">
+                <option value="Newest">Newest first</option>
+                <option value="Oldest">Oldest first</option>
+              </select>
+            </div>
+
+            {loadingMyHistory ? (
+              <div className="ms-page-loading"><span className="ms-spinner" /><span>Loading your medical records…</span></div>
+            ) : myAnalysisHistory.length === 0 ? (
+              <div className="ms-empty-state">
+                <span className="ms-empty-icon"><FolderOpen size={32} /></span>
+                <h2>No medical reports have been saved yet.</h2>
+                <p>Upload a scan or laboratory document to create your first record.</p>
+                <button type="button" className="ms-btn-primary" onClick={() => openAnalysis("xray")}>
+                  <Upload size={16} /> Upload a document
+                </button>
+              </div>
+            ) : filteredRecords.length === 0 ? (
+              <div className="ms-empty-state ms-empty-small">
+                <Search size={28} />
+                <h2>No documents match your search</h2>
+                <p>Try another keyword or document type.</p>
+              </div>
+            ) : (
+              <div className="ms-records-grid">
+                {filteredRecords.map((item) => (
+                  <article className="ms-record-card" key={item.recordKey}>
+                    <div className={`ms-record-kind ${item.recordKind === "report" ? "report" : "original"}`}>
+                      {item.recordKind === "report" ? <FileText size={14} /> : <FileImage size={14} />}
+                      {item.recordKind === "report" ? "AI analysis report" : "Original upload"}
+                    </div>
+                    <span className="ms-record-card-icon">
+                      {isReportRecord(item) ? <FileText size={24} /> : item.recordKind === "report" ? <Activity size={24} /> : <FileImage size={24} />}
+                    </span>
+                    <h3>{item.recordTitle}</h3>
+                    <p className="ms-record-meta">
+                      {item.fileType || item.analysisType || "Medical document"} · {item.date ? new Date(item.date).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : "Date unavailable"}
+                    </p>
+                    <p className="ms-record-finding">
+                      {item.recordKind === "report"
+                        ? (item.prediction || item.reportSummary || "AI analysis completed")
+                        : (item.filePath ? "Stored original document" : "Original file path unavailable")}
+                    </p>
+                    <div className="ms-record-actions">
+                      <button type="button" className="ms-btn-secondary ms-btn-sm" onClick={() => setRecordPreview(item)}>
+                        <Eye size={14} /> Preview
+                      </button>
+                      {item.recordKind === "report" ? (
+                        <button type="button" className="ms-btn-primary ms-btn-sm" onClick={() => openAnalysisResult(item)}>
+                          View analysis <ArrowRight size={14} />
+                        </button>
+                      ) : (
+                        <button type="button" className="ms-btn-primary ms-btn-sm" onClick={() => downloadStoredFile(item)}>
+                          <Download size={14} /> Download
+                        </button>
+                      )}
+                      {item.analysisId && (
+                        <button
+                          type="button"
+                          className="ms-btn-danger-ghost ms-btn-sm"
+                          onClick={() => handleDeleteAnalysis(item.analysisId)}
+                          title="Delete this record and its linked analysis"
+                        >
+                          <X size={14} /> Delete
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+
+            {recordPreview && (
+              <div className="ms-modal-backdrop" onClick={() => setRecordPreview(null)}>
+                <div className="ms-modal-card" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+                  <div className="ms-modal-head">
+                    <div>
+                      <span className={`ms-record-kind ${recordPreview.recordKind === "report" ? "report" : "original"}`}>
+                        {recordPreview.recordKind === "report" ? "AI analysis report" : "Original upload"}
+                      </span>
+                      <h3>{recordPreview.recordTitle}</h3>
+                    </div>
+                    <button type="button" className="ms-modal-close" onClick={() => setRecordPreview(null)} aria-label="Close preview"><X size={17} /></button>
+                  </div>
+
+                  {recordPreview.recordKind === "original" && recordPreview.filePath && /\.(png|jpe?g|gif|webp)$/i.test(recordPreview.filePath) ? (
+                    <div className="ms-preview-image">
+                      <img src={storedFileUrl(recordPreview)} alt={recordPreview.recordTitle} />
+                    </div>
+                  ) : null}
+
+                  <div className="ms-preview-meta">
+                    <div><span>Document type</span><strong>{recordPreview.fileType || recordPreview.analysisType || "Medical document"}</strong></div>
+                    <div><span>Date</span><strong>{recordPreview.date ? new Date(recordPreview.date).toLocaleString() : "Unavailable"}</strong></div>
+                    {recordPreview.confidence ? <div><span>AI confidence</span><strong>{recordPreview.confidence}%</strong></div> : null}
+                  </div>
+
+                  {recordPreview.prediction && (
+                    <div className="ms-preview-block"><span>AI result</span><p>{recordPreview.prediction}</p></div>
+                  )}
+                  {recordPreview.reportSummary && (
+                    <div className="ms-preview-block"><span>Report summary</span><p>{recordPreview.reportSummary}</p></div>
+                  )}
+
+                  {Array.isArray(recordPreview.reportFindings) && recordPreview.reportFindings.length > 0 && (
+                    <div className="ms-preview-findings">
+                      <span>Extracted biomarkers</span>
+                      <div className="ms-table-scroll">
+                        <table>
+                          <thead><tr><th>Test</th><th>Value</th><th>Reference</th><th>Status</th></tr></thead>
+                          <tbody>
+                            {recordPreview.reportFindings.map((finding, index) => (
+                              <tr key={index}>
+                                <td>{finding.test_name || finding.name || "—"}</td>
+                                <td>{finding.value || "—"}</td>
+                                <td>{finding.reference_text || finding.reference || "—"}</td>
+                                <td>{finding.status || "—"}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="ms-modal-actions">
+                    {recordPreview.recordKind === "report" ? (
+                      <button type="button" className="ms-btn-primary ms-btn-sm" onClick={() => { setRecordPreview(null); openAnalysisResult(recordPreview); }}>
+                        Open full analysis <ArrowRight size={14} />
+                      </button>
+                    ) : (
+                      <button type="button" className="ms-btn-primary ms-btn-sm" onClick={() => downloadStoredFile(recordPreview)}>
+                        <Download size={14} /> Download original
+                      </button>
+                    )}
+                    <button type="button" className="ms-btn-secondary ms-btn-sm" onClick={() => setRecordPreview(null)}>Close</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* PORTAL LOGIC */}
+        {activeTab === "portal-logic" && (
+          <div className="ms-app-page">
+            <header className="ms-page-header">
+              <div>
+                <span className="ms-dash-eyebrow"><span className="ms-status-dot" /> SECURE ACCESS GATEWAY</span>
+                <h1>Portal Logic</h1>
+                <p>The authenticated portal gateway, session state and protected workspace access.</p>
+              </div>
+              <button type="button" className="ms-btn-secondary ms-btn-sm" onClick={() => goToTab("dashboard")}>
+                <LayoutDashboard size={15} /> Dashboard
+              </button>
+            </header>
+
+            <div className="ms-portal-grid">
+              <section className="ms-portal-card ms-portal-session">
+                <div className="ms-portal-card-head">
+                  <span className="ms-portal-icon"><ShieldCheck size={24} /></span>
+                  <div>
+                    <h2>Session active</h2>
+                    <p>You are viewing this workspace through an authenticated account session.</p>
+                  </div>
+                </div>
+                <div className="ms-portal-detail-list">
+                  <div><span>Account name</span><strong>{doctorName || "User"}</strong></div>
+                  <div><span>Sign-in identifier</span><strong>{myUsername || "—"}</strong></div>
+                  <div><span>Session storage</span><strong>{localStorage.getItem("doctor_token") ? "Remembered on this device" : "This browser session only"}</strong></div>
+                  <div><span>Associated patient record</span><strong>{myPatient?.patientId || myPatientId || "Provisioned with your account"}</strong></div>
+                </div>
+                <div className="ms-portal-actions">
+                  <button type="button" className="ms-btn-primary ms-btn-sm" onClick={() => goToTab("profile")}>
+                    <UserCircle size={15} /> Review profile
+                  </button>
+                  <button type="button" className="ms-btn-danger-ghost ms-btn-sm" onClick={handleLogout}>
+                    <LogOut size={15} /> Sign out to portal gateway
+                  </button>
+                </div>
+              </section>
+
+              <section className="ms-portal-card">
+                <h2>What the portal controls</h2>
+                <ul className="ms-check-list">
+                  <li><Check size={14} /> The public marketing site is available without an account.</li>
+                  <li><Check size={14} /> Dashboard, health history, medical records and profile require a session.</li>
+                  <li><Check size={14} /> Uploads performed while signed in are associated with your account record.</li>
+                  <li><Check size={14} /> Logging out returns you to the public landing page and clears the local session.</li>
+                </ul>
+              </section>
+
+              <section className="ms-portal-card">
+                <h2>Access flow</h2>
+                <div className="ms-portal-flow">
+                  <span>Public website</span>
+                  <ChevronRight size={16} />
+                  <span>Login / Register</span>
+                  <ChevronRight size={16} />
+                  <span className="active">Personal workspace</span>
+                </div>
+                <p className="ms-portal-note">
+                  This page does not re-implement authentication. It reports the state of the
+                  existing sign-in flow and provides the same Logout handler used elsewhere in
+                  the application.
+                </p>
+              </section>
+            </div>
+          </div>
+        )}
+
+        {/* ABOUT MEDISCAN AI (AUTHENTICATED) */}
+        {activeTab === "about" && (
+          <div className="ms-app-page ms-about-app-page">
+            <header className="ms-page-header">
+              <div>
+                <span className="ms-dash-eyebrow"><span className="ms-status-dot" /> PLATFORM &amp; TECHNOLOGY</span>
+                <h1>About MediScan AI</h1>
+                <p>The platform mission, diagnostic modules, architecture and responsible AI boundaries.</p>
+              </div>
+              <button type="button" className="ms-btn-secondary ms-btn-sm" onClick={() => goToTab("support")}>
+                <HelpCircle size={15} /> Help &amp; Support
+              </button>
+            </header>
+            <AboutContent compact />
+          </div>
+        )}
+
+        {/* HELP & SUPPORT (AUTHENTICATED) */}
+        {activeTab === "support" && (
+          <div className="ms-app-page">
+            <header className="ms-page-header">
+              <div>
+                <span className="ms-dash-eyebrow"><span className="ms-status-dot" /> HELP CENTRE</span>
+                <h1>Help &amp; Support</h1>
+                <p>Account, upload, result, download and medical disclaimer guidance.</p>
+              </div>
+            </header>
+            <SupportContent embedded />
+          </div>
+        )}
+
         {/* 8. MY PROFILE TAB */}
         {activeTab === "profile" && (
-          <div className="prem-view">
-            <div className="prem-welcome-header">
-              <div className="prem-welcome-left">
-                <p className="prem-welcome-greeting">Personal Account</p>
-                <h1 className="prem-welcome-title">My Profile</h1>
-                <p className="prem-welcome-sub">Manage your healthcare identification and view your usage metrics.</p>
+          <div className="ms-app-page">
+            <header className="ms-page-header">
+              <div>
+                <span className="ms-dash-eyebrow"><span className="ms-status-dot" /> PERSONAL ACCOUNT</span>
+                <h1>My Profile</h1>
+                <p>Review and update the real details associated with your healthcare workspace.</p>
               </div>
-            </div>
-            <div className="prem-profile-card">
-              <div className="prem-profile-avatar-large">
-                <span>{(doctorName || "U").charAt(0).toUpperCase()}</span>
-              </div>
-              <div className="prem-profile-info">
-                <h2>{doctorName}</h2>
-                <p className="prem-profile-username">@{token.replace("mock-jwt-token-", "")}</p>
-                <p className="prem-profile-role">Individual Healthcare User · MediScan AI</p>
-              </div>
-              <div className="prem-profile-stats">
-                <div className="prem-profile-stat">
-                  <span className="prem-ps-val">{myAnalysisHistory.length}</span>
-                  <span className="prem-ps-label">Total Analyses</span>
+            </header>
+
+            <div className="ms-profile-layout">
+              <aside className="ms-profile-summary">
+                <span className="ms-profile-avatar">{(doctorName || "U").charAt(0).toUpperCase()}</span>
+                <h2>{doctorName || "User"}</h2>
+                <p>{myUsername || "Signed-in account"}</p>
+                <span className="ms-profile-badge"><ShieldCheck size={13} /> Personal healthcare user</span>
+                <div className="ms-profile-stats">
+                  <div><strong>{myAnalysisHistory.length}</strong><span>Total analyses</span></div>
+                  <div><strong>{savedMedicalReports.length}</strong><span>Lab reports</span></div>
+                  <div><strong>{myAnalysisHistory.filter((row) => !isReportRecord(row)).length}</strong><span>Imaging scans</span></div>
                 </div>
-                <div className="prem-profile-stat">
-                  <span className="prem-ps-val">{myAnalysisHistory.filter(h => (h.fileType || h.analysisType || "").includes("Chest") || h.type === "X-Ray").length}</span>
-                  <span className="prem-ps-label">X-Ray Scans</span>
+                <div className="ms-profile-meta">
+                  <span><User size={14} /> Patient record: {myPatient?.patientId || myPatientId || "Not loaded"}</span>
+                  <span><Mail size={14} /> {myUsername}</span>
                 </div>
-                <div className="prem-profile-stat">
-                  <span className="prem-ps-val">{myAnalysisHistory.filter(h => (h.fileType || h.analysisType || "") === "Medical Report" || h.type === "Report").length}</span>
-                  <span className="prem-ps-label">Lab Reports</span>
+              </aside>
+
+              <section className="ms-profile-form-card">
+                <div className="ms-card-heading">
+                  <div><h2>Account details</h2><p>Name, contact, age and gender are saved through the existing patient record endpoint.</p></div>
+                  {profileSaved && <span className="ms-save-note"><CheckCircle2 size={14} /> {profileSaved}</span>}
                 </div>
-                <div className="prem-profile-stat">
-                  <span className="prem-ps-val">4</span>
-                  <span className="prem-ps-label">Supported Modalities</span>
-                </div>
-              </div>
-              <div className="prem-profile-details">
-                <div className="prem-profile-detail-item">
-                  <User size={16} color="var(--text-muted)" />
-                  <span className="prem-pd-label">Full Name</span>
-                  <span className="prem-pd-val">{doctorName}</span>
-                </div>
-                <div className="prem-profile-detail-item">
-                  <Key size={16} color="var(--text-muted)" />
-                  <span className="prem-pd-label">Username</span>
-                  <span className="prem-pd-val">{token.replace("mock-jwt-token-", "")}</span>
-                </div>
-                <div className="prem-profile-detail-item">
-                  <Shield size={16} color="var(--text-muted)" />
-                  <span className="prem-pd-label">Account Tier</span>
-                  <span className="prem-pd-val">Personal Healthcare User (Active)</span>
-                </div>
-                <div className="prem-profile-detail-item">
-                  <Activity size={16} color="var(--text-muted)" />
-                  <span className="prem-pd-label">AI Inference Engine</span>
-                  <span className="prem-pd-val">DenseNet-121, ResNet-18, MobileNetV2</span>
-                </div>
-              </div>
+                <form onSubmit={handleProfileSave} className="ms-profile-form">
+                  <label className="ms-field">
+                    <span>Full name</span>
+                    <div className="ms-field-control">
+                      <User size={16} />
+                      <input
+                        type="text"
+                        value={profileForm.name}
+                        onChange={(e) => { setProfileForm({ ...profileForm, name: e.target.value }); setProfileSaved(""); }}
+                        placeholder="Your full name"
+                        required
+                      />
+                    </div>
+                  </label>
+
+                  <label className="ms-field">
+                    <span>Email address (sign-in identifier)</span>
+                    <div className="ms-field-control ms-field-readonly">
+                      <Mail size={16} />
+                      <input type="email" value={myUsername} readOnly />
+                    </div>
+                    <small className="ms-field-note">Email changes are handled by the existing authentication system and are not editable here.</small>
+                  </label>
+
+                  <div className="ms-form-row">
+                    <label className="ms-field">
+                      <span>Phone / contact</span>
+                      <div className="ms-field-control">
+                        <Phone size={16} />
+                        <input
+                          type="tel"
+                          value={profileForm.contact}
+                          onChange={(e) => { setProfileForm({ ...profileForm, contact: e.target.value }); setProfileSaved(""); }}
+                          placeholder="Optional contact number"
+                        />
+                      </div>
+                    </label>
+                    <label className="ms-field">
+                      <span>Age</span>
+                      <div className="ms-field-control">
+                        <Calendar size={16} />
+                        <input
+                          type="number"
+                          min="0"
+                          value={profileForm.age}
+                          onChange={(e) => { setProfileForm({ ...profileForm, age: e.target.value }); setProfileSaved(""); }}
+                          placeholder="Age"
+                        />
+                      </div>
+                    </label>
+                  </div>
+
+                  <label className="ms-field">
+                    <span>Gender</span>
+                    <select
+                      value={profileForm.gender}
+                      onChange={(e) => { setProfileForm({ ...profileForm, gender: e.target.value }); setProfileSaved(""); }}
+                    >
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </label>
+
+                  <div className="ms-form-actions">
+                    <button type="submit" className="ms-btn-primary" disabled={profileSaving}>
+                      {profileSaving ? <><span className="ms-spinner ms-spinner-light" /> Saving…</> : <><Check size={16} /> Save changes</>}
+                    </button>
+                    <button
+                      type="button"
+                      className="ms-btn-secondary"
+                      onClick={() => {
+                        const mine = myPatient || {};
+                        setProfileForm({
+                          name: mine.name || doctorName || "",
+                          age: mine.age !== undefined && mine.age !== null ? String(mine.age) : "",
+                          gender: mine.gender || "Other",
+                          contact: mine.contact || ""
+                        });
+                        setProfileSaved("");
+                      }}
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </form>
+              </section>
             </div>
           </div>
         )}
 
         {/* 9. SETTINGS TAB */}
         {activeTab === "settings" && (
-          <div className="prem-view">
-            <div className="prem-welcome-header">
-              <div className="prem-welcome-left">
-                <p className="prem-welcome-greeting">System Configuration</p>
-                <h1 className="prem-welcome-title">Settings</h1>
-                <p className="prem-welcome-sub">Customize your application preferences, analysis options, and security.</p>
+          <div className="ms-app-page">
+            <header className="ms-page-header">
+              <div>
+                <span className="ms-dash-eyebrow"><span className="ms-status-dot" /> ACCOUNT &amp; PRIVACY</span>
+                <h1>Settings</h1>
+                <p>Only options supported by the current application are shown here.</p>
               </div>
-            </div>
-            <div className="prem-settings-card">
-              <div className="prem-settings-section">
-                <h3><UserCircle size={18} /> User Account</h3>
-                <div className="prem-settings-item">
-                  <div>
-                    <p className="prem-si-label">Display Name</p>
-                    <p className="prem-si-val">{doctorName}</p>
-                  </div>
+            </header>
+
+            <div className="ms-settings-grid">
+              <section className="ms-settings-card">
+                <div className="ms-card-heading">
+                  <div><h2><UserCircle size={18} /> Account</h2><p>Your sign-in and profile details.</p></div>
                 </div>
-                <div className="prem-settings-item">
-                  <div>
-                    <p className="prem-si-label">User Identifier</p>
-                    <p className="prem-si-val">{token.replace("mock-jwt-token-", "")}</p>
-                  </div>
+                <div className="ms-settings-list">
+                  <div><span>Display name</span><strong>{doctorName || "User"}</strong></div>
+                  <div><span>Email / sign-in identifier</span><strong>{myUsername || "—"}</strong></div>
+                  <div><span>Associated patient record</span><strong>{myPatient?.patientId || myPatientId || "Provisioned"}</strong></div>
                 </div>
-              </div>
-              <div className="prem-settings-section">
-                <h3><Brain size={18} /> Diagnostics & AI</h3>
-                <div className="prem-settings-item">
-                  <div>
-                    <p className="prem-si-label">Default Analysis Modality</p>
-                    <p className="prem-si-val">Chest Radiograph (DenseNet-121)</p>
-                  </div>
+                <div className="ms-settings-actions">
+                  <button type="button" className="ms-btn-secondary ms-btn-sm" onClick={() => goToTab("profile")}>
+                    <User size={15} /> Update account details
+                  </button>
+                  <button type="button" className="ms-btn-danger-ghost ms-btn-sm" onClick={handleLogout}>
+                    <LogOut size={15} /> Logout
+                  </button>
                 </div>
-                <div className="prem-settings-item">
-                  <div>
-                    <p className="prem-si-label">Explainable AI (Grad-CAM)</p>
-                    <p className="prem-si-val">Enabled — Generates regional activation heatmaps</p>
-                  </div>
+              </section>
+
+              <section className="ms-settings-card">
+                <div className="ms-card-heading">
+                  <div><h2><Shield size={18} /> Privacy &amp; medical data</h2><p>How records are separated and accessed.</p></div>
                 </div>
-              </div>
-              <div className="prem-settings-section">
-                <h3><Shield size={18} /> Security & Privacy</h3>
-                <div className="prem-settings-item">
-                  <div>
-                    <p className="prem-si-label">Session Authentication</p>
-                    <p className="prem-si-val">Active · Token-verified user session</p>
-                  </div>
+                <ul className="ms-check-list">
+                  <li><Check size={14} /> Dashboard, history and records only load data returned for your account.</li>
+                  <li><Check size={14} /> Uploaded files and analyses are stored in the existing patient and analysis records.</li>
+                  <li><Check size={14} /> Logging out clears the local session token from this browser.</li>
+                  <li><Check size={14} /> This interface does not claim encryption or compliance certifications that are not implemented.</li>
+                </ul>
+                <p className="ms-settings-note">
+                  Account deletion and password reset endpoints are not available in the current
+                  backend. Contact the project administrator for those requests.
+                </p>
+              </section>
+
+              <section className="ms-settings-card">
+                <div className="ms-card-heading">
+                  <div><h2><Key size={18} /> Session security</h2><p>Current session information.</p></div>
                 </div>
-                <div className="prem-settings-item">
-                  <div>
-                    <p className="prem-si-label">History Isolation</p>
-                    <p className="prem-si-val">Analyses are automatically linked to your authenticated user account</p>
-                  </div>
+                <div className="ms-settings-list">
+                  <div><span>Session state</span><strong className="ms-status-text"><span className="ms-status-dot" /> Authenticated</strong></div>
+                  <div><span>Storage</span><strong>{localStorage.getItem("doctor_token") ? "Remembered on this device" : "Browser session only"}</strong></div>
+                  <div><span>Authentication method</span><strong>Existing account login</strong></div>
                 </div>
-              </div>
-              <button className="prem-logout-full-btn" onClick={handleLogout}>
-                <LogOut size={16} /> Sign Out of MediScan
-              </button>
+                <p className="ms-settings-note">
+                  Password changes are not exposed by the current backend. Use the portal
+                  administrator if you need credentials reset.
+                </p>
+              </section>
+
+              <section className="ms-settings-card">
+                <div className="ms-card-heading">
+                  <div><h2><Bell size={18} /> Preferences</h2><p>Available preferences in this build.</p></div>
+                </div>
+                <p className="ms-settings-note">
+                  Notification and theme preferences are not stored by the current backend, so no
+                  non-functional toggles are shown here. The interface uses the existing dark
+                  navy and teal design throughout.
+                </p>
+              </section>
             </div>
           </div>
         )}
