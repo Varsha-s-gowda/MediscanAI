@@ -2667,13 +2667,6 @@ function App() {
                       </button>
                     </div>
                   ))}
-                  <div className="prem-analysis-card prem-analysis-coming-soon">
-                    <div className="prem-analysis-icon" style={{ color: "#6b7280" }}><Brain size={28} /></div>
-                    <div className="prem-analysis-tag prem-tag-gray">Coming Soon</div>
-                    <h3>Brain MRI</h3>
-                    <p>Tumor detection and neurological analysis — model training in progress</p>
-                    <button className="prem-analyze-btn prem-btn-disabled" disabled>Coming Soon</button>
-                  </div>
                 </div>
 
                 {/* 5. Recent Analyses Table & 6. Recent Activities */}
@@ -2763,6 +2756,7 @@ function App() {
                 <PostAnalysisWorkflow
                   result={dashboardResult}
                   modality={dashboardResult.modality || dashboardResult.fileType || "Chest X-Ray"}
+                  apiBase={API_BASE}
                   onBack={() => { setDashboardResult(null); }}
                 />
               </div>

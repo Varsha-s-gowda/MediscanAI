@@ -7690,7 +7690,7 @@ body {
 /* ---- ANALYSIS CARDS ---- */
 .prem-analysis-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 18px;
   margin-bottom: 36px;
 }
@@ -7727,11 +7727,6 @@ body {
 
 .prem-analysis-card:hover::after { opacity: 0.6; }
 
-.prem-analysis-coming-soon {
-  opacity: 0.55;
-  cursor: default;
-}
-
 .prem-analysis-icon {
   margin-bottom: 4px;
 }
@@ -7748,12 +7743,6 @@ body {
   border: 1px solid rgba(0,255,255,0.15);
   color: rgba(0,255,255,0.8);
   width: fit-content;
-}
-
-.prem-tag-gray {
-  background: rgba(107,114,128,0.15);
-  border-color: rgba(107,114,128,0.2);
-  color: rgba(255,255,255,0.35);
 }
 
 .prem-analysis-card h3 {
@@ -7788,13 +7777,6 @@ body {
   margin-top: 4px;
 }
 .prem-analyze-btn:hover { background: rgba(0,255,255,0.18); box-shadow: 0 0 16px rgba(0,255,255,0.12); }
-
-.prem-btn-disabled {
-  background: rgba(107,114,128,0.1) !important;
-  border-color: rgba(107,114,128,0.15) !important;
-  color: rgba(255,255,255,0.2) !important;
-  cursor: not-allowed;
-}
 
 /* ---- BOTTOM GRID ---- */
 .prem-bottom-grid {
