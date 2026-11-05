@@ -20,6 +20,26 @@ DISEASE_CLASSES = [
     "Normal"
 ]
 
+# The local chest X-ray checkpoint (best_model.pth) was trained on these four
+# mutually-exclusive classes. Its 18-neuron output head keeps the positions of
+# DISEASE_CLASSES, but only these four neurons were ever supervised. The other
+# 14 outputs are unused/untrained and must not be decoded as diseases.
+CHEST_XRAY_ACTIVE_CLASSES = [
+    "COVID-19",
+    "Normal",
+    "Pneumonia",
+    "Tuberculosis",
+]
+
+# Tuberculosis commonly presents with consolidation, so the model can produce a
+# competing "Pneumonia" score. When the dedicated TB head fires at this level
+# (percent) it is reported as Tuberculosis instead of Pneumonia.
+TUBERCULOSIS_PRIORITY_THRESHOLD = 20.0
+
+# A strong TB score takes precedence over the remaining classes (e.g. COVID-19
+# co-infection or a competing viral-pneumonia pattern).
+TUBERCULOSIS_STRONG_THRESHOLD = 50.0
+
 # Severity scale threshold mappings (Confidence percentage to label)
 SEVERITY_MAPPING = {
     "Low": (0.0, 30.0),

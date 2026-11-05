@@ -11,7 +11,14 @@ import io
 from model import MediScanModel
 from preprocessing import MedicalImagePreprocessor
 from device import get_device
-from constants import DISEASE_CLASSES, SEVERITY_MAPPING, DISEASE_INFO
+from constants import (
+    DISEASE_CLASSES,
+    SEVERITY_MAPPING,
+    DISEASE_INFO,
+    CHEST_XRAY_ACTIVE_CLASSES,
+    TUBERCULOSIS_PRIORITY_THRESHOLD,
+    TUBERCULOSIS_STRONG_THRESHOLD,
+)
 from config import MODEL_PATH, CONFIDENCE_THRESHOLD, GEMINI_API_KEY, OPENROUTER_API_KEY, HF_API_KEY, DISABLE_GRADCAM, FORCE_LOCAL_INFERENCE
 from gradcam import GradCAM, overlay_heatmap
 from logger import get_logger
@@ -42,6 +49,9 @@ class InferenceEngine:
         self.classes = DISEASE_CLASSES
         self.num_classes = len(self.classes)
         self.model_weight_path = model_weight_path
+        # Set when the loaded checkpoint is the 4-class chest X-ray model.
+        self._active_chest_classes = None
+        self._four_class_softmax = False
         
         # Local model components initialized lazily
         self.model = None
@@ -93,9 +103,28 @@ class InferenceEngine:
         if model_classes == 2:
             self.classes = ["Normal", "Pneumonia"]
             self.num_classes = 2
+        elif model_classes == 4:
+            # Direct 4-class checkpoint (ImageFolder alphabetical order).
+            self.classes = list(CHEST_XRAY_ACTIVE_CLASSES)
+            self.num_classes = 4
+            self._four_class_softmax = True
         elif model_classes != len(self.classes):
             self.classes = DISEASE_CLASSES[:model_classes]
             self.num_classes = model_classes
+
+        # The 18-output checkpoint only supervises the four chest X-ray classes.
+        # Decode those four outputs as a mutually-exclusive classifier and ignore
+        # the untrained neurons, otherwise TB can be masked by a Pneumonia score.
+        if len(self.classes) == len(DISEASE_CLASSES) and all(
+            c in self.classes for c in CHEST_XRAY_ACTIVE_CLASSES
+        ):
+            self._active_chest_classes = list(CHEST_XRAY_ACTIVE_CLASSES)
+            logger.info(
+                "Chest X-ray checkpoint detected as a 4-class model "
+                f"({', '.join(CHEST_XRAY_ACTIVE_CLASSES)}) inside an 18-output head."
+            )
+        elif model_classes == 4:
+            self._active_chest_classes = list(CHEST_XRAY_ACTIVE_CLASSES)
 
         # Setup model architecture
         if is_legacy_resnet:
@@ -568,41 +597,87 @@ class InferenceEngine:
         # Predict
         with torch.no_grad():
             outputs = self.model(tensor)
-            # Use Sigmoid for multi-label classification probabilities
-            probabilities = torch.sigmoid(outputs)[0]
+            # 4-class checkpoints were trained with a mutually-exclusive
+            # softmax head; the 18-output checkpoint uses multi-label sigmoid.
+            if self._four_class_softmax:
+                probabilities = torch.softmax(outputs, dim=1)[0]
+            else:
+                probabilities = torch.sigmoid(outputs)[0]
 
         predictions_list = []
         normal_conf = 0.0
 
-        for idx, prob in enumerate(probabilities):
-            class_name = self.classes[idx]
-            conf_val = round(prob.item() * 100, 2)
-            
-            if class_name.lower() == "normal":
-                normal_conf = conf_val
-                continue
-                
-            # Filter based on threshold
-            # Default threshold is 50.0% (0.50)
-            threshold_percentage = CONFIDENCE_THRESHOLD * 100.0
-            if conf_val >= threshold_percentage:
-                severity = self.get_severity(conf_val)
-                info = DISEASE_INFO.get(class_name, {
-                    "description": "No detailed clinical description available.",
-                    "symptoms": ["Mild symptoms"],
-                    "precautions": ["Consult a medical professional"],
-                    "follow_up": "Routine checkup"
-                })
-                
-                predictions_list.append({
-                    "disease": class_name,
-                    "confidence": conf_val,
-                    "severity": severity,
-                    "description": info["description"],
-                    "symptoms": info["symptoms"],
-                    "precautions": info["precautions"],
-                    "follow_up": info["follow_up"]
-                })
+        if self._active_chest_classes:
+            # Decode only the four classes the checkpoint was actually trained on.
+            active_scores = {}
+            for class_name in self._active_chest_classes:
+                try:
+                    class_idx = self.classes.index(class_name)
+                except ValueError:
+                    class_idx = DISEASE_CLASSES.index(class_name)
+                active_scores[class_name] = round(float(probabilities[class_idx].item()) * 100.0, 2)
+
+            normal_conf = active_scores.get("Normal", 0.0)
+            primary_name, primary_conf = max(active_scores.items(), key=lambda item: item[1])
+
+            # Tuberculosis often presents as consolidation, so a competing
+            # Pneumonia score can outrank the TB head. Report TB when its
+            # dedicated output is meaningfully positive, or strongly positive
+            # even if another class (e.g. COVID-19) is slightly higher.
+            tb_score = active_scores.get("Tuberculosis", 0.0)
+            if primary_name != "Tuberculosis":
+                if (
+                    primary_name == "Pneumonia"
+                    and tb_score >= TUBERCULOSIS_PRIORITY_THRESHOLD
+                ) or tb_score >= TUBERCULOSIS_STRONG_THRESHOLD:
+                    primary_name = "Tuberculosis"
+                    primary_conf = tb_score
+
+            info = DISEASE_INFO.get(primary_name, {
+                "description": "No detailed clinical description available.",
+                "symptoms": ["Mild symptoms"],
+                "precautions": ["Consult a medical professional"],
+                "follow_up": "Routine checkup"
+            })
+            predictions_list.append({
+                "disease": primary_name,
+                "confidence": primary_conf,
+                "severity": "Low" if primary_name == "Normal" else self.get_severity(primary_conf),
+                "description": info["description"],
+                "symptoms": info["symptoms"],
+                "precautions": info["precautions"],
+                "follow_up": info["follow_up"]
+            })
+        else:
+            for idx, prob in enumerate(probabilities):
+                class_name = self.classes[idx]
+                conf_val = round(prob.item() * 100, 2)
+
+                if class_name.lower() == "normal":
+                    normal_conf = conf_val
+                    continue
+
+                # Filter based on threshold
+                # Default threshold is 50.0% (0.50)
+                threshold_percentage = CONFIDENCE_THRESHOLD * 100.0
+                if conf_val >= threshold_percentage:
+                    severity = self.get_severity(conf_val)
+                    info = DISEASE_INFO.get(class_name, {
+                        "description": "No detailed clinical description available.",
+                        "symptoms": ["Mild symptoms"],
+                        "precautions": ["Consult a medical professional"],
+                        "follow_up": "Routine checkup"
+                    })
+
+                    predictions_list.append({
+                        "disease": class_name,
+                        "confidence": conf_val,
+                        "severity": severity,
+                        "description": info["description"],
+                        "symptoms": info["symptoms"],
+                        "precautions": info["precautions"],
+                        "follow_up": info["follow_up"]
+                    })
 
         # Sort predictions by confidence
         predictions_list = sorted(predictions_list, key=lambda x: x["confidence"], reverse=True)
