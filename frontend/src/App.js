@@ -70,7 +70,7 @@ const API_BASE = (() => {
     /^172\.(1[6-9]|2\d|3[01])\./.test(host);
   // Dev machines (localhost / LAN) talk to the FastAPI backend on port 5000.
   if (isLocalHost) return `http://${host}:5000`;
-  return "https://mediscan-ai-backend.onrender.com";
+  return "https://mediscanai-uhtt.onrender.com";
 })();
 
 function App() {
