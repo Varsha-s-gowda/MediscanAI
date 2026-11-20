@@ -56,7 +56,22 @@ import {
   SupportContent
 } from "./components/PublicSite";
 
-const API_BASE = process.env.REACT_APP_API_URL || (typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") ? "http://localhost:5000" : "https://mediscan-ai-backend.onrender.com");
+const API_BASE = (() => {
+  const configured = (process.env.REACT_APP_API_URL || "").trim();
+  if (configured) return configured.replace(/\/$/, "");
+  if (typeof window === "undefined") return "http://localhost:5000";
+  const host = window.location.hostname;
+  const isLocalHost =
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "[::1]" ||
+    /^10\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+  // Dev machines (localhost / LAN) talk to the FastAPI backend on port 5000.
+  if (isLocalHost) return `http://${host}:5000`;
+  return "https://mediscan-ai-backend.onrender.com";
+})();
 
 function App() {
   const location = useLocation();
@@ -107,7 +122,6 @@ function App() {
   const getPathForState = useCallback((mode, tab, patient) => {
     if (token) {
       if (tab === "dashboard") return "/dashboard";
-      if (tab === "portal-logic") return "/portal-logic";
       if (tab === "health-history") return "/health-history";
       if (tab === "medical-records") return "/medical-records";
       if (tab === "profile") return "/profile";
@@ -167,7 +181,7 @@ function App() {
       if (token) setActiveTab("dashboard");
       else setPublicMode("login");
     } else if (path === "/portal-logic") {
-      if (token) setActiveTab("portal-logic");
+      if (token) setActiveTab("dashboard");
       else setPublicMode("login");
     } else if (path === "/health-history") {
       if (token) setActiveTab("health-history");
@@ -763,7 +777,10 @@ function App() {
       showToast(`Welcome, ${data.name}. Your personal healthcare workspace is ready.`);
       return { ok: true };
     } catch (err) {
-      return { ok: false, error: "Failed to connect to the authentication server." };
+      return {
+        ok: false,
+        error: `Failed to connect to the authentication server at ${API_BASE}. Make sure the backend is running.`
+      };
     }
   };
 
@@ -790,7 +807,10 @@ function App() {
       try { const err = await res.json(); detail = err.detail || err.error || detail; } catch (_) {}
       return { ok: false, error: detail };
     } catch (err) {
-      return { ok: false, error: "Failed to connect to the authentication server." };
+      return {
+        ok: false,
+        error: `Failed to connect to the authentication server at ${API_BASE}. Make sure the backend is running.`
+      };
     }
   };
 
@@ -1981,7 +2001,6 @@ function App() {
             <nav className="ms-app-drawer-nav">
               {[
                 { id: "dashboard", label: "Dashboard", sub: "Your health overview", icon: <LayoutDashboard size={19} /> },
-                { id: "portal-logic", label: "Portal Logic", sub: "Access & session gateway", icon: <Zap size={19} /> },
                 { id: "health-history", label: "Health History", sub: "All previous analyses", icon: <History size={19} /> },
                 { id: "medical-records", label: "My Medical Records", sub: "Documents & AI reports", icon: <FolderOpen size={19} /> },
                 { id: "profile", label: "My Profile", sub: "Personal account details", icon: <UserCircle size={19} /> },
@@ -2651,7 +2670,7 @@ function App() {
                       { label: "AI X-Ray Model (DenseNet-121)", status: dashboardData.system_health?.xray_model || "Online" },
                       { label: "Radiograph Pre-Validation", status: dashboardData.system_health?.validation || "Online" },
                       { label: "Report OCR & NLP Parser", status: dashboardData.system_health?.report_analysis || "Online" },
-                      { label: "Encrypted SQLite Vault", status: dashboardData.system_health?.database || "Online" },
+                      { label: "MongoDB Atlas Vault", status: dashboardData.system_health?.database || "Online" },
                     ].map(({ label, status }) => (
                       <div key={label} className="prem-health-item">
                         <span className="prem-health-label">{label}</span>
@@ -3063,74 +3082,6 @@ function App() {
                 </div>
               </div>
             )}
-          </div>
-        )}
-
-        {/* PORTAL LOGIC */}
-        {activeTab === "portal-logic" && (
-          <div className="ms-app-page">
-            <header className="ms-page-header">
-              <div>
-                <span className="ms-dash-eyebrow"><span className="ms-status-dot" /> SECURE ACCESS GATEWAY</span>
-                <h1>Portal Logic</h1>
-                <p>The authenticated portal gateway, session state and protected workspace access.</p>
-              </div>
-              <button type="button" className="ms-btn-secondary ms-btn-sm" onClick={() => goToTab("dashboard")}>
-                <LayoutDashboard size={15} /> Dashboard
-              </button>
-            </header>
-
-            <div className="ms-portal-grid">
-              <section className="ms-portal-card ms-portal-session">
-                <div className="ms-portal-card-head">
-                  <span className="ms-portal-icon"><ShieldCheck size={24} /></span>
-                  <div>
-                    <h2>Session active</h2>
-                    <p>You are viewing this workspace through an authenticated account session.</p>
-                  </div>
-                </div>
-                <div className="ms-portal-detail-list">
-                  <div><span>Account name</span><strong>{doctorName || "User"}</strong></div>
-                  <div><span>Sign-in identifier</span><strong>{myUsername || "—"}</strong></div>
-                  <div><span>Session storage</span><strong>{localStorage.getItem("doctor_token") ? "Remembered on this device" : "This browser session only"}</strong></div>
-                  <div><span>Associated patient record</span><strong>{myPatient?.patientId || myPatientId || "Provisioned with your account"}</strong></div>
-                </div>
-                <div className="ms-portal-actions">
-                  <button type="button" className="ms-btn-primary ms-btn-sm" onClick={() => goToTab("profile")}>
-                    <UserCircle size={15} /> Review profile
-                  </button>
-                  <button type="button" className="ms-btn-danger-ghost ms-btn-sm" onClick={handleLogout}>
-                    <LogOut size={15} /> Sign out to portal gateway
-                  </button>
-                </div>
-              </section>
-
-              <section className="ms-portal-card">
-                <h2>What the portal controls</h2>
-                <ul className="ms-check-list">
-                  <li><Check size={14} /> The public marketing site is available without an account.</li>
-                  <li><Check size={14} /> Dashboard, health history, medical records and profile require a session.</li>
-                  <li><Check size={14} /> Uploads performed while signed in are associated with your account record.</li>
-                  <li><Check size={14} /> Logging out returns you to the public landing page and clears the local session.</li>
-                </ul>
-              </section>
-
-              <section className="ms-portal-card">
-                <h2>Access flow</h2>
-                <div className="ms-portal-flow">
-                  <span>Public website</span>
-                  <ChevronRight size={16} />
-                  <span>Login / Register</span>
-                  <ChevronRight size={16} />
-                  <span className="active">Personal workspace</span>
-                </div>
-                <p className="ms-portal-note">
-                  This page does not re-implement authentication. It reports the state of the
-                  existing sign-in flow and provides the same Logout handler used elsewhere in
-                  the application.
-                </p>
-              </section>
-            </div>
           </div>
         )}
 

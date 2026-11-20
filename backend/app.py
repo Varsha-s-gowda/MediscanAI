@@ -29,8 +29,8 @@ import report_analyzer
 
 logger = get_logger("app")
 
-# Initialize database
-database.seed_default_doctor()
+# Initialize database (MongoDB Atlas)
+database.seed_default_user()
 
 # Initialize FastAPI App
 app = FastAPI(
@@ -570,12 +570,17 @@ async def login(req: LoginRequest):
     if not username or not password:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username and password are required")
     
-    valid = database.verify_doctor(username, password)
+    valid = database.verify_user(username, password)
     if not valid:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
     
-    doc_name = database.get_doctor_name(username)
-    return {"token": f"mock-jwt-token-{username}", "name": doc_name}
+    user = database.get_user(username) or {}
+    return {
+        "token": f"mock-jwt-token-{username}",
+        "name": user.get("name") or "User",
+        "userId": user.get("userId"),
+        "username": username,
+    }
 
 @app.post("/api/auth/register", tags=["Auth"])
 async def register(req: RegisterRequest):
@@ -586,11 +591,15 @@ async def register(req: RegisterRequest):
     if not username or not password or not name:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username, password, and full name are required")
     
-    success = database.register_doctor(username, password, name)
-    if not success:
+    user = database.create_user(username, password, name)
+    if not user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already exists")
     
-    return {"message": "Doctor registered successfully"}
+    return {
+        "message": "Account created successfully",
+        "userId": user["userId"],
+        "username": user["username"],
+    }
 
 # --------------------------------------------
 # Patient Management Endpoints
@@ -775,6 +784,34 @@ async def get_patient_timeline(patient_id: str):
         "stats": summary_data["stats"]
     }
 
+# --------------------------------------------
+# Account-owner endpoints (users, not patients)
+# --------------------------------------------
+def _require_user(request: Request):
+    username = extract_doctor_username(request)
+    user = database.get_user(username) if username else None
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not signed in")
+    return user
+
+@app.get("/api/me", tags=["Users"])
+async def get_me(request: Request):
+    """Profile of the signed-in account owner."""
+    return database.user_public_profile(_require_user(request))
+
+@app.get("/api/me/records", tags=["Users"])
+async def get_my_records(request: Request):
+    """Every upload + analysis owned by the signed-in user."""
+    user = _require_user(request)
+    history = database.get_records(user["userId"])
+    summary_data = get_longitudinal_summary(history)
+    return {
+        "records": history,
+        "history": history,
+        "overallSummary": summary_data["overallSummary"],
+        "stats": summary_data["stats"]
+    }
+
 class PatientUpdateRequest(BaseModel):
     name: str
     age: int
@@ -799,8 +836,8 @@ async def update_patient_info(patient_id: str, req: PatientUpdateRequest):
     return {"message": "Patient updated successfully"}
 
 @app.get("/api/analyses/stats", tags=["Patients"])
-async def get_analyses_stats():
-    return database.get_all_analyses_stats()
+async def get_analyses_stats(request: Request):
+    return database.get_all_analyses_stats(extract_doctor_username(request))
 
 @app.get("/api/dashboard/summary", tags=["Dashboard"])
 async def get_dashboard_summary(request: Request, period: str = "30d"):
@@ -815,12 +852,7 @@ async def get_dashboard_summary(request: Request, period: str = "30d"):
         except Exception:
             report_status = "Unavailable"
             
-        db_status = "Connected"
-        try:
-            conn = database.get_sqlite_conn()
-            conn.close()
-        except Exception:
-            db_status = "Disconnected"
+        db_status = "Connected" if database.check_connection() else "Disconnected"
             
         device_name = "CPU"
         if inference_engine.device is not None:
@@ -1088,33 +1120,24 @@ async def update_analysis(analysis_id: str, req: UpdateNoteRequest):
 
 @app.delete("/api/analyses/{analysis_id}", tags=["Patient Diagnostics"])
 async def delete_analysis_endpoint(analysis_id: str):
-    conn = database.get_sqlite_conn()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT f.file_path, a.gradcam_path 
-        FROM analysis_results a 
-        JOIN medical_files f ON a.file_id = f.file_id 
-        WHERE a.analysis_id = ?
-    """, (analysis_id,))
-    row = cursor.fetchone()
-    conn.close()
-    
+    row = database.get_analysis_file_paths(analysis_id)
+
     success = database.delete_analysis(analysis_id)
     if not success:
         raise HTTPException(status_code=404, detail="Analysis result not found or delete failed")
         
     if row:
         uploads_dir = os.path.join(os.path.dirname(__file__), "static", "uploads")
-        if row["file_path"]:
-            file_name = os.path.basename(row["file_path"])
+        if row["filePath"]:
+            file_name = os.path.basename(row["filePath"])
             file_path = os.path.join(uploads_dir, file_name)
             if os.path.exists(file_path):
                 try:
                     os.remove(file_path)
                 except Exception as e:
                     logger.error(f"Failed to delete original file {file_path}: {e}")
-        if row["gradcam_path"]:
-            heatmap_name = os.path.basename(row["gradcam_path"])
+        if row["gradcamPath"]:
+            heatmap_name = os.path.basename(row["gradcamPath"])
             heatmap_path = os.path.join(uploads_dir, heatmap_name)
             if os.path.exists(heatmap_path):
                 try:

@@ -20,7 +20,7 @@ graph TD
     subgraph Backend ["Backend API Server (FastAPI)"]
         API[FastAPI Endpoint Router]
         AuthEngine[Doctor Security & JWT/Password Hashing]
-        DB[(SQLite / MongoDB Database)]
+        DB[(MongoDB Atlas Database)]
         Middleware[Resource Logger & RAM Tracker]
     end
 
@@ -83,11 +83,11 @@ graph TD
   - Clinical summary & primary diagnostic findings.
   - Actionable recommendations for follow-up care.
 
-### 3. 👨‍⚕️ Doctor & Patient History Management System
-- **Doctor Authentication & Security:** Secure credential storage using salted password hashing, supporting doctor profiles and role-based access.
-- **Patient Management Directory:** Enables doctors to create, search, and update patient profiles with demographic and clinical metadata.
-- **Persistent Scan History:** Complete audit trail storing past X-ray predictions, Grad-CAM heatmaps, OCR report summaries, and confidence scores linked to patient IDs.
-- **Flexible Database Backend:** Built on **SQLite** (`mediscan.db`) with native support for **MongoDB** via `pymongo`.
+### 3. 👤 User Accounts & Personal Scan History
+- **Account Authentication:** Every visitor registers an account; passwords are stored as SHA-256 hashes and the account is the owner of all data in the workspace.
+- **Personal Profile:** Each user maintains their own profile (name, age, gender, contact) — there is no separate doctor/patient directory.
+- **Persistent Personal History:** Complete audit trail of the user's own uploads — X-ray/CT/cavity predictions, Grad-CAM heatmaps, OCR report summaries, confidence scores and personal notes.
+- **Database Backend:** **MongoDB Atlas** (database `mediscan_db`) with two collections — `users` (accounts + profile) and `records` (uploads + analyses keyed by `userId`). No SQLite fallback.
 
 ---
 
@@ -104,7 +104,7 @@ graph TD
 
 ### ⚙️ Backend (Server API)
 - **Framework:** [FastAPI](https://fastapi.tiangolo.com/) (Python 3.10+) running on **Uvicorn** & **Gunicorn** ASGI server
-- **Database & Storage:** SQLite (`mediscan.db`) with optional MongoDB (`pymongo`) integration
+- **Database & Storage:** **MongoDB Atlas** (`mediscan_db`) through `pymongo` — uploads stay on disk, metadata and analysis results live in Atlas
 - **Security & Middleware:** CORS Middleware, Upload MIME/size validation (10MB limit), Request timing headers (`X-Process-Time`), System RAM tracking (`psutil`)
 - **Deployment:** Dockerized (`Dockerfile`, `render.yaml`) and deployed on **Render**
 
@@ -144,8 +144,8 @@ DISABLE_GRADCAM=false
 OPENROUTER_API_KEY=your_openrouter_api_key_here
 GEMINI_API_KEY=your_gemini_api_key_here
 
-# Database Configuration (Optional)
-MONGO_URI=
+# Database Configuration (required)
+MONGO_URI=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/?retryWrites=true&w=majority
 ```
 
 #### Frontend `.env` (`/frontend/.env`)

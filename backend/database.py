@@ -1,298 +1,946 @@
+"""Data layer for MediScan AI (MongoDB Atlas with a local SQLite fallback).
+
+Model: **users own records**. There is no separate doctor/patient split — the
+person who logs in is the owner of the uploads and analyses stored for them.
+
+Collections / tables
+    users    -> userId, username, passwordHash, name, phone, age, gender,
+                contact, archived, createdAt
+    records  -> recordId, userId, fileName, fileType, filePath, analysisType,
+                prediction, confidence, gradcamPath, reportFindings,
+                reportSummary, note, createdAt
+
+Storage selection
+    If MONGO_URI is configured *and* Atlas answers a ping, MongoDB Atlas is used.
+    Otherwise the backend transparently falls back to the local SQLite vault
+    (backend/mediscan.db) so the API can still start (e.g. offline development
+    or an Atlas outage). Legacy `doctors`, `patients`, `medical_files` and
+    `analysis_results` tables are migrated into the new model on first run.
+
+The legacy "/api/patients" endpoints are kept as thin aliases over this model so
+the existing UI keeps working: a "patient" is simply the signed-in user's own
+profile (patientId == userId).
+"""
+
 import os
-import sqlite3
+import json
 import uuid
 import datetime
-import json
-from typing import Dict, Any, List, Optional
 import hashlib
+import sqlite3
+import threading
+from typing import Dict, Any, List, Optional
 
-# Check for MongoDB option (optional, fall back to SQLite for robust local run)
-MONGO_URI = os.getenv("MONGO_URI", "")
-USE_MONGO = False
+# Load backend/.env regardless of the current working directory.
+try:
+    from dotenv import load_dotenv
 
-if MONGO_URI:
-    try:
-        from pymongo import MongoClient
-        client = MongoClient(MONGO_URI)
-        db = client["mediscan_db"]
-        USE_MONGO = True
-        print("[DB] Using MongoDB database connection.")
-    except Exception as e:
-        print(f"[DB] Failed to connect to MongoDB, falling back to SQLite: {e}")
+    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+except ImportError:  # pragma: no cover
+    pass
 
-# If SQLite is used:
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 SQLITE_PATH = os.path.join(BACKEND_DIR, "mediscan.db")
 
-def get_sqlite_conn():
-    conn = sqlite3.connect(SQLITE_PATH)
+# ----------------------------------------------------------------------------
+# Backend selection
+# ----------------------------------------------------------------------------
+MONGO_URI = (os.getenv("MONGO_URI") or "").strip()
+DB_NAME = os.getenv("MONGO_DB_NAME", "mediscan_db")
+
+USE_MONGO = False
+BACKEND_NAME = "SQLite"
+client = None
+db = None
+users = None
+records = None
+
+try:  # pymongo is optional so the app can still run offline.
+    from pymongo import MongoClient, ASCENDING
+    from pymongo.errors import PyMongoError
+except ImportError:  # pragma: no cover
+    MongoClient = None
+    ASCENDING = 1
+    PyMongoError = Exception
+
+
+def _connect_mongo() -> bool:
+    """Try Atlas; never raise. Returns True when Mongo is usable."""
+    global USE_MONGO, BACKEND_NAME, client, db, users, records
+
+    if not MONGO_URI:
+        print("[DB] MONGO_URI not configured - using local SQLite vault.")
+        return False
+    if MongoClient is None:
+        print("[DB] pymongo not installed - using local SQLite vault.")
+        return False
+
+    try:
+        candidate = MongoClient(
+            MONGO_URI,
+            serverSelectionTimeoutMS=5000,
+            connectTimeoutMS=5000,
+            appname="mediscan-ai",
+        )
+        candidate.admin.command("ping")
+    except Exception as exc:  # network, auth, paused/deleted cluster ...
+        print(
+            f"[DB] MongoDB Atlas unavailable ({type(exc).__name__}: {exc}). "
+            "Falling back to local SQLite vault."
+        )
+        return False
+
+    client = candidate
+    db = candidate[DB_NAME]
+    users = db["users"]
+    records = db["records"]
+    USE_MONGO = True
+    BACKEND_NAME = "MongoDB Atlas"
+    print(f"[DB] Connected to MongoDB Atlas database '{DB_NAME}'.")
+    return True
+
+
+FALLBACK_REASON = None if _connect_mongo() else "local SQLite vault"
+if not USE_MONGO and MONGO_URI:
+    FALLBACK_REASON = "MongoDB Atlas unreachable - local SQLite vault"
+
+ANALYSIS_TYPE_XRAY = "Chest X-Ray"
+ANALYSIS_TYPE_REPORT = "Medical Report"
+
+# Columns kept in sync with the document shape above.
+USER_FIELDS = [
+    "userId", "username", "passwordHash", "name", "phone", "age", "gender",
+    "contact", "archived", "createdAt",
+]
+RECORD_FIELDS = [
+    "recordId", "userId", "fileName", "fileType", "filePath", "analysisType",
+    "prediction", "confidence", "gradcamPath", "reportFindings",
+    "reportSummary", "note", "createdAt",
+]
+
+_sqlite_lock = threading.Lock()
+
+# ----------------------------------------------------------------------------
+# SQLite primitives
+# ----------------------------------------------------------------------------
+def _sqlite_conn() -> sqlite3.Connection:
+    conn = sqlite3.connect(SQLITE_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
-def init_db():
-    if USE_MONGO:
-        # MongoDB creates collections lazily
+
+def _legacy_tables(conn: sqlite3.Connection) -> set:
+    return {
+        row[0]
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
+
+
+def _sqlite_next_user_id(conn: sqlite3.Connection) -> str:
+    highest = 1000
+    for row in conn.execute("SELECT userId FROM users"):
+        user_id = str(row["userId"] or "")
+        if user_id.startswith("U") and user_id[1:].isdigit():
+            highest = max(highest, int(user_id[1:]))
+    return f"U{highest + 1}"
+
+
+def _migrate_legacy_users(conn: sqlite3.Connection) -> None:
+    """Copy the old `doctors` table into `users` (same SHA-256 hashes)."""
+    if "doctors" not in _legacy_tables(conn):
         return
-    
-    conn = get_sqlite_conn()
-    cursor = conn.cursor()
-    
-    # Create Doctors table
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS doctors (
-        username TEXT PRIMARY KEY,
-        password_hash TEXT NOT NULL,
-        name TEXT NOT NULL
-    )
-    """)
-    
-    # Create Patients table
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS patients (
-        patient_id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        age INTEGER NOT NULL,
-        gender TEXT NOT NULL,
-        contact TEXT,
-        created_at TEXT NOT NULL
-    )
-    """)
-    
-    # Create Medical Files table
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS medical_files (
-        file_id TEXT PRIMARY KEY,
-        patient_id TEXT NOT NULL,
-        file_name TEXT NOT NULL,
-        file_type TEXT NOT NULL,
-        file_path TEXT NOT NULL,
-        uploaded_at TEXT NOT NULL,
-        FOREIGN KEY(patient_id) REFERENCES patients(patient_id)
-    )
-    """)
-    
-    # Create Analysis Results table
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS analysis_results (
-        analysis_id TEXT PRIMARY KEY,
-        patient_id TEXT NOT NULL,
-        file_id TEXT NOT NULL,
-        analysis_type TEXT NOT NULL,
-        prediction TEXT,
-        confidence REAL,
-        gradcam_path TEXT,
-        report_findings TEXT, -- JSON string
-        report_summary TEXT,
-        created_at TEXT NOT NULL,
-        FOREIGN KEY(patient_id) REFERENCES patients(patient_id),
-        FOREIGN KEY(file_id) REFERENCES medical_files(file_id)
-    )
-    """)
-    
+    rows = conn.execute("SELECT username, password_hash, name FROM doctors").fetchall()
+    for row in rows:
+        username = (row["username"] or "").strip().lower()
+        if not username:
+            continue
+        if conn.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone():
+            continue
+        conn.execute(
+            "INSERT INTO users (userId, username, passwordHash, name, phone, age, gender, "
+            "contact, archived, createdAt) VALUES (?, ?, ?, ?, NULL, NULL, NULL, NULL, 0, ?)",
+            (
+                _sqlite_next_user_id(conn),
+                username,
+                row["password_hash"],
+                (row["name"] or "").strip() or username,
+                _now_iso(),
+            ),
+        )
     conn.commit()
-    
-    # Run schema migrations to add new columns if they do not exist
-    try:
-        cursor.execute("ALTER TABLE analysis_results ADD COLUMN doctor_note TEXT")
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass
 
-    try:
-        cursor.execute("ALTER TABLE patients ADD COLUMN archived INTEGER DEFAULT 0")
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass
 
-    try:
-        cursor.execute("ALTER TABLE patients ADD COLUMN doctor_username TEXT")
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass
+def _migrate_legacy_records(conn: sqlite3.Connection) -> None:
+    """Copy old patient files/analyses into the user-owned `records` table."""
+    tables = _legacy_tables(conn)
+    if not {"medical_files", "analysis_results", "patients"} <= tables:
+        return
+    if conn.execute("SELECT COUNT(*) FROM records").fetchone()[0]:
+        return
 
-    conn.close()
-    print("[DB] SQLite database initialized and migrated successfully.")
+    rows = conn.execute(
+        """
+        SELECT a.analysis_id, a.analysis_type, a.prediction, a.confidence,
+               a.gradcam_path, a.report_findings, a.report_summary, a.created_at,
+               a.doctor_note, f.file_name, f.file_type, f.file_path,
+               p.doctor_username
+        FROM analysis_results a
+        LEFT JOIN medical_files f ON f.file_id = a.file_id
+        LEFT JOIN patients p ON p.patient_id = a.patient_id
+        """
+    ).fetchall()
 
-# Create default doctor if not exists
-def seed_default_doctor():
-    init_db()
-    hashed_admin = hashlib.sha256("admin123".encode()).hexdigest()
-    hashed_doc = hashlib.sha256("Password123!".encode()).hexdigest()
-    
-    defaults = [
-        ("admin", hashed_admin, "Dr. Varsha Gowda"),
-        ("doctor@hospital-network.org", hashed_doc, "Dr. Clinical Specialist"),
-        ("doctor@hospital.org", hashed_doc, "Dr. Clinical Specialist")
-    ]
-    
+    for row in rows:
+        owner = (row["doctor_username"] or "").strip().lower()
+        if not owner:
+            continue
+        user = conn.execute(
+            "SELECT userId FROM users WHERE username = ?", (owner,)
+        ).fetchone()
+        if not user:
+            continue
+        conn.execute(
+            "INSERT OR IGNORE INTO records (recordId, userId, fileName, fileType, filePath, "
+            "analysisType, prediction, confidence, gradcamPath, reportFindings, "
+            "reportSummary, note, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                row["analysis_id"],
+                user["userId"],
+                row["file_name"] or "Unknown File",
+                row["file_type"] or row["analysis_type"] or "Unknown",
+                row["file_path"] or "",
+                row["analysis_type"],
+                row["prediction"],
+                row["confidence"],
+                row["gradcam_path"],
+                row["report_findings"],
+                row["report_summary"],
+                row["doctor_note"],
+                row["created_at"],
+            ),
+        )
+    conn.commit()
+
+
+def init_db() -> None:
+    """Create indexes/tables. Safe to call repeatedly."""
     if USE_MONGO:
-        for username, pwd_hash, name in defaults:
-            if not db["doctors"].find_one({"username": username}):
-                db["doctors"].insert_one({
-                    "username": username,
-                    "password_hash": pwd_hash,
-                    "name": name
-                })
-    else:
-        conn = get_sqlite_conn()
-        cursor = conn.cursor()
-        for username, pwd_hash, name in defaults:
-            cursor.execute("SELECT 1 FROM doctors WHERE username = ?", (username,))
-            if not cursor.fetchone():
-                cursor.execute("INSERT INTO doctors (username, password_hash, name) VALUES (?, ?, ?)", (username, pwd_hash, name))
-        conn.commit()
-        conn.close()
-
-# --- Auth Helpers ---
-def verify_doctor(username: str, password_plain: str) -> bool:
-    clean_username = (username or "").strip().lower()
-    hashed = hashlib.sha256(password_plain.encode()).hexdigest()
-    if USE_MONGO:
-        doc = db["doctors"].find_one({"username": clean_username, "password_hash": hashed})
-        return doc is not None
-    else:
-        conn = get_sqlite_conn()
-        cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM doctors WHERE LOWER(username) = ? AND password_hash = ?", (clean_username, hashed))
-        res = cursor.fetchone()
-        conn.close()
-        return res is not None
-
-def get_doctor_name(username: str) -> str:
-    clean_username = (username or "").strip().lower()
-    if USE_MONGO:
-        doc = db["doctors"].find_one({"username": clean_username})
-        return doc.get("name", "Doctor") if doc else "Doctor"
-    else:
-        conn = get_sqlite_conn()
-        cursor = conn.cursor()
-        cursor.execute("SELECT name FROM doctors WHERE LOWER(username) = ?", (clean_username,))
-        row = cursor.fetchone()
-        conn.close()
-        return row["name"] if row else "Doctor"
-
-
-def register_doctor(username: str, password_plain: str, name: str) -> bool:
-    clean_username = (username or "").strip().lower()
-    clean_name = (name or "").strip()
-    hashed = hashlib.sha256(password_plain.encode()).hexdigest()
-    if USE_MONGO:
-        if db["doctors"].find_one({"username": clean_username}):
-            return False
-        db["doctors"].insert_one({
-            "username": clean_username,
-            "password_hash": hashed,
-            "name": clean_name
-        })
-        return True
-    else:
-        conn = get_sqlite_conn()
-        cursor = conn.cursor()
         try:
-            cursor.execute("INSERT INTO doctors (username, password_hash, name) VALUES (?, ?, ?)", (clean_username, hashed, clean_name))
+            users.create_index([("username", ASCENDING)], unique=True)
+            users.create_index([("userId", ASCENDING)], unique=True)
+            records.create_index([("recordId", ASCENDING)], unique=True)
+            records.create_index([("userId", ASCENDING)])
+            records.create_index([("createdAt", ASCENDING)])
+        except PyMongoError as exc:
+            print(f"[DB] Index creation skipped: {exc}")
+        return
+
+    with _sqlite_lock:
+        conn = _sqlite_conn()
+        try:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    userId TEXT PRIMARY KEY,
+                    username TEXT NOT NULL UNIQUE,
+                    passwordHash TEXT NOT NULL,
+                    name TEXT,
+                    phone TEXT,
+                    age INTEGER,
+                    gender TEXT,
+                    contact TEXT,
+                    archived INTEGER DEFAULT 0,
+                    createdAt TEXT
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS records (
+                    recordId TEXT PRIMARY KEY,
+                    userId TEXT NOT NULL,
+                    fileName TEXT,
+                    fileType TEXT,
+                    filePath TEXT,
+                    analysisType TEXT,
+                    prediction TEXT,
+                    confidence REAL,
+                    gradcamPath TEXT,
+                    reportFindings TEXT,
+                    reportSummary TEXT,
+                    note TEXT,
+                    createdAt TEXT
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_records_user ON records(userId)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_records_created ON records(createdAt)"
+            )
             conn.commit()
-            return True
-        except sqlite3.IntegrityError:
-            return False
+
+            _migrate_legacy_users(conn)
+            _migrate_legacy_records(conn)
         finally:
             conn.close()
 
-# --- Patient Management ---
-def create_patient(name: str, age: int, gender: str, contact: Optional[str] = None, doctor_username: Optional[str] = None) -> Dict[str, Any]:
-    now_str = datetime.datetime.now().isoformat()
-    clean_doc = (doctor_username or "admin").strip().lower()
-    if USE_MONGO:
-        count = db["patients"].count_documents({})
-        patient_id = f"P{1001 + count}"
-        patient_data = {
-            "patientId": patient_id,
-            "name": name,
-            "age": age,
-            "gender": gender,
-            "contact": contact,
-            "doctorUsername": clean_doc,
-            "doctor_username": clean_doc,
-            "createdAt": now_str
-        }
-        db["patients"].insert_one(patient_data)
-        patient_data.pop("_id", None)
-        return patient_data
-    else:
-        conn = get_sqlite_conn()
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM patients")
-        count = cursor.fetchone()[0]
-        patient_id = f"P{1001 + count}"
-        cursor.execute(
-            "INSERT INTO patients (patient_id, name, age, gender, contact, created_at, doctor_username) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (patient_id, name, age, gender, contact, now_str, clean_doc)
-        )
-        conn.commit()
-        conn.close()
-        return {
-            "patientId": patient_id,
-            "name": name,
-            "age": age,
-            "gender": gender,
-            "contact": contact,
-            "doctorUsername": clean_doc,
-            "createdAt": now_str
-        }
 
-def get_all_patients(doctor_username: Optional[str] = None) -> List[Dict[str, Any]]:
-    clean_doc = doctor_username.strip().lower() if doctor_username else None
+def check_connection() -> bool:
+    """True when the active backend answers a ping."""
     if USE_MONGO:
-        query = {}
-        if clean_doc:
-            if clean_doc == "admin":
-                query = {"$or": [{"doctorUsername": clean_doc}, {"doctor_username": clean_doc}, {"doctorUsername": {"$exists": False}}, {"doctor_username": None}]}
-            else:
-                query = {"$or": [{"doctorUsername": clean_doc}, {"doctor_username": clean_doc}]}
-        patients = list(db["patients"].find(query, {"_id": 0}))
-        return patients
-    else:
-        conn = get_sqlite_conn()
-        cursor = conn.cursor()
-        if clean_doc:
-            if clean_doc == "admin":
-                cursor.execute("SELECT * FROM patients WHERE LOWER(doctor_username) = ? OR doctor_username IS NULL OR doctor_username = '' ORDER BY created_at DESC", (clean_doc,))
-            else:
-                cursor.execute("SELECT * FROM patients WHERE LOWER(doctor_username) = ? ORDER BY created_at DESC", (clean_doc,))
-        else:
-            cursor.execute("SELECT * FROM patients ORDER BY created_at DESC")
-        rows = cursor.fetchall()
-        conn.close()
-        return [{
-            "patientId": r["patient_id"],
-            "name": r["name"],
-            "age": r["age"],
-            "gender": r["gender"],
-            "contact": r["contact"],
-            "doctorUsername": r["doctor_username"] if "doctor_username" in r.keys() and r["doctor_username"] else "admin",
-            "createdAt": r["created_at"]
-        } for r in rows]
+        try:
+            client.admin.command("ping")
+            return True
+        except Exception:
+            return False
+    try:
+        with _sqlite_lock:
+            conn = _sqlite_conn()
+            try:
+                conn.execute("SELECT 1 FROM users LIMIT 1").fetchall()
+                return True
+            finally:
+                conn.close()
+    except Exception:
+        return False
 
-def get_patient(patient_id: str) -> Optional[Dict[str, Any]]:
+
+def backend_status() -> str:
+    return BACKEND_NAME
+
+
+# ----------------------------------------------------------------------------
+# Document helpers
+# ----------------------------------------------------------------------------
+def _now_iso() -> str:
+    return datetime.datetime.now().isoformat()
+
+
+def _row_to_user(row: Optional[sqlite3.Row]) -> Optional[Dict[str, Any]]:
+    return {key: row[key] for key in row.keys()} if row is not None else None
+
+
+def _decode_report_findings(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    try:
+        return json.loads(value)
+    except (ValueError, TypeError):
+        return value
+
+
+def _row_to_record(row: Optional[sqlite3.Row]) -> Optional[Dict[str, Any]]:
+    if row is None:
+        return None
+    doc = {key: row[key] for key in row.keys()}
+    doc["reportFindings"] = _decode_report_findings(doc.get("reportFindings"))
+    return doc
+
+
+# --- user primitives -------------------------------------------------------
+def _find_user_by_username(username: str) -> Optional[Dict[str, Any]]:
+    with _sqlite_lock:
+        conn = _sqlite_conn()
+        try:
+            row = conn.execute(
+                "SELECT * FROM users WHERE username = ?", (username,)
+            ).fetchone()
+        finally:
+            conn.close()
+    return _row_to_user(row)
+
+
+def _find_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
+    with _sqlite_lock:
+        conn = _sqlite_conn()
+        try:
+            row = conn.execute(
+                "SELECT * FROM users WHERE userId = ?", (user_id,)
+            ).fetchone()
+        finally:
+            conn.close()
+    return _row_to_user(row)
+
+
+def _insert_user(document: Dict[str, Any]) -> None:
+    values = [document.get(field) for field in USER_FIELDS]
+    placeholders = ", ".join("?" for _ in USER_FIELDS)
+    with _sqlite_lock:
+        conn = _sqlite_conn()
+        try:
+            conn.execute(
+                f"INSERT INTO users ({', '.join(USER_FIELDS)}) VALUES ({placeholders})",
+                values,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def _update_user(user_id: str, changes: Dict[str, Any]) -> bool:
+    if not changes:
+        return False
+    assignments = ", ".join(f"{field} = ?" for field in changes)
+    with _sqlite_lock:
+        conn = _sqlite_conn()
+        try:
+            cursor = conn.execute(
+                f"UPDATE users SET {assignments} WHERE userId = ?",
+                list(changes.values()) + [user_id],
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+
+
+# --- record primitives -----------------------------------------------------
+def _insert_record(document: Dict[str, Any]) -> None:
+    values = []
+    for field in RECORD_FIELDS:
+        value = document.get(field)
+        if field == "reportFindings" and value is not None and not isinstance(value, str):
+            value = json.dumps(value)
+        values.append(value)
+    placeholders = ", ".join("?" for _ in RECORD_FIELDS)
+    with _sqlite_lock:
+        conn = _sqlite_conn()
+        try:
+            conn.execute(
+                f"INSERT INTO records ({', '.join(RECORD_FIELDS)}) VALUES ({placeholders})",
+                values,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def _find_record(record_id: str) -> Optional[Dict[str, Any]]:
+    with _sqlite_lock:
+        conn = _sqlite_conn()
+        try:
+            row = conn.execute(
+                "SELECT * FROM records WHERE recordId = ?", (record_id,)
+            ).fetchone()
+        finally:
+            conn.close()
+    return _row_to_record(row)
+
+
+def _records_for_user(user_id: str) -> List[Dict[str, Any]]:
+    with _sqlite_lock:
+        conn = _sqlite_conn()
+        try:
+            rows = conn.execute(
+                "SELECT * FROM records WHERE userId = ?", (user_id,)
+            ).fetchall()
+        finally:
+            conn.close()
+    return [_row_to_record(row) for row in rows]
+
+
+def _update_record(record_id: str, changes: Dict[str, Any]) -> bool:
+    if not changes:
+        return False
+    assignments = ", ".join(f"{field} = ?" for field in changes)
+    with _sqlite_lock:
+        conn = _sqlite_conn()
+        try:
+            cursor = conn.execute(
+                f"UPDATE records SET {assignments} WHERE recordId = ?",
+                list(changes.values()) + [record_id],
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+
+
+def _delete_record(record_id: str, user_id: Optional[str] = None) -> bool:
+    query = "DELETE FROM records WHERE recordId = ?"
+    params: List[Any] = [record_id]
+    if user_id:
+        query += " AND userId = ?"
+        params.append(user_id)
+    with _sqlite_lock:
+        conn = _sqlite_conn()
+        try:
+            cursor = conn.execute(query, params)
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+
+
+def _next_user_id() -> str:
     if USE_MONGO:
-        return db["patients"].find_one({"patientId": patient_id}, {"_id": 0})
-    else:
-        conn = get_sqlite_conn()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM patients WHERE patient_id = ?", (patient_id,))
-        row = cursor.fetchone()
-        conn.close()
-        if row:
-            return {
-                "patientId": row["patient_id"],
-                "name": row["name"],
-                "age": row["age"],
-                "gender": row["gender"],
-                "contact": row["contact"],
-                "createdAt": row["created_at"]
-            }
+        highest = 1000
+        for doc in users.find({"userId": {"$regex": r"^U\d+$"}}, {"userId": 1}):
+            try:
+                highest = max(highest, int(str(doc["userId"])[1:]))
+            except (KeyError, ValueError):
+                continue
+        return f"U{highest + 1}"
+    with _sqlite_lock:
+        conn = _sqlite_conn()
+        try:
+            return _sqlite_next_user_id(conn)
+        finally:
+            conn.close()
+
+
+# ----------------------------------------------------------------------------
+# Users (accounts + profile)
+# ----------------------------------------------------------------------------
+def seed_default_user() -> None:
+    """Demo account so a fresh database is usable immediately."""
+    init_db()
+    _create_user_document(
+        username="admin",
+        password_plain="admin123",
+        name="Dr. Varsha Gowda",
+        phone=None,
+    )
+
+
+# Backwards-compatible alias for code that still calls the old name.
+seed_default_doctor = seed_default_user
+
+
+def _hash(password_plain: str) -> str:
+    return hashlib.sha256(password_plain.encode()).hexdigest()
+
+
+def _create_user_document(
+    username: str,
+    password_plain: str,
+    name: str,
+    phone: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    clean_username = (username or "").strip().lower()
+    if not clean_username or get_user(clean_username):
         return None
 
-# --- Medical Files & Analysis Result ---
+    document = {
+        "userId": _next_user_id(),
+        "username": clean_username,
+        "passwordHash": _hash(password_plain),
+        "name": (name or "").strip(),
+        "phone": phone,
+        "age": None,
+        "gender": None,
+        "contact": phone,
+        "archived": 0,
+        "createdAt": _now_iso(),
+    }
+    if USE_MONGO:
+        users.insert_one(dict(document))
+    else:
+        _insert_user(document)
+    return document
+
+
+def create_user(
+    username: str,
+    password_plain: str,
+    name: str,
+    phone: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Registers a new account. Returns the user document, or None if taken."""
+    return _create_user_document(username, password_plain, name, phone)
+
+
+# Legacy aliases used by older call sites.
+def register_doctor(username: str, password_plain: str, name: str) -> bool:
+    return _create_user_document(username, password_plain, name) is not None
+
+
+def verify_user(username: str, password_plain: str) -> bool:
+    clean_username = (username or "").strip().lower()
+    user = get_user(clean_username)
+    return bool(user) and user.get("passwordHash") == _hash(password_plain)
+
+
+verify_doctor = verify_user
+
+
+def get_user(username: str) -> Optional[Dict[str, Any]]:
+    clean_username = (username or "").strip().lower()
+    if not clean_username:
+        return None
+    if USE_MONGO:
+        return users.find_one({"username": clean_username}, {"_id": 0})
+    return _find_user_by_username(clean_username)
+
+
+def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
+    if not user_id:
+        return None
+    if USE_MONGO:
+        return users.find_one({"userId": user_id}, {"_id": 0})
+    return _find_user_by_id(user_id)
+
+
+def get_user_name(username: str) -> str:
+    user = get_user(username)
+    return (user.get("name") or "There") if user else "There"
+
+
+get_doctor_name = get_user_name
+
+
+def update_user_profile(
+    user_id: str,
+    name: Optional[str] = None,
+    age: Optional[int] = None,
+    gender: Optional[str] = None,
+    contact: Optional[str] = None,
+) -> bool:
+    changes = {}
+    if name is not None:
+        changes["name"] = name
+    if age is not None:
+        changes["age"] = age
+    if gender is not None:
+        changes["gender"] = gender
+    if contact is not None:
+        changes["contact"] = contact
+    if not changes:
+        return False
+    if USE_MONGO:
+        result = users.update_one({"userId": user_id}, {"$set": changes})
+        return result.matched_count > 0
+    return _update_user(user_id, changes)
+
+
+def _resolve_user(user_key: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Accepts either a userId (U1001) or a username/email."""
+    if not user_key:
+        return None
+    user = get_user_by_id(user_key)
+    if user:
+        return user
+    return get_user(user_key)
+
+
+def user_public_profile(user: Dict[str, Any]) -> Dict[str, Any]:
+    """Profile shape consumed by the UI (legacy 'patient' contract)."""
+    return {
+        "patientId": user.get("userId"),
+        "userId": user.get("userId"),
+        "name": user.get("name"),
+        "username": user.get("username"),
+        "age": user.get("age") if user.get("age") is not None else 0,
+        "gender": user.get("gender") or "Other",
+        "contact": user.get("contact") or user.get("phone"),
+        "doctorUsername": user.get("username"),
+        "createdAt": user.get("createdAt"),
+    }
+
+
+# ----------------------------------------------------------------------------
+# Records (uploads + analysis results)
+# ----------------------------------------------------------------------------
+def save_record(
+    user_id: str,
+    file_name: str,
+    file_type: str,
+    file_path: str,
+    analysis_type: str,
+    prediction: Optional[str] = None,
+    confidence: Optional[float] = None,
+    gradcam_path: Optional[str] = None,
+    report_findings: Any = None,
+    report_summary: Optional[str] = None,
+) -> Dict[str, Any]:
+    record_id = f"R_{uuid.uuid4().hex[:8].upper()}"
+    document = {
+        "recordId": record_id,
+        "userId": user_id,
+        "fileName": file_name,
+        "fileType": file_type,
+        "filePath": file_path,
+        "analysisType": analysis_type,
+        "prediction": prediction,
+        "confidence": confidence,
+        "gradcamPath": gradcam_path,
+        "reportFindings": report_findings,
+        "reportSummary": report_summary,
+        "note": None,
+        "createdAt": _now_iso(),
+    }
+    if USE_MONGO:
+        records.insert_one(dict(document))
+    else:
+        _insert_record(document)
+    return document
+
+
+def get_records(user_id: str) -> List[Dict[str, Any]]:
+    """All records for a user, newest first, in the shape the UI expects."""
+    documents = (
+        list(records.find({"userId": user_id}))
+        if USE_MONGO
+        else _records_for_user(user_id)
+    )
+    history = []
+    for doc in documents:
+        note = doc.get("note")
+        history.append({
+            "analysisId": doc.get("recordId"),
+            "recordId": doc.get("recordId"),
+            "fileId": doc.get("recordId"),
+            "fileName": doc.get("fileName", "Unknown File"),
+            "fileType": doc.get("fileType", "Unknown"),
+            "filePath": doc.get("filePath", ""),
+            "analysisType": doc.get("analysisType"),
+            "prediction": doc.get("prediction"),
+            "confidence": doc.get("confidence"),
+            "gradcamPath": doc.get("gradcamPath"),
+            "reportFindings": doc.get("reportFindings"),
+            "reportSummary": doc.get("reportSummary"),
+            "doctorNote": note,
+            "doctor_note": note,
+            "date": doc.get("createdAt"),
+        })
+    history.sort(key=lambda item: str(item.get("date") or ""), reverse=True)
+    return history
+
+
+def get_record(record_id: str) -> Optional[Dict[str, Any]]:
+    if USE_MONGO:
+        return records.find_one({"recordId": record_id})
+    return _find_record(record_id)
+
+
+def update_record_note(record_id: str, note: str) -> bool:
+    changes = {"note": note, "doctorNote": note, "doctor_note": note}
+    if USE_MONGO:
+        result = records.update_one({"recordId": record_id}, {"$set": changes})
+        return result.matched_count > 0
+    return _update_record(record_id, {"note": note})
+
+
+def record_file_paths(record_id: str) -> Optional[Dict[str, Any]]:
+    doc = get_record(record_id)
+    if not doc:
+        return None
+    return {"filePath": doc.get("filePath"), "gradcamPath": doc.get("gradcamPath")}
+
+
+def delete_record(record_id: str, user_id: Optional[str] = None) -> bool:
+    if USE_MONGO:
+        query: Dict[str, Any] = {"recordId": record_id}
+        if user_id:
+            query["userId"] = user_id
+        result = records.delete_one(query)
+        return result.deleted_count > 0
+    return _delete_record(record_id, user_id)
+
+
+def record_stats(user_id: str) -> Dict[str, Any]:
+    if USE_MONGO:
+        total = records.count_documents({"userId": user_id})
+        xrays = records.count_documents({"userId": user_id, "analysisType": ANALYSIS_TYPE_XRAY})
+        reports = records.count_documents({"userId": user_id, "analysisType": ANALYSIS_TYPE_REPORT})
+        latest = records.find_one({"userId": user_id}, sort=[("createdAt", -1)])
+    else:
+        docs = _records_for_user(user_id)
+        total = len(docs)
+        xrays = sum(1 for d in docs if d.get("analysisType") == ANALYSIS_TYPE_XRAY)
+        reports = sum(1 for d in docs if d.get("analysisType") == ANALYSIS_TYPE_REPORT)
+        latest = max(docs, key=lambda d: str(d.get("createdAt") or "")) if docs else None
+    return {
+        "total": total,
+        "xrays": xrays,
+        "reports": reports,
+        "recent_type": latest.get("analysisType", "None") if latest else "None",
+    }
+
+
+def _short_type(analysis_type: Optional[str]) -> str:
+    if analysis_type in ("CT Scan", "Kidney Stone CT", "CT Scan (Kidney)"):
+        return "CT Scan"
+    if analysis_type in ("Dental Cavity", "Dental X-Ray"):
+        return "Dental Cavity"
+    if analysis_type == ANALYSIS_TYPE_XRAY:
+        return "X-Ray"
+    return "Report"
+
+
+def _abnormal_count(report_findings: Any) -> int:
+    if not isinstance(report_findings, list):
+        return 0
+    return sum(
+        1
+        for finding in report_findings
+        if isinstance(finding, dict)
+        and str(finding.get("status", "")).upper() in ("HIGH", "LOW", "ABNORMAL")
+    )
+
+
+def user_dashboard(user_id: str, period: str = "30d") -> Dict[str, Any]:
+    days = {"7d": 7, "3m": 90}.get(period, 30)
+    now = datetime.datetime.now()
+    week_ago = (now - datetime.timedelta(days=7)).isoformat()
+    month_ago = (now - datetime.timedelta(days=30)).isoformat()
+    window_start = (now - datetime.timedelta(days=days - 1)).date().isoformat()
+
+    docs = (
+        list(records.find({"userId": user_id}))
+        if USE_MONGO
+        else _records_for_user(user_id)
+    )
+    docs.sort(key=lambda d: str(d.get("createdAt") or ""), reverse=True)
+
+    xrays = [d for d in docs if d.get("analysisType") == ANALYSIS_TYPE_XRAY]
+    reports = [d for d in docs if d.get("analysisType") == ANALYSIS_TYPE_REPORT]
+
+    this_week = sum(1 for d in docs if str(d.get("createdAt") or "") >= week_ago)
+    this_month = sum(1 for d in docs if str(d.get("createdAt") or "") >= month_ago)
+
+    xray_awaiting = sum(
+        1
+        for d in xrays
+        if not d.get("prediction")
+        or (isinstance(d.get("confidence"), (int, float)) and d["confidence"] < 0.50)
+    )
+    report_awaiting = sum(1 for d in reports if not d.get("prediction"))
+    gradcam_count = sum(1 for d in xrays if d.get("gradcamPath"))
+
+    trend_map: Dict[str, Dict[str, int]] = {}
+    for doc in docs:
+        day = str(doc.get("createdAt") or "")[:10]
+        if not day or day < window_start:
+            continue
+        slot = trend_map.setdefault(day, {"xray": 0, "report": 0})
+        if doc.get("analysisType") == ANALYSIS_TYPE_XRAY:
+            slot["xray"] += 1
+        elif doc.get("analysisType") == ANALYSIS_TYPE_REPORT:
+            slot["report"] += 1
+
+    trend_list = []
+    for offset in range(days):
+        day = (now - datetime.timedelta(days=days - 1 - offset)).date().isoformat()
+        values = trend_map.get(day, {"xray": 0, "report": 0})
+        trend_list.append({"date": day, "xray": values["xray"], "report": values["report"]})
+
+    distribution = {"COVID-19": 0, "Normal": 0, "Pneumonia": 0, "Tuberculosis": 0}
+    for doc in xrays:
+        prediction = str(doc.get("prediction") or "").strip().upper()
+        if "COVID" in prediction:
+            distribution["COVID-19"] += 1
+        elif "NORMAL" in prediction:
+            distribution["Normal"] += 1
+        elif "PNEUMONIA" in prediction:
+            distribution["Pneumonia"] += 1
+        elif "TUBERCULOSIS" in prediction or "TURBERCULOSIS" in prediction or "TB" in prediction:
+            distribution["Tuberculosis"] += 1
+
+    recent_records = []
+    for doc in docs[:5]:
+        confidence = doc.get("confidence")
+        recent_records.append({
+            "analysisId": doc.get("recordId"),
+            "recordId": doc.get("recordId"),
+            "patientId": user_id,
+            "type": _short_type(doc.get("analysisType")),
+            "result": doc.get("prediction") or "Awaiting Review",
+            "confidence": round(confidence, 1) if isinstance(confidence, (int, float)) else None,
+            "date": doc.get("createdAt"),
+            "fileName": doc.get("fileName") or "Unknown",
+        })
+
+    activities = [
+        {
+            "type": "analysis",
+            "text": (
+                f"{_short_type(doc.get('analysisType')).replace('X-Ray', 'X-ray')} analyzed: "
+                f"{doc.get('prediction') or 'Normal'} findings recorded."
+            ),
+            "date": doc.get("createdAt"),
+        }
+        for doc in docs[:5]
+    ]
+
+    return {
+        "stats": {
+            "total_patients": 1,
+            "patients_trend": f"+{this_week} this week" if this_week else "No new records",
+            "total_analyses": len(docs),
+            "analyses_trend": f"+{this_month} this month" if this_month else "No new analyses",
+            "total_records": len(docs),
+            "total_xray": len(xrays),
+            "xray_awaiting": xray_awaiting,
+            "total_reports": len(reports),
+            "reports_awaiting": report_awaiting,
+            "gradcam_analyses": gradcam_count,
+        },
+        "trends": trend_list,
+        "distribution": distribution,
+        "recent_analyses": recent_records,
+        "activities": activities,
+    }
+
+
+# ----------------------------------------------------------------------------
+# Legacy "patient" API -> user-owned records
+# ----------------------------------------------------------------------------
+def get_all_patients(username: Optional[str] = None) -> List[Dict[str, Any]]:
+    user = _resolve_user(username)
+    return [user_public_profile(user)] if user else []
+
+
+def create_patient(
+    name: str,
+    age: int,
+    gender: str,
+    contact: Optional[str] = None,
+    doctor_username: Optional[str] = None,
+) -> Dict[str, Any]:
+    """The signed-in user's own profile - creates nothing but updates it."""
+    user = _resolve_user(doctor_username)
+    if not user:
+        raise ValueError("No signed-in user found for this profile update.")
+    update_user_profile(user["userId"], name=name, age=age, gender=gender, contact=contact)
+    return user_public_profile(get_user_by_id(user["userId"]))
+
+
+def get_patient(patient_id: str) -> Optional[Dict[str, Any]]:
+    user = _resolve_user(patient_id)
+    return user_public_profile(user) if user else None
+
+
+def update_patient(
+    patient_id: str,
+    name: str,
+    age: int,
+    gender: str,
+    contact: Optional[str] = None,
+) -> bool:
+    user = _resolve_user(patient_id)
+    if not user:
+        return False
+    return update_user_profile(user["userId"], name=name, age=age, gender=gender, contact=contact)
+
+
+def archive_patient(patient_id: str) -> bool:
+    user = _resolve_user(patient_id)
+    if not user:
+        return False
+    if USE_MONGO:
+        result = users.update_one({"userId": user["userId"]}, {"$set": {"archived": 1}})
+        return result.matched_count > 0
+    return _update_user(user["userId"], {"archived": 1})
+
+
+def get_patient_history(patient_id: str) -> List[Dict[str, Any]]:
+    user = _resolve_user(patient_id)
+    return get_records(user["userId"]) if user else []
+
+
 def save_file_and_result(
     patient_id: str,
     file_name: str,
@@ -302,630 +950,111 @@ def save_file_and_result(
     prediction: Optional[str] = None,
     confidence: Optional[float] = None,
     gradcam_path: Optional[str] = None,
-    report_findings: Optional[Dict[str, Any]] = None,
-    report_summary: Optional[str] = None
+    report_findings: Any = None,
+    report_summary: Optional[str] = None,
 ) -> Dict[str, Any]:
-    file_id = f"F_{uuid.uuid4().hex[:8].upper()}"
-    analysis_id = f"A_{uuid.uuid4().hex[:8].upper()}"
-    now_str = datetime.datetime.now().isoformat()
-    
-    findings_str = json.dumps(report_findings) if report_findings else None
+    user = _resolve_user(patient_id)
+    if not user:
+        raise ValueError(f"Unknown user '{patient_id}'.")
+    document = save_record(
+        user_id=user["userId"],
+        file_name=file_name,
+        file_type=file_type,
+        file_path=file_path,
+        analysis_type=analysis_type,
+        prediction=prediction,
+        confidence=confidence,
+        gradcam_path=gradcam_path,
+        report_findings=report_findings,
+        report_summary=report_summary,
+    )
+    return {"file_id": document["recordId"], "analysis_id": document["recordId"]}
+
+
+def get_patients_registry(username: Optional[str] = None) -> List[Dict[str, Any]]:
+    user = _resolve_user(username)
+    if not user:
+        return []
+    docs = (
+        list(records.find({"userId": user["userId"]}))
+        if USE_MONGO
+        else _records_for_user(user["userId"])
+    )
+    latest = max(docs, key=lambda d: str(d.get("createdAt") or "")) if docs else None
+    last_analysis = None
+    if latest:
+        confidence = latest.get("confidence")
+        last_analysis = {
+            "type": _short_type(latest.get("analysisType")),
+            "result": latest.get("prediction"),
+            "confidence": round(confidence, 1) if isinstance(confidence, (int, float)) else None,
+            "date": latest.get("createdAt"),
+            "abnormalCount": _abnormal_count(latest.get("reportFindings")),
+        }
+    profile = user_public_profile(user)
+    return [{
+        "patientId": profile["patientId"],
+        "name": profile["name"],
+        "age": profile["age"],
+        "gender": profile["gender"],
+        "contact": profile["contact"],
+        "createdAt": profile["createdAt"],
+        "lastAnalysis": last_analysis,
+    }]
+
+
+def get_patients_registry_stats(username: Optional[str] = None) -> Dict[str, Any]:
+    user = _resolve_user(username)
+    if not user:
+        return {"total_patients": 0, "active_cases": 0, "analyses_this_month": 0, "recently_added": 0}
+    month_start = datetime.datetime.now().replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0
+    ).isoformat()
+    recent_cutoff = (datetime.datetime.now() - datetime.timedelta(days=30)).isoformat()
 
     if USE_MONGO:
-        file_doc = {
-            "fileId": file_id,
-            "patientId": patient_id,
-            "fileName": file_name,
-            "fileType": file_type,
-            "filePath": file_path,
-            "uploadedAt": now_str
-        }
-        analysis_doc = {
-            "analysisId": analysis_id,
-            "patientId": patient_id,
-            "fileId": file_id,
-            "analysisType": analysis_type,
-            "prediction": prediction,
-            "confidence": confidence,
-            "gradcamPath": gradcam_path,
-            "reportFindings": report_findings,
-            "reportSummary": report_summary,
-            "createdAt": now_str
-        }
-        db["medical_files"].insert_one(file_doc)
-        db["analysis_results"].insert_one(analysis_doc)
-        return {"file_id": file_id, "analysis_id": analysis_id}
-    else:
-        conn = get_sqlite_conn()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO medical_files (file_id, patient_id, file_name, file_type, file_path, uploaded_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (file_id, patient_id, file_name, file_type, file_path, now_str)
+        total_records = records.count_documents({"userId": user["userId"]})
+        this_month = records.count_documents(
+            {"userId": user["userId"], "createdAt": {"$gte": month_start}}
         )
-        cursor.execute(
-            "INSERT INTO analysis_results (analysis_id, patient_id, file_id, analysis_type, prediction, confidence, gradcam_path, report_findings, report_summary, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (analysis_id, patient_id, file_id, analysis_type, prediction, confidence, gradcam_path, findings_str, report_summary, now_str)
+        recent = records.count_documents(
+            {"userId": user["userId"], "createdAt": {"$gte": recent_cutoff}}
         )
-        conn.commit()
-        conn.close()
-        return {"file_id": file_id, "analysis_id": analysis_id}
-
-def get_patient_history(patient_id: str) -> List[Dict[str, Any]]:
-    if USE_MONGO:
-        files = {f["fileId"]: f for f in db["medical_files"].find({"patientId": patient_id})}
-        analyses = list(db["analysis_results"].find({"patientId": patient_id}))
-        
-        history = []
-        for ans in analyses:
-            fid = ans.get("fileId")
-            file_info = files.get(fid, {})
-            history.append({
-                "analysisId": ans.get("analysisId"),
-                "fileId": fid,
-                "fileName": file_info.get("fileName", "Unknown File"),
-                "fileType": file_info.get("fileType", "Unknown"),
-                "filePath": file_info.get("filePath", ""),
-                "analysisType": ans.get("analysisType"),
-                "prediction": ans.get("prediction"),
-                "confidence": ans.get("confidence"),
-                "gradcamPath": ans.get("gradcamPath"),
-                "reportFindings": ans.get("reportFindings"),
-                "reportSummary": ans.get("reportSummary"),
-                "doctorNote": ans.get("doctorNote") or ans.get("doctor_note"),
-                "doctor_note": ans.get("doctorNote") or ans.get("doctor_note"),
-                "date": ans.get("createdAt")
-            })
-        history.sort(key=lambda x: x["date"], reverse=True)
-        return history
     else:
-        conn = get_sqlite_conn()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT 
-                a.analysis_id, a.file_id, a.analysis_type, a.prediction, a.confidence, 
-                a.gradcam_path, a.report_findings, a.report_summary, a.doctor_note, a.created_at,
-                f.file_name, f.file_type, f.file_path
-            FROM analysis_results a
-            JOIN medical_files f ON a.file_id = f.file_id
-            WHERE a.patient_id = ?
-            ORDER BY a.created_at DESC
-        """, (patient_id,))
-        rows = cursor.fetchall()
-        conn.close()
-        
-        history = []
-        for r in rows:
-            findings = None
-            if r["report_findings"]:
-                try:
-                    findings = json.loads(r["report_findings"])
-                except Exception:
-                    pass
-            history.append({
-                "analysisId": r["analysis_id"],
-                "fileId": r["file_id"],
-                "fileName": r["file_name"],
-                "fileType": r["file_type"],
-                "filePath": r["file_path"],
-                "analysisType": r["analysis_type"],
-                "prediction": r["prediction"],
-                "confidence": r["confidence"],
-                "gradcamPath": r["gradcam_path"],
-                "reportFindings": findings,
-                "reportSummary": r["report_summary"],
-                "doctorNote": r["doctor_note"],
-                "doctor_note": r["doctor_note"],
-                "date": r["created_at"]
-            })
-        return history
+        docs = _records_for_user(user["userId"])
+        total_records = len(docs)
+        this_month = sum(1 for d in docs if str(d.get("createdAt") or "") >= month_start)
+        recent = sum(1 for d in docs if str(d.get("createdAt") or "") >= recent_cutoff)
 
-def get_all_analyses_stats() -> Dict[str, Any]:
-    if USE_MONGO:
-        total = db["analysis_results"].count_documents({})
-        xrays = db["analysis_results"].count_documents({"analysisType": "Chest X-Ray"})
-        reports = db["analysis_results"].count_documents({"analysisType": "Medical Report"})
-        recent = db["analysis_results"].find_one(sort=[("createdAt", -1)])
-        recent_type = recent.get("analysisType", "None") if recent else "None"
-        return {
-            "total": total,
-            "xrays": xrays,
-            "reports": reports,
-            "recent_type": recent_type
-        }
-    else:
-        conn = get_sqlite_conn()
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM analysis_results")
-        total = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(*) FROM analysis_results WHERE analysis_type = 'Chest X-Ray'")
-        xrays = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(*) FROM analysis_results WHERE analysis_type = 'Medical Report'")
-        reports = cursor.fetchone()[0]
-        cursor.execute("SELECT analysis_type FROM analysis_results ORDER BY created_at DESC LIMIT 1")
-        recent = cursor.fetchone()
-        recent_type = recent[0] if recent else "None"
-        conn.close()
-        return {
-            "total": total,
-            "xrays": xrays,
-            "reports": reports,
-            "recent_type": recent_type
-        }
+    return {
+        "total_patients": 1,
+        "active_cases": 1 if total_records else 0,
+        "analyses_this_month": this_month,
+        "recently_added": recent,
+    }
+
+
+def get_all_analyses_stats(username: Optional[str] = None) -> Dict[str, Any]:
+    user = _resolve_user(username)
+    if not user:
+        return {"total": 0, "xrays": 0, "reports": 0, "recent_type": "None"}
+    return record_stats(user["userId"])
+
 
 def get_dashboard_data(period: str = "30d", doctor_username: Optional[str] = None) -> Dict[str, Any]:
-    """Retrieves dynamic, real-time statistics, trends, disease distribution, and activities for the Doctor Dashboard."""
-    clean_doc = doctor_username.strip().lower() if doctor_username else None
-    days = 30
-    if period == "7d":
-        days = 7
-    elif period == "3m":
-        days = 90
-        
-    cutoff_date = (datetime.datetime.now() - datetime.timedelta(days=days)).isoformat()
-    
-    if USE_MONGO:
-        # Simple fallback mockup fields for MongoDB (if enabled, though SQLite is local default)
-        try:
-            total_patients = db["patients"].count_documents({})
-            total_analyses = db["analysis_results"].count_documents({})
-            total_xray = db["analysis_results"].count_documents({"analysisType": "Chest X-Ray"})
-            total_reports = db["analysis_results"].count_documents({"analysisType": "Medical Report"})
-            gradcam_count = db["analysis_results"].count_documents({"analysisType": "Chest X-Ray", "gradcamPath": {"$ne": None}})
-        except Exception:
-            total_patients = 0
-            total_analyses = 0
-            total_xray = 0
-            total_reports = 0
-            gradcam_count = 0
-            
-        trend_list = []
-        for i in range(days):
-            d = (datetime.datetime.now() - datetime.timedelta(days=days - 1 - i)).date().isoformat()
-            trend_list.append({"date": d, "xray": 0, "report": 0})
-            
-        return {
-            "stats": {
-                "total_patients": total_patients,
-                "patients_trend": "+0 this week",
-                "total_analyses": total_analyses,
-                "analyses_trend": "+0 this month",
-                "total_xray": total_xray,
-                "xray_awaiting": 0,
-                "total_reports": total_reports,
-                "reports_awaiting": 0,
-                "gradcam_analyses": gradcam_count
-            },
-            "trends": trend_list,
-            "distribution": {"COVID-19": 0, "Normal": 0, "Pneumonia": 0, "Tuberculosis": 0},
-            "recent_analyses": [],
-            "activities": []
-        }
-    else:
-        conn = get_sqlite_conn()
-        cursor = conn.cursor()
-        
-        where_clause = ""
-        params = []
-        if clean_doc:
-            if clean_doc == "admin":
-                where_clause = " WHERE (LOWER(doctor_username) = ? OR doctor_username IS NULL OR doctor_username = '')"
-                params.append(clean_doc)
-            else:
-                where_clause = " WHERE LOWER(doctor_username) = ?"
-                params.append(clean_doc)
+    user = _resolve_user(doctor_username)
+    if not user:
+        return {"stats": {}, "trends": [], "distribution": {}, "recent_analyses": [], "activities": []}
+    return user_dashboard(user["userId"], period)
 
-        # 1. Total Patients
-        cursor.execute(f"SELECT COUNT(*) FROM patients{where_clause}", tuple(params))
-        total_patients = cursor.fetchone()[0]
-        
-        # Delta patients registered in last 7 days
-        week_ago = (datetime.datetime.now() - datetime.timedelta(days=7)).isoformat()
-        cursor.execute("SELECT COUNT(*) FROM patients WHERE created_at >= ?", (week_ago,))
-        patients_this_week = cursor.fetchone()[0]
-        
-        # 2. Total Analyses
-        cursor.execute("SELECT COUNT(*) FROM analysis_results")
-        total_analyses = cursor.fetchone()[0]
-        
-        # Delta analyses this month (last 30 days)
-        month_ago = (datetime.datetime.now() - datetime.timedelta(days=30)).isoformat()
-        cursor.execute("SELECT COUNT(*) FROM analysis_results WHERE created_at >= ?", (month_ago,))
-        analyses_this_month = cursor.fetchone()[0]
-        
-        # 3. X-Ray Analyses
-        cursor.execute("SELECT COUNT(*) FROM analysis_results WHERE analysis_type = 'Chest X-Ray'")
-        total_xray = cursor.fetchone()[0]
-        
-        # Awaiting review count: count X-rays where confidence is below 50% or prediction is null
-        cursor.execute("SELECT COUNT(*) FROM analysis_results WHERE analysis_type = 'Chest X-Ray' AND (prediction IS NULL OR confidence < 0.50)")
-        xray_awaiting = cursor.fetchone()[0]
-        
-        # 4. Report Analyses
-        cursor.execute("SELECT COUNT(*) FROM analysis_results WHERE analysis_type = 'Medical Report'")
-        total_reports = cursor.fetchone()[0]
-        
-        # Awaiting review count for reports
-        cursor.execute("SELECT COUNT(*) FROM analysis_results WHERE analysis_type = 'Medical Report' AND prediction IS NULL")
-        report_awaiting = cursor.fetchone()[0]
-        
-        # 5. Grad-CAM analyses count
-        cursor.execute("SELECT COUNT(*) FROM analysis_results WHERE analysis_type = 'Chest X-Ray' AND gradcam_path IS NOT NULL AND gradcam_path != ''")
-        gradcam_count = cursor.fetchone()[0]
-        
-        # 6. Trend data: count analyses per day within the period
-        cursor.execute("""
-            SELECT substr(created_at, 1, 10) as date,
-                   SUM(case when analysis_type = 'Chest X-Ray' then 1 else 0 end) as xray_cnt,
-                   SUM(case when analysis_type = 'Medical Report' then 1 else 0 end) as report_cnt
-            FROM analysis_results
-            WHERE created_at >= ?
-            GROUP BY date
-            ORDER BY date ASC
-        """, (cutoff_date,))
-        trend_rows = cursor.fetchall()
-        
-        # Generate complete daily timeseries list to pad empty dates
-        trend_dict = {r["date"]: {"xray": r["xray_cnt"], "report": r["report_cnt"]} for r in trend_rows}
-        trend_list = []
-        for i in range(days):
-            d = (datetime.datetime.now() - datetime.timedelta(days=days - 1 - i)).date().isoformat()
-            vals = trend_dict.get(d, {"xray": 0, "report": 0})
-            trend_list.append({
-                "date": d,
-                "xray": vals["xray"],
-                "report": vals["report"]
-            })
-            
-        # 7. Disease distribution (limited to COVID-19, Normal, Pneumonia, Tuberculosis)
-        cursor.execute("SELECT prediction, COUNT(*) as count FROM analysis_results WHERE analysis_type = 'Chest X-Ray' GROUP BY prediction")
-        dist_rows = cursor.fetchall()
-        
-        dist_counts = {"COVID-19": 0, "Normal": 0, "Pneumonia": 0, "Tuberculosis": 0}
-        for r in dist_rows:
-            pred = r["prediction"]
-            if not pred:
-                continue
-            pred_norm = pred.strip().upper()
-            if "COVID" in pred_norm:
-                dist_counts["COVID-19"] += r["count"]
-            elif "NORMAL" in pred_norm:
-                dist_counts["Normal"] += r["count"]
-            elif "PNEUMONIA" in pred_norm:
-                dist_counts["Pneumonia"] += r["count"]
-            elif "TUBERCULOSIS" in pred_norm or "TB" in pred_norm or "TURBERCULOSIS" in pred_norm:
-                dist_counts["Tuberculosis"] += r["count"]
-                
-        # 8. Recent analyses (limit 5)
-        cursor.execute("""
-            SELECT a.analysis_id, a.patient_id, a.analysis_type, a.prediction, a.confidence, a.created_at, f.file_name
-            FROM analysis_results a
-            LEFT JOIN medical_files f ON a.file_id = f.file_id
-            ORDER BY a.created_at DESC
-            LIMIT 5
-        """)
-        recent_rows = cursor.fetchall()
-        recent_analyses = []
-        for r in recent_rows:
-            atype = "CT Scan" if r["analysis_type"] in ["CT Scan", "Kidney Stone CT"] else ("Dental Cavity" if r["analysis_type"] == "Dental Cavity" else ("X-Ray" if r["analysis_type"] == "Chest X-Ray" else "Report"))
-            recent_analyses.append({
-                "analysisId": r["analysis_id"],
-                "patientId": r["patient_id"],
-                "type": atype,
-                "result": r["prediction"] or "Awaiting Review",
-                "confidence": round(r["confidence"], 1) if r["confidence"] is not None else None,
-                "date": r["created_at"],
-                "fileName": r["file_name"] or "Unknown"
-            })
-            
-        # 9. Recent activities (Patients registry & Analyses)
-        # Fetch latest 5 patients
-        cursor.execute("SELECT name, patient_id, created_at FROM patients ORDER BY created_at DESC LIMIT 5")
-        patient_activities = [{"type": "patient", "text": f"New patient registered: {p['name']} ({p['patient_id']})", "date": p["created_at"]} for p in cursor.fetchall()]
-        
-        # Fetch latest 5 analyses
-        cursor.execute("SELECT patient_id, analysis_type, prediction, created_at FROM analysis_results ORDER BY created_at DESC LIMIT 5")
-        analysis_activities = []
-        for a in cursor.fetchall():
-            atype = "CT Scan" if a["analysis_type"] in ["CT Scan", "Kidney Stone CT"] else ("Dental Cavity" if a["analysis_type"] == "Dental Cavity" else ("X-ray" if a["analysis_type"] == "Chest X-Ray" else "Report"))
-            pred = a["prediction"] or "Normal"
-            analysis_activities.append({
-                "type": "analysis",
-                "text": f"{atype} analyzed for {a['patient_id']}: {pred} findings recorded.",
-                "date": a["created_at"]
-            })
-            
-        activities = sorted(patient_activities + analysis_activities, key=lambda x: x["date"], reverse=True)[:5]
-        
-        conn.close()
-        
-        return {
-            "stats": {
-                "total_patients": total_patients,
-                "patients_trend": f"+{patients_this_week} this week" if patients_this_week > 0 else "No new registrations",
-                "total_analyses": total_analyses,
-                "analyses_trend": f"+{analyses_this_month} this month" if analyses_this_month > 0 else "No new analyses",
-                "total_xray": total_xray,
-                "xray_awaiting": xray_awaiting,
-                "total_reports": total_reports,
-                "reports_awaiting": report_awaiting,
-                "gradcam_analyses": gradcam_count
-            },
-            "trends": trend_list,
-            "distribution": dist_counts,
-            "recent_analyses": recent_analyses,
-            "activities": activities
-        }
-
-def update_patient(patient_id: str, name: str, age: int, gender: str, contact: Optional[str] = None) -> bool:
-    """Updates basic demographic parameters for an existing patient record."""
-    if USE_MONGO:
-        try:
-            res = db["patients"].update_one(
-                {"patientId": patient_id},
-                {"$set": {"name": name, "age": age, "gender": gender, "contact": contact}}
-            )
-            return res.modified_count > 0
-        except Exception:
-            return False
-    else:
-        conn = get_sqlite_conn()
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE patients SET name = ?, age = ?, gender = ?, contact = ? WHERE patient_id = ?",
-            (name, age, gender, contact, patient_id)
-        )
-        conn.commit()
-        success = cursor.rowcount > 0
-        conn.close()
-        return success
-
-def get_patients_registry_stats(doctor_username: Optional[str] = None) -> Dict[str, Any]:
-    """Calculates Patient Registry summary metrics directly from database records for a doctor."""
-    clean_doc = doctor_username.strip().lower() if doctor_username else None
-    if USE_MONGO:
-        try:
-            pat_filter = {}
-            if clean_doc:
-                if clean_doc == "admin":
-                    pat_filter = {"$or": [{"doctorUsername": clean_doc}, {"doctor_username": clean_doc}, {"doctorUsername": {"$exists": False}}, {"doctor_username": None}]}
-                else:
-                    pat_filter = {"$or": [{"doctorUsername": clean_doc}, {"doctor_username": clean_doc}]}
-            total = db["patients"].count_documents(pat_filter)
-            pids = [p["patientId"] for p in db["patients"].find(pat_filter, {"patientId": 1})]
-            active = len(db["analysis_results"].distinct("patientId", {"patientId": {"$in": pids}}))
-            this_month_start = datetime.datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
-            this_month_cnt = db["analysis_results"].count_documents({"patientId": {"$in": pids}, "createdAt": {"$gte": this_month_start}})
-            recent_cutoff = (datetime.datetime.now() - datetime.timedelta(days=30)).isoformat()
-            recent_pat_filter = dict(pat_filter)
-            recent_pat_filter["createdAt"] = {"$gte": recent_cutoff}
-            recent_pat = db["patients"].count_documents(recent_pat_filter)
-        except Exception:
-            total = active = this_month_cnt = recent_pat = 0
-            
-        return {
-            "total_patients": total,
-            "active_cases": active,
-            "analyses_this_month": this_month_cnt,
-            "recently_added": recent_pat
-        }
-    else:
-        conn = get_sqlite_conn()
-        cursor = conn.cursor()
-        
-        where_clause = ""
-        params = []
-        if clean_doc:
-            if clean_doc == "admin":
-                where_clause = " WHERE (LOWER(doctor_username) = ? OR doctor_username IS NULL OR doctor_username = '')"
-                params.append(clean_doc)
-            else:
-                where_clause = " WHERE LOWER(doctor_username) = ?"
-                params.append(clean_doc)
-        
-        # 1. Total patients
-        cursor.execute(f"SELECT COUNT(*) FROM patients{where_clause}", tuple(params))
-        total = cursor.fetchone()[0]
-        
-        # 2. Active cases (any patient belonging to doctor with an analysis record)
-        cursor.execute(f"SELECT COUNT(DISTINCT a.patient_id) FROM analysis_results a JOIN patients p ON a.patient_id = p.patient_id{where_clause}", tuple(params))
-        active = cursor.fetchone()[0]
-        
-        # 3. Analyses this month
-        month_start = datetime.datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
-        if where_clause:
-            cursor.execute(f"SELECT COUNT(*) FROM analysis_results a JOIN patients p ON a.patient_id = p.patient_id{where_clause} AND a.created_at >= ?", tuple(params + [month_start]))
-        else:
-            cursor.execute("SELECT COUNT(*) FROM analysis_results WHERE created_at >= ?", (month_start,))
-        this_month_cnt = cursor.fetchone()[0]
-        
-        # 4. Recently added
-        recent_cutoff = (datetime.datetime.now() - datetime.timedelta(days=30)).isoformat()
-        if where_clause:
-            cursor.execute(f"SELECT COUNT(*) FROM patients{where_clause} AND created_at >= ?", tuple(params + [recent_cutoff]))
-        else:
-            cursor.execute("SELECT COUNT(*) FROM patients WHERE created_at >= ?", (recent_cutoff,))
-        recent_pat = cursor.fetchone()[0]
-        
-        conn.close()
-        return {
-            "total_patients": total,
-            "active_cases": active,
-            "analyses_this_month": this_month_cnt,
-            "recently_added": recent_pat
-        }
-
-def get_patients_registry(doctor_username: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Fetches the directory of patients combined with their latest analysis metrics for a doctor."""
-    clean_doc = doctor_username.strip().lower() if doctor_username else None
-    if USE_MONGO:
-        try:
-            pat_filter = {}
-            if clean_doc:
-                if clean_doc == "admin":
-                    pat_filter = {"$or": [{"doctorUsername": clean_doc}, {"doctor_username": clean_doc}, {"doctorUsername": {"$exists": False}}, {"doctor_username": None}]}
-                else:
-                    pat_filter = {"$or": [{"doctorUsername": clean_doc}, {"doctor_username": clean_doc}]}
-            patients = list(db["patients"].find(pat_filter))
-        except Exception:
-            patients = []
-        result = []
-        for p in patients:
-            pid = p.get("patientId")
-            try:
-                last_an = db["analysis_results"].find_one({"patientId": pid}, sort=[("createdAt", -1)])
-            except Exception:
-                last_an = None
-            an_data = None
-            if last_an:
-                an_data = {
-                    "type": "X-Ray" if last_an.get("analysisType") == "Chest X-Ray" else "Report",
-                    "result": last_an.get("prediction"),
-                    "confidence": last_an.get("confidence"),
-                    "date": last_an.get("createdAt"),
-                    "abnormalCount": 0
-                }
-            result.append({
-                "patientId": pid,
-                "name": p.get("name"),
-                "age": p.get("age"),
-                "gender": p.get("gender"),
-                "contact": p.get("contact"),
-                "createdAt": p.get("createdAt"),
-                "lastAnalysis": an_data
-            })
-        return result
-    else:
-        conn = get_sqlite_conn()
-        cursor = conn.cursor()
-        where_clause = ""
-        params = []
-        if clean_doc:
-            if clean_doc == "admin":
-                where_clause = " WHERE (LOWER(p.doctor_username) = ? OR p.doctor_username IS NULL OR p.doctor_username = '')"
-                params.append(clean_doc)
-            else:
-                where_clause = " WHERE LOWER(p.doctor_username) = ?"
-                params.append(clean_doc)
-
-        query_sql = f"""
-            SELECT p.patient_id, p.name, p.age, p.gender, p.contact, p.created_at,
-                   a.analysis_type, a.prediction, a.confidence, a.report_findings, a.created_at as last_analysis_date
-            FROM patients p
-            LEFT JOIN (
-                SELECT patient_id, analysis_type, prediction, confidence, report_findings, created_at,
-                       ROW_NUMBER() OVER (PARTITION BY patient_id ORDER BY created_at DESC) as rn
-                FROM analysis_results
-            ) a ON p.patient_id = a.patient_id AND a.rn = 1
-            {where_clause}
-            ORDER BY p.created_at DESC
-        """
-        cursor.execute(query_sql, tuple(params))
-        rows = cursor.fetchall()
-        conn.close()
-        
-        result = []
-        for r in rows:
-            an_data = None
-            if r["analysis_type"]:
-                num_findings = 0
-                if r["analysis_type"] == "Medical Report" and r["report_findings"]:
-                    try:
-                        import json
-                        findings = json.loads(r["report_findings"])
-                        if isinstance(findings, list):
-                            num_findings = len([f for f in findings if f.get("status", "").upper() in ["HIGH", "LOW", "ABNORMAL"]])
-                    except Exception:
-                        pass
-                
-                atype = "CT Scan" if r["analysis_type"] in ["CT Scan", "Kidney Stone CT"] else ("Dental Cavity" if r["analysis_type"] == "Dental Cavity" else ("X-Ray" if r["analysis_type"] == "Chest X-Ray" else "Report"))
-                an_data = {
-                    "type": atype,
-                    "result": r["prediction"],
-                    "confidence": round(r["confidence"], 1) if r["confidence"] is not None else None,
-                    "date": r["last_analysis_date"],
-                    "abnormalCount": num_findings
-                }
-            result.append({
-                "patientId": r["patient_id"],
-                "name": r["name"],
-                "age": r["age"],
-                "gender": r["gender"],
-                "contact": r["contact"],
-                "createdAt": r["created_at"],
-                "lastAnalysis": an_data
-            })
-        return result
 
 def delete_analysis(analysis_id: str) -> bool:
-    """Deletes a specific analysis record and its corresponding file reference from SQLite or MongoDB, returning True on success."""
-    if USE_MONGO:
-        try:
-            ans = db["analysis_results"].find_one({"analysisId": analysis_id})
-            if ans:
-                file_id = ans.get("fileId")
-                db["analysis_results"].delete_one({"analysisId": analysis_id})
-                if file_id:
-                    db["medical_files"].delete_one({"fileId": file_id})
-                return True
-            return False
-        except Exception:
-            return False
-    else:
-        conn = get_sqlite_conn()
-        cursor = conn.cursor()
-        cursor.execute("SELECT file_id FROM analysis_results WHERE analysis_id = ?", (analysis_id,))
-        row = cursor.fetchone()
-        if row:
-            file_id = row["file_id"]
-            cursor.execute("DELETE FROM analysis_results WHERE analysis_id = ?", (analysis_id,))
-            cursor.execute("DELETE FROM medical_files WHERE file_id = ?", (file_id,))
-            conn.commit()
-            conn.close()
-            return True
-        conn.close()
-        return False
+    return delete_record(analysis_id)
+
 
 def update_analysis_note(analysis_id: str, doctor_note: str) -> bool:
-    """Updates the doctor note field in a specific analysis result record."""
-    if USE_MONGO:
-        try:
-            res = db["analysis_results"].update_one(
-                {"analysisId": analysis_id},
-                {"$set": {"doctorNote": doctor_note, "doctor_note": doctor_note}}
-            )
-            return res.modified_count > 0
-        except Exception:
-            return False
-    else:
-        conn = get_sqlite_conn()
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE analysis_results SET doctor_note = ? WHERE analysis_id = ?",
-            (doctor_note, analysis_id)
-        )
-        conn.commit()
-        success = cursor.rowcount > 0
-        conn.close()
-        return success
-
-def archive_patient(patient_id: str) -> bool:
-    """Marks a patient record as archived (hides them from registry search)."""
-    if USE_MONGO:
-        try:
-            res = db["patients"].update_one(
-                {"patientId": patient_id},
-                {"$set": {"archived": 1}}
-            )
-            return res.modified_count > 0
-        except Exception:
-            return False
-    else:
-        conn = get_sqlite_conn()
-        cursor = conn.cursor()
-        cursor.execute("UPDATE patients SET archived = 1 WHERE patient_id = ?", (patient_id,))
-        conn.commit()
-        success = cursor.rowcount > 0
-        conn.close()
-        return success
+    return update_record_note(analysis_id, doctor_note)
 
 
+def get_analysis_file_paths(analysis_id: str) -> Optional[Dict[str, Any]]:
+    return record_file_paths(analysis_id)

@@ -847,7 +847,7 @@ export function AboutContent({ compact = false }) {
             { title: "Deep learning", items: "PyTorch, TorchVision, DenseNet-121, EfficientNet-B0, MobileNetV2", icon: <Brain size={19} /> },
             { title: "OCR & documents", items: "EasyOCR, OpenCV, Pillow, report biomarker parsing", icon: <FileText size={19} /> },
             { title: "Explainability", items: "Grad-CAM heatmap generation for supported models", icon: <Eye size={19} /> },
-            { title: "Data layer", items: "Existing SQLite / MongoDB-compatible persistence layer", icon: <Database size={19} /> }
+            { title: "Data layer", items: "MongoDB Atlas-backed persistence layer", icon: <Database size={19} /> }
           ].map((item) => (
             <div className="ms-stack-card" key={item.title}>
               <span>{item.icon}</span>

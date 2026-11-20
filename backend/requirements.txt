@@ -7,6 +7,8 @@ fastapi
 uvicorn
 python-multipart
 python-dotenv
+pymongo
+dnspython
 easyocr
 opencv-python-headless
 scikit-learn
